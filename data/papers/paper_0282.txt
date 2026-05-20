@@ -1,0 +1,829 @@
+Title: Three scenarios for continual learning
+
+Three scenarios for continual learning
+Gido M. van de Ven1;2& Andreas S. Tolias1;3
+1Center for Neuroscience and Artiﬁcial Intelligence, Baylor College of Medicine, Houston
+2Computational and Biological Learning Lab, University of Cambridge, Cambridge
+3Department of Electrical and Computer Engineering, Rice University, Houston
+{ven,astolias}@bcm.edu
+Abstract
+Standard artiﬁcial neural networks suffer from the well-known issue of catastrophic
+forgetting, making continual or lifelong learning difﬁcult for machine learning.
+In recent years, numerous methods have been proposed for continual learning,
+but due to differences in evaluation protocols it is difﬁcult to directly compare
+their performance. To enable more structured comparisons, we describe three
+continual learning scenarios based on whether at test time task identity is provided
+and—in case it is not—whether it must be inferred. Any sequence of well-deﬁned
+tasks can be performed according to each scenario. Using the split and permuted
+MNIST task protocols, for each scenario we carry out an extensive comparison
+of recently proposed continual learning methods. We demonstrate substantial
+differences between the three scenarios in terms of difﬁculty and in terms of how
+efﬁcient different methods are. In particular, when task identity must be inferred
+(i.e., class incremental learning), we ﬁnd that regularization-based approaches (e.g.,
+elastic weight consolidation) fail and that replaying representations of previous
+experiences seems required for solving this scenario.
+1 Introduction
+Current state-of-the-art deep neural networks can be trained to impressive performance on a wide
+variety of individual tasks. Learning multiple tasks in sequence, however, remains a substantial
+challenge for deep learning. When trained on a new task, standard neural networks forget most
+of the information related to previously learned tasks, a phenomenon referred to as “catastrophic
+forgetting”.
+In recent years, numerous methods for alleviating catastrophic forgetting have been proposed. How-
+ever, due to the wide variety of experimental protocols used to evaluate them, many of these methods
+claim “state-of-the-art” performance [e.g., 1,2,3,4,5,6]. To obscure things further, some methods
+shown to perform well in some experimental settings are reported to dramatically fail in others:
+compare the performance of elastic weight consolidation in Kirkpatrick et al. [1]and Zenke et al. [7]
+with that in Kemker et al. [8] and Kamra et al. [9].
+To enable more structured comparisons of methods for reducing catastrophic forgetting, this report
+describes three distinct continual learning scenarios of increasing difﬁculty. These scenarios are
+distinguished by whether at test time task identity is provided and, if it is not, whether task identity
+must be inferred. We show that there are substantial differences between these three scenarios in
+terms of their difﬁculty and in terms of how effective different continual learning methods are on
+them. Moreover, using the split and permuted MNIST task protocols, we illustrate that any continual
+learning problem consisting of a series of clearly separated tasks can be performed according to all
+three scenarios.
+This is an extended version of work presented at the NeurIPS Continual Learning workshop (2018).arXiv:1904.07734v1  [cs.LG]  15 Apr 2019
+As a second contribution, for each of the three scenarios we then provide an extensive comparison
+of recently proposed methods. These experiments reveal that even for experimental protocols
+involving the relatively simple classiﬁcation of MNIST-digits, regularization-based approaches
+(e.g., elastic weight consolidation) completely fail when task identity needs to be inferred. We
+ﬁnd that currently only replay-based approaches have the potential to perform well on all three
+scenarios. Well-documented and easy-to-adapt code for all compared methods is made available:
+https://github.com/GMvandeVen/continual-learning .
+2 Three Continual Learning Scenarios
+We focus on the continual learning problem in which a single neural network model needs to
+sequentially learn a series of tasks. During training, only data from the current task is available and
+the tasks are assumed to be clearly separated. This problem has been actively studied in recent years
+and many methods for alleviating catastrophic forgetting have been proposed. However, because of
+differences in the experimental protocols used for their evaluation, comparing methods’ performances
+can be difﬁcult. In particular, one difference between experimental protocols we found to be very
+inﬂuential for the level of difﬁculty is whether at test time information about the task identity is
+available and—if it is not—whether the model is also required to explicitly identify the identity of the
+task it has to solve. Importantly, this means that even when studies use exactly the same sequence of
+tasks to be learned (i.e., the same task protocol), results are not necessarily comparable. In the hope
+to standardize evaluation and to enable more meaningful comparisons across papers, we describe
+three distinct scenarios for continual learning of increasing difﬁculty (Table 1). This categorization
+scheme was ﬁrst introduced in a previous paper by us [ 10] and has since been adopted by several
+other studies [11, 12, 13]; the purpose of the current report is to provide a more in-depth treatment.
+Table 1: Overview of the three continual learning scenarios.
+Scenario Required at test time
+Task-IL Solve tasks so far, task-ID provided
+Domain-IL Solve tasks so far, task-ID not provided
+Class-IL Solve tasks so far andinfer task-ID
+In the ﬁrst scenario, models are always informed about which task needs to be performed. This is
+the easiest continual learning scenario, and we refer to it as task-incremental learning (Task-IL) .
+Since task identity is always provided, in this scenario it is possible to train models with task-speciﬁc
+components. A typical network architecture used in this scenario has a “multi-headed” output layer,
+meaning that each task has its own output units but the rest of the network is (potentially) shared
+between tasks.
+In the second scenario, which we refer to as domain-incremental learning (Domain-IL) , task
+identity is not available at test time. Models however only need to solve the task at hand; they are
+not required to infer which task it is. Typical examples of this scenario are protocols whereby the
+structure of the tasks is always the same, but the input-distribution is changing. A relevant real-world
+example is an agent who needs to learn to survive in different environments, without the need to
+explicitly identify the environment it is confronted with.
+Finally, in the third scenario, models must be able to both solve each task seen so far andinfer which
+task they are presented with. We refer to this scenario as class-incremental learning (Class-IL) , as
+it includes the common real-world problem of incrementally learning new classes of objects.
+2.1 Comparison with Single-Headed vs Multi-Headed Categorization Scheme
+In another recent attempt to structure the continual learning literature, a distinction is highlighted
+between methods being evaluated using a “multi-headed” or a “single-headed” layout [ 14,15]. This
+distinction relates to the scenarios we describe here in the sense that a multi-headed layout requires
+task identity to be known, while a single-headed layout does not. Our proposed categorization
+however differs in two important ways.
+2
+Figure 1: Schematic of split MNIST task protocol.
+Table 2: Split MNIST according to each scenario.
+Task-ILWith task given, is it the 1stor 2ndclass?
+(e.g., 0or1)
+Domain-ILWith task unknown, is it a 1stor 2ndclass?
+(e.g., in [0;2;4;6;8]or in [1;3;5;7;9])
+Class-ILWith task unknown, which digit is it?
+(i.e., choice from 0to9)
+Firstly, the multi-headed vs single-headed distinction is tied to the architectural layout of a network’s
+output layer, while our scenarios more generally reﬂect the conditions under which a model is
+evaluated. Although in the continual learning literature a multi-headed layout (i.e., using a separate
+output layer for each task) is the most common way to use task identity information, it is not the only
+way. Similarly, a single-headed layout (i.e., using the same output-layer for every task) might by
+itself not require task identity to be known, it is still possible for the model to use task identity in
+other ways (e.g., in its hidden layers, as in [4]).
+Secondly, our categorization scheme extends upon the multi-headed vs single-headed split by recog-
+nizing that when task identity is not provided, there is a further distinction depending on whether the
+network is explicitly required to infer task identity. Importantly, we will show that the two scenarios
+resulting from this additional split substantially differ in difﬁculty (see section 5).
+2.2 Example Task Protocols
+To demonstrate the difference between the three continual learning scenarios, and to illustrate that
+any task protocol can be performed according to each scenario, we will perform two different task
+protocols for all three scenarios.
+The ﬁrst task protocol is sequentially learning to classify MNIST-digits (‘split MNIST’ [ 7]; Figure 1).
+In the recent literature, this task protocol has been performed under the Task-IL scenario (in which
+case it is sometimes referred to as ‘multi-headed split MNIST’) and under the Class-IL scenario (in
+which case it is referred to as ‘single-headed split MNIST’), but it could also be performed under the
+Domain-IL scenario (Table 2).
+The second task protocol is ‘permuted MNIST’ [ 16], in which each task involves classifying all ten
+MNIST-digits but with a different permutation applied to the pixels for every new task (Figure 2).
+Although permuted MNIST is most naturally performed according to the Domain-IL scenario, it can
+be performed according to the other scenarios too (Table 3).
+2.3 Task Boundaries
+The scenarios described in this report assume that during training there are clear and well-deﬁned
+boundaries between the tasks to be learned. If there are no such boundaries between tasks—for
+example because transitions between tasks are gradual or continuous—the scenarios we describe here
+no longer apply, and the continual learning problem becomes less structured and potentially a lot
+harder. Among others, training with randomly-sampled minibatches and multiple passes over each
+task’s training data are no longer possible. We refer to [ 12] for a recent insightful treatment of the
+paradigm without well-deﬁned task-boundaries.
+3
+Figure 2: Schematic of permuted MNIST task protocol.
+Table 3: Permuted MNIST according to each scenario.
+Task-IL Given permutation X, which digit?
+Domain-IL With permutation unknown, which digit?
+Class-IL Which digit andwhich permutation?
+3 Strategies for Continual Learning
+3.1 Task-speciﬁc Components
+A simple explanation for catastrophic forgetting is that after a neural network is trained on a new
+task, its parameters are optimized for the new task and no longer for the previous one(s). This
+suggests that not optimizing the entire network on each task could be one strategy for alleviating
+catastrophic forgetting. A straightforward way to do this is to explicitly deﬁne a different sub-network
+per task. Several recent papers use this strategy, with different approaches for selecting the parts
+of the network for each task. A simple approach is to randomly assign which nodes participate in
+each task ( Context-dependent Gating [XdG; 4]). Other approaches use evolutionary algorithms [ 17]
+or gradient descent [ 18] to learn which units to employ for each task. By design, these approaches
+are limited to the Task-IL scenario, as task identity is required to select the correct task-speciﬁc
+components.
+3.2 Regularized Optimization
+When task identity information is not available at test time, an alternative strategy is to still prefer-
+entially train a different part of the network for each task, but to always use the entire network for
+execution. One way to do this is by differently regularizing the network’s parameters during training
+on each new task, which is the approach of Elastic Weight Consolidation [EWC; 1] and Synaptic
+Intelligence [SI;7]. Both methods estimate for all parameters of the network how important they are
+for the previously learned tasks and penalize future changes to them accordingly (i.e., learning is
+slowed down for parts of the network important for previous tasks).
+3.3 Modifying Training Data
+An alternative strategy for alleviating catastrophic forgetting is to complement the training data for
+each new task to be learned with “pseudo-data” representative of the previous tasks. This strategy is
+referred to as replay.
+One option is to take the input data of the current task, label them using the model trained on the
+previous tasks, and use the resulting input-target pairs as pseudo-data. This is the approach of
+Learning without Forgetting [LwF; 19]. An important aspect of this method is that instead of labeling
+the replayed inputs as the most likely category according to the previous tasks’ model (i.e., “hard
+targets”), it pairs them with the predicted probabilities for alltarget classes (i.e., “soft targets”). The
+objective for the replayed data is to match the probabilities predicted by the model being trained to
+these target probabilities. The approach of matching predicted probabilities of one network to those
+of another network had previously been used to compress (or “distill”) information from one (large)
+network to another (smaller) network [20].
+An alternative is to generate the input data to be replayed. For this, besides the main model for task
+performance (e.g., classiﬁcation), a separate generative model is sequentially trained on all tasks
+4
+to generate samples from their input data distributions. For the ﬁrst application of this approach,
+which was called Deep Generative Replay (DGR), the generated input samples were paired with
+“hard targets” provided by the main model [ 21]. We note that it is possible to combine DGR with
+distillation by replaying input samples from a generative model and pairing them with soft targets
+[see also 6, 22]. We include this hybrid method in our comparison under the name DGR+distill.
+A ﬁnal option is to store data from previous tasks and replay those. Such “exact replay” has been
+used in various forms to successfully boost continual learning performance in classiﬁcation settings
+[e.g., 2,3,5]. A disadvantage of this approach is that it is not always possible, for example due to
+privacy concerns or memory constraints.
+3.4 Using Exemplars
+If it is possible to store data from previous tasks, another strategy for alleviating catastrophic forgetting
+is to use stored data as “exemplars” during execution. A recent method that successfully used this
+strategy is iCaRL [2]. This method uses a neural network for feature extraction and performs
+classiﬁcation based on a nearest-class-mean rule [ 23] in that feature space, whereby the class means
+are calculated from the stored data. To protect the feature extractor network from becoming unsuitable
+for previously learned tasks, iCaRL also replays the stored data—as well as the current task inputs
+with a special form of distillation—during training of the feature extractor.
+4 Experimental Details
+In order to both explore the differences between the three continual learning scenarios and to
+comprehensively compare the performances of the above discussed approaches, we evaluated various
+recently proposed methods according to each scenario on both the split and permuted MNIST task
+protocols.
+4.1 Task Protocols
+For split MNIST, the original MNIST-dataset was split into ﬁve tasks, where each task was a two-way
+classiﬁcation. The original 28x28 pixel grey-scale images were used without pre-processing. The
+standard training/test-split was used resulting in 60,000 training images ( 6000 per digit) and 10,000
+test images (1000 per digit).
+For permuted MNIST, a sequence of ten tasks was used. Each task is now a ten-way classiﬁcation.
+To generate the permutated images, the original images were ﬁrst zero-padded to 32x32 pixels. For
+each task, a random permutation was then generated and applied to these 1024 pixels. No other
+pre-processing was performed. Again the standard training/test-split was used.
+4.2 Methods
+For a fair comparison, the same neural network architecture was used for all methods. This was
+a multi-layer perceptron with 2 hidden layers of 400 (split MNIST) or 1000 (permuted MNIST)
+nodes each. ReLU non-linearities were used in all hidden layers. Except for iCaRL, the ﬁnal layer
+was a softmax output layer. In the Task-IL scenario, all methods used a multi-headed output layer,
+meaning that each task had its own output units and always only the output units of the task under
+consideration—i.e., either the current task or the replayed task—were active. In the Domain-IL
+scenario, all methods were implemented with a single-headed output layer, meaning that each task
+used the same output units (with each unit corresponding to one class in every task). In the Class-IL
+scenario, each class had its own output unit and always all units of the classes seen so far were active
+(see also sections A.1.1 and A.1.2 in the Appendix).
+We compared the following methods:
+- XdG: Following Masse et al. [4], for each task a random subset of X%of the units in each hidden
+layer was fully gated (i.e., their activations set to zero), with Xa hyperparameter whose
+value was set by a grid search (see section D in the Appendix). As this method requires
+availability of task identity at test time, it can only be used in the Task-IL scenario.
+5
+- EWC / Online EWC / SI: For these methods a regularization term was added to the loss, with
+regularization strength controlled by a hyperparameter: Ltotal=Lcurrent +Lregularization .
+The value of this hyperparameter was again set by a grid search. The way the regularization
+terms of these methods are calculated differs ([ 1,24,7]; see section A.2 in the Appendix),
+but they all aim to penalize changes to parameters estimated to be important for previously
+learned tasks.
+- LwF / DGR / DGR+distill: For these methods a loss-term for replayed data was added to the loss
+of the current task. In this case a hyperparameter could be avoided, as the loss for the current
+and replayed data was weighted according to how many tasks the model had been trained
+on so far:Ltotal=1
+Ntasks so farLcurrent + (1 1
+Ntasks so far)Lreplay.
+For LwF, images of the current task were replayed with soft targets provided by a
+copy of the model stored after ﬁnishing training on the previous task ([ 19]; see also
+section A.1.2 in the Appendix).
+For DGR, a separate generative model (see below) was trained to generate the images
+to be replayed. Following Shin et al. [21], the replayed images were labeled with the
+most likely category predicted by a copy of the main model stored after training on the
+previous task (i.e., hard targets).
+For DGR+distill, also a separate generative model was trained to generate the images
+to be replayed, but these were then paired with soft targets (as in LwF) instead of hard
+targets (as in DGR).
+- iCaRL: This method was implemented following Rebufﬁ et al. [2]; see section A.4 in the Appendix
+for details. For the results in Tables 4 and 5, a memory budget of 2000 was used. Due to the
+way iCaRL is set up with distillation of current task data on the classes of all previous tasks
+using binary classiﬁcation loss, it can only be applied in the Class-IL scenario. However,
+two components of iCaRL—the use of exemplars for classiﬁcation and the replay of stored
+data during training—are suitable for all scenarios. Both these components are explored in
+section C in the Appendix.
+We included the following two baselines:
+- None: The model was sequentially trained on all tasks in the standard way. This is also called
+ﬁne-tuning , and can be seen as a lower bound.
+- Ofﬂine: The model was always trained using the data of all tasks so far. This is also called joint
+training , and was included as it can be seen as an upper bound.
+All methods except for iCaRL used the standard multi-class cross entropy classiﬁcation loss for the
+model’s predictions on the current task data ( Lcurrent =Lclassiﬁcation ). For the split MNIST protocol, all
+models were trained for 2000 iterations per task using the ADAM-optimizer ( 1= 0:9,2= 0:999;
+[25]) with learning rate 0.001. The same optimizer was used for the permuted MNIST protocol,
+but with 5000 iterations and learning rate 0.0001. For each iteration, Lcurrent (andLregularization ) was
+calculated as average over 128 samples from the current task. If replay was used, in each iteration
+also 128 replayed samples were used to calculate Lreplay.
+For DGR and DGR+distill, a separate generative model was sequentially trained on all tasks. A
+symmetric variational autoencoder [V AE; 26] was used as generative model, with 2 fully connected
+hidden layers of 400 (split MNIST) or 1000 (permuted MNIST) units and a stochastic latent variable
+layer of size 100. A standard normal distribution was used as prior. See section A.3 in the Appendix
+for more details. Training of the generative model was also done with generative replay (provided by
+its own copy stored after ﬁnishing training on the previous task) and with the same hyperparameters
+(i.e., learning rate, optimizer, iterations, batch sizes) as for the main model.
+5 Results
+For the split MNIST task protocol, we found a clear difference in difﬁculty between the three continual
+learning scenarios (Table 4). All of the tested methods performed well in the Task-IL scenario, but
+LwF and especially the regularization-based methods (EWC, Online EWC and SI) struggled in the
+Domain-IL scenario and completely failed in the Class-IL scenario. Importantly, only methods using
+replay (DGR, DGR+distill and iCaRL) obtained good performance (above 90%) in the Domain-IL
+6
+Table 4: Average test accuracy (over all tasks) on the split MNIST task protocol. Each experiment
+was performed 20 times with different random seeds, reported is the mean ( SEM) over these runs.
+Approach Method Task-IL Domain-IL Class-IL
+BaselinesNone – lower bound 87.19 ( 0.94) 59.21 (2.04) 19.90 (0.02)
+Ofﬂine – upper bound 99.66 ( 0.02) 98.42 (0.06) 97.94 (0.03)
+Task-speciﬁc XdG 99.10 ( 0.08) - -
+RegularizationEWC 98.64 ( 0.22) 63.95 (1.90) 20.01 (0.06)
+Online EWC 99.12 ( 0.11) 64.32 (1.90) 19.96 (0.07)
+SI 99.09 ( 0.15) 65.36 (1.57) 19.99 (0.06)
+ReplayLwF 99.57 ( 0.02) 71.50 (1.63) 23.85 (0.44)
+DGR 99.50 ( 0.03) 95.72 (0.25) 90.79 (0.41)
+DGR+distill 99.61 ( 0.02) 96.83 (0.20) 91.79 (0.32)
+Replay + Exemplars iCaRL (budget = 2000) - - 94.57 ( 0.11)
+Table 5: Idem as Table 4, except on the permuted MNIST task protocol.
+Approach Method Task-IL Domain-IL Class-IL
+BaselinesNone – lower bound 81.79 ( 0.48) 78.51 (0.24) 17.26 (0.19)
+Ofﬂine – upper bound 97.68 (0.01) 97.59 (0.01) 97.59 (0.02)
+Task-speciﬁc XdG 91.40 ( 0.23) - -
+RegularizationEWC 94.74 ( 0.05) 94.31 (0.11) 25.04 (0.50)
+Online EWC 95.96 ( 0.06) 94.42 (0.13) 33.88 (0.49)
+SI 94.75 ( 0.14) 95.33 (0.11) 29.31 (0.62)
+ReplayLwF 69.84 ( 0.46) 72.64 (0.52) 22.64 (0.23)
+DGR 92.52 ( 0.08) 95.09 (0.04) 92.19 (0.09)
+DGR+distill 97.51 ( 0.01) 97.35 (0.02) 96.38 (0.03)
+Replay + Exemplars iCaRL (budget = 2000) - - 94.85 ( 0.03)
+and Class-IL scenarios. Somewhat strikingly, we found that in all scenarios, replaying images from
+the current task (LwF; e.g., replaying ‘2’s and ‘3’s in order not to forget how to recognize ‘0’s and
+‘1’s), prevented the forgetting of previous tasks better than any of the regularization-based methods.
+We further note that in contrast to several recent reports [e.g., 3,10,11], we obtained competitive
+performance of EWC (and Online EWC) on the task-IL scenario variant of split MNIST (i.e., ‘multi-
+headed split MNIST’). Reason for this difference is that we explored a much wider hyperparameter
+range; our selected values were several orders of magnitude larger than those typically considered
+(see section D in the Appendix).1
+For the permuted MNIST protocol, all methods except LwF performed well in both the Task-IL and
+the Domain-IL scenario (Table 5). In the Class-IL, however, the regularization-based methods failed
+again and only replay-based methods obtained good performance. The difference between the Task-IL
+and Domain-IL scenarios was only small for this task protocol, but this might be because—except
+in XdG—task identity information was only used in the output layer, while information about the
+applied permutation would likely be more useful in the network’s lower layers. Conﬁrming this
+hypothesis, we found that each method’s performance in the Task-IL scenario could be improved by
+combining it with XdG (i.e., using task-identity in the hidden layers; see section B in the Appendix).
+Finally, while LwF had some success with the split MNIST protocol, this method did not work
+with the permuted MNIST protocol, presumably because now the inputs of the different tasks were
+uncorrelated due to the random permutations.
+1An explanation for these extreme hyperparameter values is that the individual tasks of the split MNIST
+protocol (i.e., distinguishing between two digits) are relatively easy, making that after ﬁnishing training on each
+task the gradients—and thus the Fisher Information on which EWC is based—are very small.
+7
+6 Discussion
+Catastrophic forgetting is a major obstacle to the development of artiﬁcial intelligence applications
+capable of true lifelong learning [ 27,28], and enabling neural networks to sequentially learn multiple
+tasks has become a topic of intense research. Yet, despite its scope, this research ﬁeld is relatively
+unstructured: even though the same datasets tend to be used, direct comparisons between published
+methods are difﬁcult. We demonstrate that an important difference between currently used experi-
+mental protocols is whether task identity is provided and—if it is not—whether it must be inferred.
+These two distinctions led us to identify three scenarios for continual learning of varying difﬁculty. It
+is hoped that these scenarios will help to provide structure to the continual learning ﬁeld and make
+comparisons between studies easier.
+For each scenario, we performed a comprehensive comparison of recently proposed methods. An
+important conclusion is that for the class-incremental learning scenario (i.e., when task identity must
+be inferred), currently only replay-based methods are capable of producing acceptable results. In
+this scenario, even for relatively simple task protocols involving the classiﬁcation of MNIST-digits,
+regularization-based methods such as EWC and SI completely fail. On the split MNIST task protocol,
+regularization-based methods also struggle in the domain-incremental learning scenario (i.e., when
+task identity does not need to be inferred but is also not provided). These results highlight that for the
+more challenging, ethological-relevant scenarios where task identity is not provided, replay might be
+an unavoidable tool.
+It should be stressed that a limitation of the current study is that MNIST-images are relatively easy to
+generate. It therefore remains an open question whether generative replay will still be so successful
+for task protocols with more complicated input distributions. However, promising for generative
+replay is that the capabilities of generative models are rapidly improving [e.g., 29,30,31]. Moreover,
+the good performance of LwF (i.e., replaying inputs from the current task) on the split MNIST task
+protocol suggests that even if the quality of replayed samples is not perfect, they could still be very
+helpful. For a further discussion of the scalability of generative replay we refer to [ 10]. Finally,
+as illustrated by iCaRL, an alternative / complement to replaying generated samples could be to
+store examples from previous tasks and replay those (see section C in the Appendix for a further
+discussion).
+Acknowledgments
+We thank Mengye Ren, Zhe Li and anonymous reviewers for comments on various parts of this
+work. This research project has been supported by an IBRO-ISN Research Fellowship, by the
+Lifelong Learning Machines (L2M) program of the Defence Advanced Research Projects Agency
+(DARPA) via contract number HR0011-18-2-0025 and by the Intelligence Advanced Research
+Projects Activity (IARPA) via Department of Interior/Interior Business Center (DoI/IBC) contract
+number D16PC00003. The U.S. Government is authorized to reproduce and distribute reprints for
+Governmental purposes notwithstanding any copyright annotation thereon. Disclaimer: The views
+and conclusions contained herein are those of the authors and should not be interpreted as necessarily
+representing the ofﬁcial policies or endorsements, either expressed or implied, of DARPA, IARPA,
+DoI/IBC, or the U.S. Government.
+References
+[1]James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins,
+Andrei A Rusu, Kieran Milan, John Quan, Tiago Ramalho, Agnieszka Grabska-Barwinska, et al.
+Overcoming catastrophic forgetting in neural networks. Proceedings of the national academy of
+sciences , page 201611835, 2017.
+[2]Sylvestre-Alvise Rebufﬁ, Alexander Kolesnikov, Georg Sperl, and Christoph H Lampert. icarl:
+Incremental classiﬁer and representation learning. In Proc. CVPR , 2017.
+[3]Cuong V Nguyen, Yingzhen Li, Thang D Bui, and Richard E Turner. Variational continual
+learning. arXiv preprint arXiv:1710.10628 , 2017.
+[4]Nicolas Y Masse, Gregory D Grant, and David J Freedman. Alleviating catastrophic forgetting
+using context-dependent gating and synaptic stabilization. Proceedings of the national academy
+of sciences , pages E10467–E10475, 2018.
+8
+[5]Ronald Kemker and Christopher Kanan. Fearnet: Brain-inspired model for incremental learning.
+InInternational Conference on Learning Representations , 2018. URL https://openreview.
+net/forum?id=SJ1Xmf-Rb .
+[6]Yue Wu, Yinpeng Chen, Lijuan Wang, Yuancheng Ye, Zicheng Liu, Yandong Guo, Zhengyou
+Zhang, and Yun Fu. Incremental classiﬁer learning with generative adversarial networks. arXiv
+preprint arXiv:1802.00853 , 2018.
+[7]Friedemann Zenke, Ben Poole, and Surya Ganguli. Continual learning through synaptic
+intelligence. In Proceedings of the 34th International Conference on Machine Learning , pages
+3987–3995, 2017.
+[8]Ronald Kemker, Angelina Abitino, Marc McClure, and Christopher Kanan. Measuring catas-
+trophic forgetting in neural networks. arXiv preprint arXiv:1708.02072 , 2017.
+[9]Nitin Kamra, Umang Gupta, and Yan Liu. Deep generative dual memory network for continual
+learning. arXiv preprint arXiv:1710.10368 , 2017.
+[10] Gido M van de Ven and Andreas S Tolias. Generative replay with feedback connections as a
+general strategy for continual learning. arXiv preprint arXiv:1809.10635 , 2018.
+[11] Yen-Chang Hsu, Yen-Cheng Liu, and Zsolt Kira. Re-evaluating continual learning scenarios: A
+categorization and case for strong baselines. arXiv preprint arXiv:1810.12488 , 2018.
+[12] Chen Zeno, Itay Golan, Elad Hoffer, and Daniel Soudry. Task agnostic continual learning using
+online variational bayes. arXiv preprint arXiv:1803.10123v3 , 2019.
+[13] Kibok Lee, Kimin Lee, Jinwoo Shin, and Honglak Lee. Incremental learning with unlabeled
+data in the wild. arXiv preprint arXiv:1903.12648 , 2019.
+[14] Sebastian Farquhar and Yarin Gal. Towards robust evaluations of continual learning. arXiv
+preprint arXiv:1805.09733 , 2018.
+[15] Arslan Chaudhry, Puneet K Dokania, Thalaiyasingam Ajanthan, and Philip HS Torr. Riemannian
+walk for incremental learning: Understanding forgetting and intransigence. arXiv preprint
+arXiv:1801.10112 , 2018.
+[16] Ian J Goodfellow, Mehdi Mirza, Da Xiao, Aaron Courville, and Yoshua Bengio. An empirical
+investigation of catastrophic forgetting in gradient-based neural networks. arXiv preprint
+arXiv:1312.6211 , 2013.
+[17] Chrisantha Fernando, Dylan Banarse, Charles Blundell, Yori Zwols, David Ha, Andrei A Rusu,
+Alexander Pritzel, and Daan Wierstra. Pathnet: Evolution channels gradient descent in super
+neural networks. arXiv preprint arXiv:1701.08734 , 2017.
+[18] Joan Serrà, Dídac Surís, Marius Miron, and Alexandros Karatzoglou. Overcoming catastrophic
+forgetting with hard attention to the task. arXiv preprint arXiv:1801.01423 , 2018.
+[19] Zhizhong Li and Derek Hoiem. Learning without forgetting. IEEE Transactions on Pattern
+Analysis and Machine Intelligence , 2017.
+[20] Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network.
+arXiv preprint arXiv:1503.02531 , 2015.
+[21] Hanul Shin, Jung Kwon Lee, Jaehong Kim, and Jiwon Kim. Continual learning with deep
+generative replay. In Advances in Neural Information Processing Systems , pages 2994–3003,
+2017.
+[22] Ragav Venkatesan, Hemanth Venkateswara, Sethuraman Panchanathan, and Baoxin Li. A
+strategy for an uncompromising incremental learner. arXiv preprint arXiv:1705.00744 , 2017.
+[23] Thomas Mensink, Jakob Verbeek, Florent Perronnin, and Gabriela Csurka. Metric learning for
+large scale image classiﬁcation: Generalizing to new classes at near-zero cost. In Computer
+Vision–ECCV 2012 , pages 488–501. Springer, 2012.
+9
+[24] Jonathan Schwarz, Jelena Luketina, Wojciech M Czarnecki, Agnieszka Grabska-Barwinska,
+Yee Whye Teh, Razvan Pascanu, and Raia Hadsell. Progress & compress: A scalable framework
+for continual learning. arXiv preprint arXiv:1805.06370 , 2018.
+[25] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint
+arXiv:1412.6980 , 2014.
+[26] Diederik P Kingma and Max Welling. Auto-encoding variational bayes. arXiv preprint
+arXiv:1312.6114 , 2013.
+[27] Dharshan Kumaran, Demis Hassabis, and James L McClelland. What learning systems do
+intelligent agents need? complementary learning systems theory updated. Trends in cognitive
+sciences , 20(7):512–534, 2016.
+[28] German I Parisi, Ronald Kemker, Jose L Part, Christopher Kanan, and Stefan Wermter. Continual
+lifelong learning with neural networks: A review. arXiv preprint arXiv:1802.07569 , 2018.
+[29] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil
+Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial nets. In Advances in neural
+information processing systems , pages 2672–2680, 2014.
+[30] Aaron van den Oord, Nal Kalchbrenner, and Koray Kavukcuoglu. Pixel recurrent neural
+networks. arXiv preprint arXiv:1601.06759 , 2016.
+[31] Danilo Jimenez Rezende and Shakir Mohamed. Variational inference with normalizing ﬂows.
+arXiv preprint arXiv:1505.05770 , 2015.
+[32] James Martens. New insights and perspectives on the natural gradient method. arXiv preprint
+arXiv:1412.1193 , 2014.
+[33] Ferenc Huszár. Note on the quadratic penalties in elastic weight consolidation. Proceedings of
+the National Academy of Sciences , 115(11):E2496–E2497, 2018.
+[34] Carl Doersch. Tutorial on variational autoencoders. arXiv preprint arXiv:1606.05908 , 2016.
+10
+A Additional experimental details
+PyTorch-code to perform the experiments described in this report is available online: https://
+github.com/GMvandeVen/continual-learning .
+A.1 Loss functions
+A.1.1 Classiﬁcation
+The standard per-sample cross entropy loss function for an input xlabeled with a hard target yis
+given by:
+Lclassiﬁcation (x;y;) = logp(Y=yjx) (1)
+wherepis the conditional probability distribution deﬁned by the neural network whose trainable
+bias and weight parameters are collected in . It is important to note that in this report this probability
+distribution is not always deﬁned over all output nodes of the network, but only over the “active
+nodes”. This means that the normalization performed by the ﬁnal softmax layer only takes into
+account these active nodes, and that learning is thus restricted to those nodes. For experiments
+performed according to the Task-IL scenario, for which we use a “multi-headed” softmax layer,
+always only the nodes of the task under consideration are active. Typically this is the current task, but
+for replayed data it is the task that is (intended to be) replayed. For the Domain-IL scenario always
+all nodes are active. For the Class-IL scenario, the nodes of all tasks seen so far are active, both when
+training on current and on replayed data.
+For the method DGR, there are also some subtle differences between the continual learning scenarios
+when generating hard targets for the inputs to be replayed. With the Task-IL scenario, only the classes
+of the task that is intended to be replayed can be predicted (in each iteration the available replays
+are equally divided over the previous tasks). With the Domain-IL scenario always all classes can be
+predicted. With the Class-IL scenario only classes from up to the previous task can be predicted.
+A.1.2 Distillation
+The methods LwF and DGR+distill use distillation loss for their replayed data. For this, each input x
+to be replayed is labeled with a “soft target”, which is a vector containing a probability for each active
+class. This target probability vector is obtained using a copy of the main model stored after ﬁnishing
+training on the most recent task, and the training objective is to match the probabilities predicted by
+the model being trained to these target probabilities (by minimizing the cross entropy between them).
+Moreover, as is common for distillation, these two probability distributions that we want to match are
+made softer by temporary raising the temperature Tof their models’ softmax layers.2This means
+that before the softmax normalization is performed on the logits, these logits are ﬁrst divided by T.
+For an inputxto be replayed during training of task K, the soft targets are given by the vector ~y
+whosecthelement is given by:
+~yc=pT
+^(K 1)(Y=cjx) (2)
+where ^(K 1)is the vector with parameter values at the end of training of task K 1andpT
+is the
+conditional probability distribution deﬁned by the neural network with parameters and with the
+temperature of its softmax layer raised to T. The distillation loss function for an input xlabeled with
+a soft target vector ~yis then given by:
+Ldistillation (x;~y;) = T2NclassesX
+c=1~yclogpT
+(Y=cjx) (3)
+where the scaling by T2is included to ensure that the relative contribution of this objective matches
+that of a comparable objective with hard targets [20].
+When generating soft targets for the inputs to be replayed, there are again subtle differences between
+the three continual learning scenarios. With the Task-IL scenario, the soft target probability dis-
+tribution is deﬁned only over the classes of the task intended to be replayed. With the Domain-IL
+2The same temperature should be used for calculating the target probabilities and for calculating the
+probabilities to be matched during training; but during testing the temperature should be set back to 1. A typical
+value for this temperature is 2, which is the value used in this report.
+11
+scenario this distribution is always over all classes. With the Clase-IL scenario, the soft target
+probability distribution is ﬁrst generated only over the classes from up to the previous task and then
+zero probabilities are added for all classes in the current task.
+A.2 Regularization terms
+A.2.1 EWC
+The regularization term of elastic weight consolidation [EWC; 1] consists of a quadratic penalty term
+for each previously learned task, whereby each task’s term penalizes the parameters for how different
+they are compared to their value directly after ﬁnishing training on that task. The strength of each
+parameter’s penalty depends for every task on how important that parameter was estimated to be for
+that task, with higher penalties for more important parameters. For EWC, a parameter’s importance
+is estimated for each task by the parameter’s corresponding diagonal element of that task’s Fisher
+Information matrix, evaluated at the optimal parameter values after ﬁnishing training on that task.
+The EWC regularization term for task K > 1is given by:
+L(K)
+regularizationEWC() =K 1X
+k=10
+@1
+2NparamsX
+i=1F(k)
+ii
+i ^(k)
+i21
+A (4)
+whereby ^(k)
+iis theithelement of ^(k), which is the vector with parameter values at the end of training
+of taskk, andF(k)
+iiis theithdiagonal element of F(k), which is the Fisher Information matrix of task
+kevaluated at ^(k). Following the deﬁnitions and notation in Martens [32], theithdiagonal element
+ofF(k)is deﬁned as:
+F(k)
+ii=ExQ(k)
+xEp(yjx)"logp(Y=yjx)
+i2#
+=^(k)(5)
+wherebyQ(k)
+xis the (theoretical) input distribution of task kandpis the conditional distribution
+deﬁned by the neural network with parameters . Note that in Kirkpatrick et al. [1]it is not speciﬁed
+exactly how these F(k)
+iiare calculated (except that it is said to be “easy”); but we have been made
+aware that they are calculated as the diagonal elements of the “true Fisher Information”:
+F(k)
+ii=1
+jS(k)jX
+x2S(k)0
+@logp
+Y= ^y(k)
+xjx
+i
+=^(k)1
+A2
+(6)
+wherebyS(k)is the training data of task kand^y(k)
+x= argminylogp^(k)(Y=yjx), the label
+predicted by the model with parameters ^(k)givenx.3The calculation of the Fisher Information
+is time-consuming, especially if tasks have a lot of training data. In practice it might therefore
+sometimes be beneﬁcial to trade accuracy for speed by using only a subset of a task’s training data for
+this calculation (e.g., by introducing another hyperparameter NFisher that sets the maximum number
+of samples to be used in equation 6).
+A.2.2 Online EWC
+A disadvantage of the original formulation of EWC is that the number of quadratic terms in its
+regularization term grows linearly with the number of tasks. This is an important limitation, as
+for a method to be applicable in a true lifelong learning setting its computational cost should not
+increase with the number of tasks seen so far. It was pointed out by Huszár [33] that a slightly stricter
+3An alternative way to calculate F(k)
+iiwould be, instead of taking for each training input xonly the most
+likely label predicted by model p^(k), to sample for each xmultiple labels from the entire conditional distribution
+deﬁned by this model (i.e., to approximate the inner expectation of equation 5 for each training sample xwith
+Monte Carlo sampling from p^(k)(jx)). Another option is to use the “empirical Fisher Information", by
+replacing in equation 6 the predicted label ^y(k)
+xby the observed label y. The results reported in Tables 4 and 5
+do not depend much on the choice of how F(k)
+iiis calculated.
+12
+adherence to the approximate Bayesian treatment of continual learning, which had been used as
+motivation for EWC, actually results in only a single quadratic penalty term on the parameters that is
+anchored at the optimal parameters after the most recent task and with the weight of the parameters’
+penalties determined by a running sum of the previous tasks’ Fisher Information matrices. This
+insight was adopted by Schwarz et al. [24], who proposed a modiﬁcation to EWC called online EWC .
+The regularization term of online EWC when training on task K > 1is given by:
+L(K)
+regularizationoEWC=NparamsX
+i=1~F(K 1)
+ii
+i ^(K 1)
+i2
+(7)
+whereby ^(K 1)
+i is the value of parameter iafter ﬁnishing training on task K 1and~F(K 1)
+ii is a
+running sum of the ithdiagonal elements of the Fisher Information matrices of the ﬁrst K 1tasks,
+with a hyperparameter 1that governs a gradual decay of each previous task’s contribution. That
+is:~F(k)
+ii=~F(k 1)
+ii +F(k)
+ii, with ~F(1)
+ii=F(1)
+iiandF(k)
+iiis theithdiagonal element of the Fisher
+Information matrix of task kcalculated according to equation 6.
+A.2.3 SI
+Similar as for online EWC, the regularization term of synaptic intelligence [SI; 7] consists of only one
+quadratic term that penalizes changes to parameters away from their values after ﬁnishing training on
+the previous task, with the strength of each parameter’s penalty depending on how important that
+parameter is thought to be for the tasks learned so far. To estimate parameters’ importance, for every
+new taskka per-parameter contribution to the change of the loss is ﬁrst calculated for each parameter
+ias follows:
+!(k)
+i=NitersX
+t=1
+i[t(k)] i[(t 1)(k)] Ltotal[t(k)]
+i(8)
+withNitersthe total number of iterations per task, i[t(k)]the value of the ithparameter after the tth
+training iteration on task kandLtotal[t(k)]
+ithe gradient of the loss with respect to the ithparameter
+during thetthtraining iteration on task k. For every task, these per-parameter contributions are
+normalized by the square of the total change of that parameter during training on that task plus a small
+dampening term (set to 0.1, to bound the resulting normalized contributions when a parameter’s total
+change goes to zero), after which they are summed over all tasks so far. The estimated importance of
+parameterifor the ﬁrstK 1tasks is thus given by:
+
+(K 1)
+i =K 1X
+k=1!(k)
+i
+(k)
+i2
++(9)
+with (k)
+i=i[Niters(k)] i[0(k)], wherei[0(k)]indicates the value of parameter iright before
+starting training on task k. (An alternative formulation is (k)
+i=^(k)
+i ^(k 1)
+i , with ^(0)
+ithe value
+of parameter iit was initialized with and ^(k)
+iits value after ﬁnishing training on task k.) The
+regularization term of SI to be used during training on task Kis then given by:
+L(K)
+regularizationSI=NparamsX
+i=1
+(K 1)
+i
+i ^(K 1)
+i2
+(10)
+A.3 Generative Model
+The separate generative model that is used for DGR and DGR+distill is a variational autoencoder
+(V AE; 26), of which both the encoder network qand the decoder network p are multi-layer
+perceptrons with 2 hidden layers containing 400 (split MNIST) or 1000 (permuted MNIST) units
+with ReLU non-linearity. The stochastic latent variable layer zhas 100 units and the prior over
+them is the standard normal distribution. Following Kingma and Welling [26], the “latent variable
+regularization term” of this V AE is given by:
+Llatent(x;) =1
+2100X
+j=1
+1 + log
+(x)
+j2
+ (x)
+j2 (x)
+j2
+(11)
+13
+whereby(x)
+jand(x)
+jare thejthelements of respectively (x)and(x), which are the outputs
+of the encoder network qgiven inputx. Following Doersch [34], the output layer of the decoder
+networkp has a sigmoid non-linearity and the “reconstruction term” is given by the binary cross
+entropy between the original and decoded pixel values:
+Lrecon(x;; ) =NpixelsX
+p=1xplog (~xp) + (1 xp) log (1 ~xp) (12)
+wherebyxpis the value of the pthpixel of the original input image xand~xpis the value of the pth
+pixel of the decoded image ~x=p  
+z(x)
+withz(x)=(x)+(x), wherebyis sampled from
+N(0;I100). The per-sample loss function for an input xis then given by [26]:
+Lgenerative (x;; ) =Lrecon(x;; ) +Llatent(x;) (13)
+Similar to the main model, the generative model is trained with replay generated by its own copy
+stored after ﬁnishing training on the previous task.
+A.4 iCaRL
+A.4.1 Feature Extractor
+Network Architecture For our implementation of iCaRL [ 2], we used a feature extractor with the
+same architecture as the neural network used as classiﬁer with the other methods. The only difference
+is that the softmax output layer was removed. We denote this feature extractor by  (:), with its
+trainable parameters contained in the vector . These parameters were trained based on binary
+classiﬁcation / distillation loss (see below). For this—during training only!—a sigmoid output layer
+was appended to  . The resulting extended network outputs for any class c2f1;:::;N classes so farga
+binary probability whether input xbelongs to it:
+pc
+(x) =1
+1 +e wTc (x)(14)
+with= (;w1;:::;wNclasses so far )a vector containing all iCaRL’s trainable parameters. Whenever a
+new classcwas encountered, new parameters wcwere added to .
+Training On each task, the parameters in were trained on an extended dataset containing the
+current task’s training data as well as all stored data from previous tasks (see section A.4.2). When
+training on task K, each inputxwith hard target yin this extended dataset is paired with a new
+target-vector ywhosejthelement is given by:
+yc=(
+pc
+^(K 1)(x)if classcin task 1;:::;K 1
+y=c if classcin taskK(15)
+whereby ^(K 1)is the vector with parameter values at the end of training of task K 1. The per-
+sample loss function for an input xlabeled with such an “old-task-soft-target / new-task-hard-target"
+vector yis then given by:
+LiCaRL(x;y;) = Nclasses so farX
+c=1[yclogpc
+(x) + (1 yc) log (1 pc
+(x))] (16)
+A.4.2 Selection of Stored Data
+The assumption under which iCaRL operates is that up to Bdata-points (referred to as ‘exemplars’)
+are allowed to be stored in memory. The available memory budget is evenly distributed over the
+classes seen so far, resulting in m=j
+B
+Nclasses so fark
+stored exemplars per class. After training on a task
+is ﬁnished, the selection of data stored in memory is updated as follows:
+14
+Create exemplar-sets for new classes For each new class c, iterativelymexemplars are selected
+based on their extracted feature vectors according to a procedure referred to as ‘herding’. In each
+iteration, a new example from class cis selected such that the average feature vector over all selected
+examples is as close as possible to the average feature vector over all available examples of class c. Let
+Xc=fx1;:::;xNcgbe the set of all available examples of class cand letc=1
+NcP
+x2Xc (x)
+be the average feature vector over set Xc. Thenthexemplar (for n= 1;:::;m ) to be selected for class
+cis then given by:
+pc
+n= argmin
+x2Xcc 1
+n0
+@ (x) +n 1X
+j=1 (pc
+j)1
+A(17)
+This results in ordered exemplar-sets Pc=fpc
+1;:::;pc
+mgfor each new class c.
+Reduce exemplar-sets for old classes If the existing exemplar-sets for the old classes contain
+more thanmexemplars each, for each old class the last selected exemplars are discarded until only
+mexemplars per class are left.
+A.4.3 Nearest-Class-Mean Classiﬁcation
+Classiﬁcation by iCaRL is performed according to a nearest-class-mean rule in feature space based
+on the stored exemplars. For this, let c=1
+jPcjP
+p2Pc (p)forc= 1;:::;N classes so far . The label
+ypredicted for a new input xis then given by:
+y= argmin
+c=1;:::;N classes so fark (x) ck (18)
+B Using Task Identity in Hidden Layers
+For the permuted MNIST protocol, there were only small differences in Table 5 between the results
+of the Task-IL and Domain-IL scenario. This suggests that for this protocol, it is actually not so
+important whether task identity information is available at test time. However, in the main text it
+was hypothesized that this was the case because for most of the methods—only exception being
+XdG—task identity was only used in the network’s output layer, while information about which
+permutation was applied is likely more useful in the lower layers. To test this, we performed all
+methods again on the Task-IL scenario of the permuted MNIST protocol, this time instead using
+task identity information in the network’s hidden layers by combining each method with XdG. This
+signiﬁcantly increased the performance of every method (Table B.1), thereby demonstrating that also
+for the permuted MNIST protocol, the Task-IL scenario is indeed easier than the Domain-IL scenario.
+Table B.1: Comparing two ways of using task identity information in the Task-IL scenario of the
+permuted MNIST task protocol. In the ﬁrst column, each method uses a separate output layer for
+each task (i.e., multi-headed output layer; same as in Table 5). In the second column, each method is
+instead combined with XdG.
+Method+ task-ID in + task-ID in
+output layer hidden layers
+None 81.79 ( 0.48) 90.41 (0.32)
+EWC 94.74 ( 0.05) 96.94 (0.02)
+Online EWC 95.96 ( 0.06) 96.89 (0.03)
+SI 94.75 ( 0.14) 96.53 (0.04)
+LwF 69.84 ( 0.46) 84.21 (0.48)
+DGR 92.52 ( 0.08) 95.31 (0.04)
+DGR+distill 97.51 ( 0.01) 97.67 (0.01)
+15
+C Replay of Stored Data
+As an alternative to generative replay, when data from previous tasks can be stored, it is possible to
+instead replay that data during training on new tasks. Another way in which stored data could be used
+is during execution: for example, as in iCaRL, instead of using the softmax classiﬁer, classiﬁcation
+can be done using a nearest-class-mean rule in feature space with class means calculated based on
+the stored data. Stored data can also be used during both training and execution. We evaluated the
+performance of these different variants of exact replay as a function of the total number of examples
+allowed to be stored in memory (Figure C.1), whereby the data to be stored was always selected
+using the same ‘herding’-algorithm as used in iCaRL (see section A.4.2).
+Figure C.1: Average test accuracy (over all tasks) of different ways of using stored data on split
+MNIST (A) and on permuted MNIST (B) as a function of the total number of examples allowed to be
+stored in memory. For comparison, the accuracy of the other methods is indicated on the left or as
+horizontal lines. Displayed are the means over 20 repetitions, shaded areas are 1 SEM.
+In the Class-IL scenario, we found that for both task protocols even storing one example per class
+was enough for any of the exact replay methods to outperform all regularization-based methods.
+However, to match the performance of generative replay, it was required to store substantially more
+data. In particular, for permuted MNIST, even with 50,000 stored examples exact replay variants
+were consistently outperformed by DGR+distill.
+D Hyperparameters
+Several of the in this report compared continual learning methods have one or more hyperparameters.
+The typical way of setting the value of hyperparameters is by training models on the training set
+for a range of hyperparameter-values, and selecting those that result in the best performance on a
+separate validation set. This strategy has been adapted to the continual learning setting as training
+models on the full protocol with different hyperparameter-values using only every task’s training
+data, and comparing their overall performances using separate validation sets (or sometimes the test
+sets) for each task [e.g., see 16,1,8,24]. However, here we would like to stress that this means that
+these hyperparameters are set (or learned) based on an evaluation using data from all tasks, which
+violates the continual learning principle of only being allowed to visit each task once and in sequence.
+16
+Figure D.1: Grid searches for the split MNIST task protocol. Shown are the average test set accuracies
+(over all 5 tasks) for the (combination of) hyperparameter-values tested for each method.
+Figure D.2: Grid searches for the permuted MNIST task protocol. Shown are the average test set
+accuracies (over all 10 tasks) for the (combination of) hyperparameter-values tested for each method.
+17
+Although it is tempting to think that it is acceptable to relax this principle for tasks’ validation data,
+we argue here that it is not. A clear example of how using each task’s validation data continuously
+throughout an incremental training protocol can lead to an in our opinion unfair advantage is provided
+by Wu et al. [6], in which after ﬁnishing training on each task a “bias-removal parameter” is set that
+optimizes performance on the validation sets of all tasks seen so far (see their section 3.3). Although
+the hyperparameters of the methods compared here are much less inﬂuential than those in the above
+report, we believe that it is important to realize this issue associated with traditional grid searches in a
+continual learning setting and that at a minimum inﬂuential hyperparameters should be avoided in
+methods for continual learning.
+Nevertheless, to give the competing methods of generative replay the best possible chance—and to
+explore how inﬂuential their hyperparameters are—we do perform grid searches to set the values
+of their hyperparameters (see Figures D.1 and D.2). Given the issue discussed above we do not see
+much value in using validation sets for this, and we evaluate the performances of all hyperparameter(-
+combination)s using the tasks’ test sets. For this grid search each experiment is run once, after which
+20 new runs are executed using the selected hyperparameter-values to obtain the results in Tables 4
+and 5 in the main text.
+18

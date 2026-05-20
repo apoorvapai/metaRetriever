@@ -1,0 +1,971 @@
+Title: Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning
+
+Dynamic Planning in Open-Ended Dialogue using
+Reinforcement Learning
+Deborah Cohen, Moonkyung Ryu, Yinlam Chow, Orgad Keller, Ido Greenberg, Avinatan Hassidim,
+Michael Fink, Yossi Matias, Idan Szpektor, Craig Boutilier, Gal Elidan
+{debbycohen,mkryu,yinlamchow,orgad,idogreenberg,avinatan,fink,yossi,szpektor,cboutilier,elidan}@google.com
+Google Research
+ABSTRACT
+Despite recent advances in natural language understanding and
+generation, and decades of research on the development of con-
+versational bots, building automated agents that can carry on rich
+open-ended conversations with humans “in the wild” remains a for-
+midable challenge. In this work we develop a real-time, open-ended
+dialogue system that uses reinforcement learning (RL) to power
+a bot’s conversational skill at scale. Our work pairs the succinct
+embedding of the conversation state generated using SOTA (super-
+vised) language models with RL techniques that are particularly
+suited to a dynamic action space that changes as the conversation
+progresses. Trained using crowd-sourced data, our novel system is
+able to substantially exceeds the (strong) baseline supervised model
+with respect to several metrics of interest in a live experiment with
+real users of the Google Assistant.
+1 INTRODUCTION
+With tremendous advances in AI and ML techniques to recognize
+speech and perform high quality natural language understanding
+(NLU) and generation (NLG), increased attention is being directed
+toward the task of carrying out real-time, rich conversations be-
+tween humans and bots (e.g., [ 19,32,46]). Realistic interactions
+generally span complex topic spaces and are relatively open-ended,
+and often have an underlying goal (e.g., task completion, knowl-
+edge sharing). Thus, carrying them out effectively requires not just
+powerful bots that learn to generate favorable responses, but also
+demands that bots have the ability to plan and adapt on the fly.
+The framework of reinforcement learning (RL) is a natural ap-
+proach for this task. Indeed, research on Markov decision processes
+(MDPs) and RL for spoken-dialogue systems spans well over two
+decades, ranging from early work using MDPs and RL [ 18,35], to
+methods based on partially observable MDP (POMDP) models (e.g.,
+[42]), to more recent approaches adopting deep learning represen-
+tations (e.g., [ 19]). Despite this, deployments of RL “in the wild” in
+large-scale dialogue systems, such as smart assistants like Alexa,
+Siri or Google Assistant, are rare (though exceptions exist, e.g., [ 32];
+see Related Work below). Indeed, building such systems remains a
+formidable challenge.
+Aside from the infrastructure hurdles associated with scalable,
+real-time systems, there are inherent modeling challenges when
+building open-ended conversational bots. First, the state space of
+such bots is massive, even within specific verticals, and care is
+needed to craft effective state representations for RL algorithms.
+Second, the action space is also in principle “unbounded,” and impos-
+ing reasonable limitations on actions comes with its own difficulties,
+including the fact that the set of candidate actions may vary as theconversation progresses. Finally, the design of suitable reward func-
+tions for open-ended dialogue can be quite subtle. In this work, we
+rely on crowd-sourced labels.
+We present a real-time, open-ended dialogue system that uses
+RL to power a bot’s conversational skill at scale. We address the
+challenges above using a novel RL construction. We first exploit
+powerful supervised models—specifically, RNNs and transformers—
+to provide a succinct embedding of the conversation state. Second,
+we use the fact that a relatively small set of “reasonable” candidate
+actions can be generated at each conversation turn [ 38]. From an
+RL perspective, this can be viewed as a stochastic realization of
+the full action space, so we use an RL approach tailored to such
+stochastic action sets [3]. We also explore the use of alternative
+SOTA RL techniques and training methods, including continuous-
+action optimization [ 29], conservative Q-learning [ 17] and novel
+off-policy evaluation algorithms [28].
+We first evaluate our methods using offline data. We then de-
+scribe the deployment of our system “in the wild” in the Google
+Assistant, specifically as part of the animal domain experience de-
+scribed by Szpektor et al . [38] . We demonstrate the effectiveness
+of our RL-based approach at dynamic planning and driving open-
+ended dialogue: relative to a SOTA non-RL (transformer) baseline,
+our bot substantially improves a number of key metrics, including
+conversation length, cooperative responses and explicit positive
+feedback. We perform a novel and extensive comparison of many
+RL architectures in real-world settings and generate unique insights
+into their relative performance. An example dialogue is shown in
+Fig. 1, showcasing the rich pivoting of our best-performing RL
+model vs. the supervised approach. Our model, now deployed in
+the Google Assistant, marks an important milestone in the use of
+RL for driving real-time, engaging, open-ended, conversations.
+The key ingredients and insights of our approach are threefold.
+First, we use an effective representation of the RL state, leveraging
+pre-trained supervised models that encode the conversation his-
+tory. Second, we limit the action space to a small set of generated
+candidate actions while allowing multiple actions in a single turn
+to compose rich bot responses. This granularity decouples content
+generation and dialogue planning. Finally, we adapt recent state-
+of-the-art RL algorithms that are well-suited to our dynamic action
+space to the candidate-generation decomposition we adopt here.
+2 RELATED WORK
+The use of RL for dialogue dates back more than two decades.
+Statistical research focuses on task-oriented dialogues and uses
+MDPs [ 18,35,36,41] or POMDPs [ 42,44]. Henderson et al . [11]
+introduce function approximation to reduce the resulting large
+slot-filling state space. Casanueva et al . [4] propose a feudal RLarXiv:2208.02294v1  [cs.CL]  25 Jul 2022
+Cohen et al.
+(a) RL model
+(b) Supervised model
+Figure 1: Example conversations conducted by (a) an RL
+model and (b) a supervised model, previously deployed in
+the Google Assistant, showcasing the rich pivoting of the RL
+model vs. the supervised approach.
+model which decomposes the decision by first selecting a subset of
+primitive actions, then choosing the actual action. These methods
+each model the state and action spaces using handcrafted semantic
+representations, such as slots and dialogue acts. This restricts such
+approaches to simple domains with limited slot-filling.More recent work leverages deep neural networks (DNNs) to
+obviate the need for these so-called summary states and actions
+[9]. Fatemi et al . [8] consider a low-dimensional continuous-valued
+state space. Liu et al . [23] encode the dialogue state using an RNN
+but translate the representation to slot-value pairs. In both cases,
+the action space is restricted to a small number of dialogue acts and
+the approaches remain limited to specific task-based domains, with
+no clear extension to open-ended dialogues.
+Building on advances in neural generative models, another line
+of work applies RL to directly learn a response generation model
+conditioned on the dialogue history. Actions are often defined at the
+word level, so the action space is the entire vocabulary [ 14,19,20,
+33]. This approach suffers from several drawbacks: the action space
+is very large; word-level RL performs credit assignment poorly at an
+unnatural level for dialogue planning; and this may affect decoder
+performance, leading to incomprehensible utterances [45].
+Related approaches model actions as latent variables, inducing
+a latent action space, thus decoupling the discourse-level decision
+making from NLG [ 30,45]. However, they focus on specific domains
+(e.g., price negotiation, slot-filling or chitchat) rather than grounded
+open-ended dialogues. Serban et al . [32] proposed MILABOT, as
+part of the Amazon Alexa Prize competition, where a DM selects
+a response from several generated candidates. Our approach is
+similar in spirit, but allows one to combine several candidates in the
+same bot turn to compose a richer response. This seemingly small
+difference is vitally important as it allows our RL model to make
+decisions at an effective granularity. We note that while MILABOT
+was restricted to an A/B testing evaluation within a competition,
+our RL model is deployed in the Google Assistant.
+3 DYNAMIC COMPOSITION
+In this work, we build on the dynamic composition approach intro-
+duced by Szpektor et al . [38] . This dialogue management model
+limits the action space using specific content providers to propose
+candidate utterances, which are dynamically selected by the di-
+alogue manager (DM) . We adopt this scheme to manage action
+complexity in our RL approaches.
+Dynamic composition decouples content (utterance) generation
+from selection. Given candidate utterances proposed by each of
+several providers, the DM scores and selects a suitable utterance
+as (part of) a response given the current conversation history. The
+bot response can be composed of several utterances, which are
+generated and selected sequentially and dynamically (see Fig. 2).
+Additional components include an NLU module and a sentence
+fusion module that merges the selected utterances into a coherent
+response. We describe each of these components in turn.
+Natural Language Understanding. At each turn of the conver-
+sation, user input is analyzed by an NLU module, comprising two
+components: a focus tracker and a user answer interpreter . The focus
+of the conversation is the set of entities currently being discussed.
+If the last turn ended with a bot question, the answer interpreter
+classifies the user answer w.r.t. the question type. For example, the
+response types expected for yes/no questions (e.g., “Do you want
+to hear more about cheetahs?”), are ‘yes’ (e.g., “sure,” “I want to
+hear about cheetahs”), ’no’, and ignoring the question; list selection
+questions (e.g., “Which animal do you want to hear about next?”)
+Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning
+Figure 2: Dynamic composition flow diagram. A few candidates from different providers are shown in each step and the one
+selected by the DM is highlighted in blue.
+Dialogue Focus User Answer Interp. Dialogue Act
+User Sound of a polar bear polar bear
+Bot Here’s a polar bear <SOUND>. polar bear Sound
+Hey, do you want to hear the sound of a penguin? penguin Focus change + Yes/no question
+User Yes penguin cooperation
+Bot Great. penguin Ack
+This is a penguin <SOUND>. penguin Sound
+Which animal do you want to learn about next? Open question
+User Tell me about polar bears polar bear cooperation
+Bot Cool. polar bear Ack
+Churchillwild.com says that "Polar bears will wag
+their heads from side-to-side when they want to play". polar bear Fact
+Table 1: Illustration of the concepts of focus, user answer interpretation and dialog acts for a sample conversation.
+and quizzes (e.g.,“Can you guess which animal this is, a lion or a
+tiger?”) include animals as potential responses. Table 1 illustrates
+the concepts of focus and answer interpretation.
+Content Providers. Given the conversation history and the se-
+lected utterances so far in the current turn, content providers pro-
+pose candidate utterances w.r.t. this context. They rely on different
+sources (e.g., news, knowledge graph) to extract relevant content,
+which includes both structured and unstructured data. Structured
+providers generate text for their candidate utterances using tem-
+plates, while unstructured content is quoted verbatim with attribu-
+tion. Content is expressed in different forms via dialogue acts such
+as statements, preference queries, navigation questions and quizzes.
+Some of these, referred to as conversational drivers , aim to proac-
+tively increase user engagement (e.g., focus changing, questions).
+Examples of such dialogue acts are provided in Table 1.
+Dialogue Manager. In each step of the bot composition loop,
+providers generate candidates for the next utterance to be appended
+to the response constructed so far. Given a set of candidates and
+the conversation context, utterance selection is performed by a
+learned DM. This step is repeated until the DM assesses that the
+response is a relevant and engaging bot response. In [ 38], the DM
+is implemented as an RNN encoder, trained in a supervised fashion
+(see Sec. 4.2). In this work, we develop DMs trained using RL.
+Sentence Fusion. The output of the composition loop is a sequence
+of utterances, which still needs to be fused into a coherent bot
+response. Simple concatenation of the utterances typically results
+in cumbersome, unnatural, verbose responses, such as “On average,male lions weigh 420 lbs. On average, male lions are 3.9 feet tall.
+That means that lions are about as tall as a piano.” Sentence fusion
+combines the selected utterances into a single cohesive response
+[2,10,25], such as “On average, male lions weigh 420 lbs and are
+3.9 feet tall. That means that they’re about as tall as a piano.” This
+module uses the following techniques: (a) pronominalization, (b)
+removal of repetitive context mentions and (c) introduction of a
+discourse marker between sentences. Our fusion model is based
+on LaserTagger [ 24], a sequence labeling architecture in which
+each token in the input text is classified to be either copied as-is,
+deleted or substituted with a phrase taken from a small, predefined
+vocabulary, typically containing pronouns and connectives.
+4 REINFORCEMENT LEARNING FOR THE DM
+Dynamic composition is realized by Szpektor et al . [38] with super-
+vised training of an RNN-based DM. This limits the construction
+of the next bot response to be myopic , as it is optimized for maxi-
+malimmediate reward. However, since the main goal of the DM is
+to conduct complex, engaging multi-turn conversations, it should
+target the natural complexity of human-to-human conversations,
+which are typically not conducted in a myopic, turn-by-turn man-
+ner, but rather reflect some degree of look ahead and dynamic
+planning. For example, a conversation may comprise several steps
+leading to an intended goal, such as knowledge transfer; or to make
+a conversation more engaging, one might intersperse interesting
+facts throughout, or build tension towards an eventual resolution.
+Such capabilities require a bot be able to choose responses that lead
+Cohen et al.
+toward such non-myopic ends, and adapt to user responses/queries
+by dynamically re-planning its trajectory accordingly.
+To this end, we develop an RL framework for open-ended di-
+alogue that builds on the dynamic composition architecture, and
+propose a number of concrete instantiations of it. In Sec. 4.1, we for-
+mulate the underlying MDP that captures the spirit of the content-
+provider decomposition. In Sec. 4.2, we discuss the use of the under-
+lying supervised model for state representation. We then propose a
+two-step Q-learning approach in Sec. 4.3, with algorithmic variants
+motivated by specific properties of the MDP and our representa-
+tions. We also develop an end-to-end Q-learning method in Sec. 4.4
+that does not require the language encoders for state generation.
+4.1 MDP with a Stochastic Action Space
+We begin with an MDP formulation of the DM problem upon which
+our RL methods operate. We assume a state space X, action space
+A, transition kernel 𝑃, reward function 𝑅, initial state distribution
+𝛽and discount factor 𝛾, and aim to optimize the cumulative dis-
+counted return 𝐽(𝜋):=E[Í∞
+𝑡=0𝛾𝑡𝑟𝑡|𝑃,𝑅,𝛽,𝜋]which captures
+the long-term value of the conversation. The RL DM policy𝜋is an
+action distribution conditioned on state 𝑥∈X. An optimal DM 𝜋∗
+is found by solving max𝜋∈Π𝐽(𝜋), where Πis the space of all DM
+policies. We discuss each of these elements in turn.
+Much RL research in dialogue management defines the state
+and action spaces to be the tokenized language space [ 1,13,19].
+For instance, the state 𝑥is the tokenized user-agent conversation
+history to that point, while an action 𝑎is the DM’s output sen-
+tence (generated token by token). However, since the state and
+action spaces in this formulation are both combinatorial, even with
+a medium-sized vocabulary the corresponding tokenized spaces
+grow exponentially, thus making RL intractable. We handle the com-
+binatorics of state space by leveraging state-of-the-art language
+models, such as RNNs or transformers, to encode conversation
+history𝑥with a𝑑-dimensional embedding 𝜙𝑥∈R𝑑(see Sec. 4.2
+for details), thus replacing the large discrete state space by the
+continuous embedding space R𝑑.
+We also differ from typical RL dialogue models in our treatment
+of the action space. Rather than a generative language model that
+directly outputs sentences, we leverage the dynamic composition
+framework (Sec. 3) to render the action space tractable. Specifically,
+at any turn, each content provider proposes a small set of utterances.
+This dynamic-composition, content-provider (DCCP) action decom-
+position ensures the DM policy need only score and select from a
+(relatively small) discrete set A𝑥at state𝑥, i.e. the set of candidate
+utterances. Note that by working at the utterance level rather than
+at the level of the full bot response (a fused concatenation of K such
+utterances), we remove the small-scale combinatorics of the action
+space, at the cost of extending the horizon of the RL problem. But
+this does not sacrifice the optimality of the policy.
+Importantly, since the providers use potentially arbitrary logic
+to generate candidates, the realization of A𝑥may differ with each
+occurrence of 𝑥. This puts us in the realm of non-standard MDPswith stochastic action sets [3]. Fortunately, we consider Q-learning
+methods below that handle this directly.1
+The training data, further described in Sec. 4.5, is composed of
+crowd-sourced conversations, generated with a supervised DM.
+The human evaluators provide a rating for each selected utterance,
+which are used as rewards that measure the rater’s immediate value
+of the action given the conversation history. As we shall see, the RL
+model is able to leverage these to learn dynamic planning strategies
+to improve user engagement.
+In the existing dialogue RL literature [ 6,19,22] most algorithms
+are based on policy-gradient methods [ 37] because (i) learning an
+optimal state-action value function with a combinatorial action
+space is intractable, and (ii) the resulting DM is a sequence-to-
+sequence policy model that generates bot responses. The simplifica-
+tion of the action space afforded by our DCCP reformulation allows
+us to use value-based Q-learning [ 3,27], a relatively uncommon
+approach in large-scale dialogue systems.
+4.2 Supervised Model as a State Encoder
+To encode the conversation history into a 𝑑-dimensional embed-
+ding vector, we consider two supervised learning architectures: an
+improved version of the RNN model from [ 38] and a transformer-
+based approach using a pre-trained BERT model.
+Supervised RNN Architecture. We modify the two-level hierar-
+chical RNN encoder [ 38] by replacing the first-level gated recur-
+rent unit (GRU), that encodes the user and bot utterances, by a
+pre-trained sentence embedding module [ 5], which is fixed dur-
+ing training. These provide a clear advantage over the first-level
+GRU, which we attribute to training on a large, general corpus. The
+resulting sentence embeddings are fed to a GRU along with non-
+textual metadata features, including: the conversation turn index,
+the candidate dialogue act, the number of tokens in the constructed
+response, whether the candidate offers to change the focus.
+Supervised Transformer-based Architecture. Our second su-
+pervised model uses a transformer architecture [ 40]. We consider
+two variants: a text-only BERT model and a combined text-metadata
+model. In both, the input is the concatenated sequence of user and
+bot utterances (i.e., conversation history) and a candidate utterance
+to be scored. In the second, we concatenate the per-token contex-
+tual representation vectors produced by the BERT model and an
+embedded representation of the metadata features for the utterance
+of which the token is a part. The resulting concatenated vectors
+are fed into another small transformer. Experiments on manually
+annotated data show the text-only variant outperforms the second,
+corroborating the hypothesis that the transformer’s better use of
+the input text—specifically, the ability to attend to the history when
+processing candidates—obviates the need for additional features.
+State Representation. Our state representation uses the output
+of the dialogue-history encoder, either the RNN hidden state or the
+pooled output of the last transformer layer. The state is constructed
+by concatenating this encoding with the sentence embedding of
+the last user input and context features, e.g., the conversation turn
+index and the composition turn step index.
+1We note that the DCCP action decomposition is related to certain hierarchical ap-
+proaches to RL, such as feudal RL [ 4,7], and to mixtures-of-experts [ 12,16], though
+our DM RL methods do not influence the training of the providers.
+Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning
+Figure 3: Two-step Q-learning schema. The state is the con-
+catenation of (i) the output of the dialogue history encoder,
+either RNN or transformer (denoted by (1)), (ii) the embed-
+ding of the last user input and (iii) context features, includ-
+ing the conversation turn index and the composition turn
+step index. The action is represented by its embedding. We
+consider both stochastic action and continuous action Q-
+learning approaches (denoted by (2)) potentially with the
+added CQL regularization (denoted by (3)).
+4.3 The Two Step Q-model Architecture
+We now develop several RL approaches for the DM which rely on
+Q-learning. Our first approaches use a two-step model in which
+the state is first encoded by a language model (either a pre-trained
+RNN or transformer) before being passed to the DM policy. Figure 3
+illustrates how these building blocks come together in the two-step
+approach. Given a pre-trained state encoder 𝜙:X→ R𝑑and a
+sentence encoder 𝜓:A→ Rℎ, we apply two different Q-learning
+techniques using the encoded state space (using 𝜙𝑥rather than 𝑥)
+and action space (using 𝜓𝑎rather than 𝑎).
+Stochastic Action Q-learning (SAQL) [3]. Our first RL technique
+applies Q-learning directly to the discrete, stochastic action sets A𝑥
+as determined by the DCCP decompostion. We adopt the general
+deep Q network (DQN) approach [ 27], using a DNN to represent the
+Q-function. Specifically, 𝑄𝜃:R𝑑×Rℎ→Ris a feed-forward DNN
+with parameters 𝜃, which represents the cumulative discounted
+value of taking action (or bot utterance) 𝜓𝑎∈Rℎin state (i.e.,
+conversation history encoding) 𝜙𝑥∈R𝑑.
+We train the model using batched conversation data of the form
+𝐵={(𝜙𝑥𝑖,𝜓𝑎𝑖,𝑟𝑖,𝜙𝑥′
+𝑖,A𝑥′
+𝑖)}𝑖(see Sec. 4.5 on data generation),
+where the𝑖th data point includes: the embedded state 𝜙𝑥𝑖and
+action𝜓𝑎𝑖at some conversation turn, the observed next state 𝜙𝑥′
+𝑖,
+the realized reward 𝑟𝑖, and the set of actions A𝑥′
+𝑖made available
+by the content providers at the next state. This latter component is
+non-standard in DQN, but necessary due to the stochastic nature of
+the action sets—training the Q-function (see below) exploits maxi-
+mization over the realized set of candidate actions generated by our
+providers at the next state, an approach shown to be sound in [3].
+We learn𝜃by minimizing the mean squared Bellman error :
+min
+𝜃|𝐵|∑︁
+𝑖=1(𝑄𝜃(𝜙𝑥𝑖,𝜓𝑎𝑖)−𝑟𝑖−𝛾max
+𝑎′∈A𝑥′
+𝑖𝑄𝜃target(𝜙𝑥′
+𝑖,𝜓𝑎′))2,
+where𝑄𝜃targetis atarget𝑄-function, used to improve training sta-
+bility in DQN [ 26] (note the use of the realized action set A𝑥′
+𝑖inthe maximization). Under this loss, RL is ℓ2-regression of 𝑄𝜃w.r.t.
+target labels 𝑟+𝛾max𝑎′∈A𝑥′
+𝑖𝑄𝜃target(𝜙𝑥′,𝜓𝑎′), which tries to match
+the value function 𝑄𝜃with its Bellman backup.
+We refer to this approach as stochastic action Q-learning (SAQL)
+to reflect the stochastic action sets used in training. Once SAQL
+converges, the DM policy is 𝜋∗(𝑥) ∈ arg max𝑎∈A𝑥𝑄𝜃∗(𝜙𝑥,𝜓𝑎),.
+That is, at inference time, the 𝑄-model is applied to each candidate
+action, and the DM responds with the action with the greatest
+Q-value given the current dialogue state.
+Continuous Action Q-learning (CAQL) [29]. In the SAQL for-
+mulation, action maximization takes place over the discrete set
+of candidatesA𝑥. However, the embedding representation means
+that the action space can also be treated as continuous, and we can
+consider maximization over this wider space. Continuous-action
+RL problems are common in areas like robotics [15], and typically
+policy-gradient algorithms are used to learn a return-maximizing
+policy [ 34,37]. However, such methods are often data-inefficient
+and impractical when faced with high-dimensional action spaces,
+both issues present in dialogue systems. Instead, we consider the use
+ofcontinuous action Q-learning (CAQL) [29] to solve the continuous-
+action variant of our DM policy.
+Roughly speaking, using CAQL, when faced with a next state 𝑥′
+while training the Q-function 𝑄𝜃, we do not restrict ourselves to
+maximizing over the discrete action set A(𝑥′), but instead maxi-
+mize over the entire embedding space 𝜓, minimizing:
+min
+𝜃|𝐵|∑︁
+𝑖=1(𝑟𝑖+𝛾𝑄𝜃target(𝜙𝑥′
+𝑖,arg max
+𝜓𝑄𝜃(𝜙𝑥′
+𝑖,𝜓))−𝑄𝜃(𝜙𝑥𝑖,𝜓𝑎𝑖))2.
+This approach has advantages over 𝑆𝐴𝑄𝐿 : one need not record the
+realizationA𝑥′of the stochastic action sets in the data set, and
+continuous action maximization (see below) can be more effective
+when the set of candidate actions (utterances) is moderate or large
+in size. However, CAQL will generally overestimate the true value of
+its policy, since it hypothesizes the use of embedded actions that are
+never generated by any content provider. Indeed, once 𝑄𝜃is trained
+using CAQL, we restrict the realized policy to scoring (and using)
+only provider-generated candidate actions at inference/serving
+time.
+When𝑄𝜃is represented by a DNN, the inner maximization is
+typically differentiable and non-convex. This can be solved opti-
+mally for certain classes of DNNs using a mixed-integer program
+or a first-order method such as gradient ascent (GA) [ 29]. We use
+GA in this work: starting from an initial embedded action 𝜓(0), the
+optimal embedded action arg max𝜓𝑄𝜃(𝜙𝑥′,𝜓)is computed itera-
+tively by𝜓(𝑡+1)←𝜓(𝑡)+𝜖GA∇𝜓𝑄𝜃(𝜙𝑥′,𝜓)|𝜓=𝜓(𝑡), where𝜖GA>0
+is a tunable step size.
+Conservative Q-learning (CQL) [17]. Our DM problem is an ap-
+plication of offline RL , where a model is learned using previously
+collected user-bot conversation with no further (online) interac-
+tion. Offline RL is prone to overestimation errors induced by the
+distributional shift between the offline data and that generated by
+the learned policy [ 43]. This is especially problematic if certain bot
+actions are rare in the offline data, making their learned 𝑄-values
+very noisy. To alleviate this, we can apply conservative 𝑄-learning
+(CQL) [17], a regularization scheme which learns a “conservative”
+Cohen et al.
+𝑄-function that lower bounds the true Q-function. CQL can be
+applied to both SAQL and CAQL (we illustrate it only for SAQL).
+In CQL one augments the Q-learning loss with a behavior reg-
+ularizer: min𝜃Í|𝐵|
+𝑖=1𝛼(E𝑎∼𝜇[𝑄𝜃(𝜙𝑥𝑖,𝜓𝑎)]−E𝑎∼𝜋𝛽[𝑄𝜃(𝜙𝑥𝑖,𝜓𝑎)])+
+(𝑟𝑖+𝛾𝑄𝜃target(𝜙𝑥′
+𝑖,arg max𝑎′∈A(𝑥′
+𝑖)𝑄𝜃(𝜙𝑥′
+𝑖,𝜓𝑎′))−𝑄𝜃(𝜙𝑥𝑖,𝜓𝑎𝑖))2,
+where𝜋𝛽is a behavior policy (DM) that approximates the data-
+generation policy,2𝛼>0is a tunable regularization parameter, and
+𝜇is the target policy to be learned. Intuitively, CQL regularization
+minimizes the differences in Q-values of actions generated by our
+learned RL DM policy and the behavior (training-data generating)
+policy. We use target 𝜇(𝑎|𝑥)∝exp(𝑄𝜃(𝜙𝑥,𝜓𝑎)), which corresponds
+to the optimal policy of entropy-regularized Q-learning [31].
+4.4 End-to-end Architecture
+We now outline an end-to-end (E2E) RL approach that jointly trains
+the language encoder and the 𝑄-function. In contrast to our two-
+step approaches, by not constraining the DM to using a pre-trained
+encoder, E2E RL can tune the encoder (hence its representations)
+to the dialogue task at hand. This approach is similar in spirit to
+the original DQN model [ 27], in which the 𝑄-network consists of
+both a convolutional DNN that encodes pixel frames (states) and a
+feed-forward NN that learns the Q-values.
+To learn the 𝑄-function in E2E fashion, we apply DQN to 𝑄(𝑥,𝑎)=
+𝑄𝜃(𝑐(𝑥,𝑎)), where𝑐(𝑥,𝑎)is the concatenation of the conversation
+history and the current candidate action, and 𝑄𝜃:X → Ris
+a trainable language encoder (e.g., a transformer initialized with
+pre-trained weights), followed by a feed-forward DNN. This 𝑄-
+model jointly encodes the raw input conversation and assigns a
+𝑄-value to each candidate action. This allows us to learn the 𝑄-
+function E2E, without relying on fixed pretrained language en-
+coders. Specifically, with target network 𝑄𝜃targetupdated as above,
+in E2E learning we train the 𝑄𝜃by minimizing the mean squared
+Bellman error. We use SAQL and formulate the inner maximization
+asmax𝑎′∈A(𝑥′)𝑄𝜃target(𝑥′,𝑎′).
+4.5 Training Data
+The DM models are trained on crowd-sourced data, generated by
+human evaluators. Each evaluator converses with the bot until
+the dialogue derails or comes to a natural end. They then rate
+the bot responses, assessing each utterance in the composition
+loop, including those selected and unselected by the DM. Although
+evaluators were provided with a set of guidelines for assessing
+bot response quality, the resulting data is noisy and some level of
+rater-specific subjectivity is included in the ratings.
+A dozen evaluators generated ∼20K conversations with an aver-
+age of 3bot responses, each with 1to4utterances, and with up to
+30candidates per utterance. For the supervised models, this results
+in∼1.5M training examples, as each (selected and unselected) can-
+didate corrresponds to a training example. By contrast, RL models
+only use the labels on selected candidates, giving 150K labels.
+Each candidate utterance is rated on a scale of -3 to 7, with no 0
+rating made available. The negative ratings reflect candidates that
+do not reply to a user question, are out of context, or repeat content
+2In our setting, the behavior policy 𝜋𝛽is simply the supervised DM model.that was already mentioned in the conversation. The positive scores
+correspond to candidates that fit the conversation context well.
+5 INITIAL OFFLINE & ONLINE EVALUATION
+Before deploying our models in live experiment, we conducted
+preliminary evaluation of our RL-based DM policies. We describe
+both (i) off-policy counterfactual inference [ 21,39] evaluation and
+(ii)on-policy human (rater) evaluation. Off-policy evaluation can be
+performed on the existing datasets used to train our models (in our
+case, generated with the supervised DM). While often easier—hence
+especially useful for initial model development and tuning—it is
+less reliable than on-policy evaluation. So we use both methods.
+DM Models. We evaluate the following variants of our SAQL and
+CAQL algorithms, using either the supervised RNN or transformer
+for state representation, with or without CQL regularization. SAQL-
+RNN, CAQL-RNN, SAQL-Transformer, and CAQL-Transformer are
+the Q-learned models trained with the two-step RL approaches
+SAQL and CAQL using RNN and transformer encoders, respec-
+tively. SAQL-Reg-RNN, CAQL-Reg-RNN, SAQL-Reg-Transformer,
+and CAQL-Reg-Transformer are the same Q-learned models trained
+with CQL regularization. SAQL-Reg-E2E denotes the E2E Q-learned
+model with CQL regularization.
+The RNN architecture includes a GRU layer with 200 units.
+The supervised transformer model uses the publicly-available, pre-
+trained BERT-Medium checkpoint.3The training regime roughly
+follows that for BERT.4For RL models, we use a discount factor
+𝛾=0.95for SAQL,𝛾=0.9for CAQL and CQL Reg, and 𝛾=0.8for
+E2E RL,5and a fully connected feedforward DNN for the 𝑄-function.
+Hyper-parameters are provided in the appendix.
+DM Off-policy Evaluation. The main goal of off-policy evalua-
+tion is to assess the performance of our RL-based DM policy using
+existing conversational data. Unlike (supervised) myopic models,
+RL requires evaluating the reward of full trajectories. Since an RL-
+based DM can drive sequential conversations that follow a very
+different distribution than that of the training data, off-policy cor-
+rection using propensity scoring or related methods is needed [ 39].
+We use DualDICE [28] for this purpose, a recent SOTA method for
+off-policy estimation of RL policy values that directly estimates the
+stationary distribution correction ratio , i.e., the ratio of the steady-
+state probabilities of specific state-action pairs (𝜙𝑥𝑖,𝜙𝑎𝑖)generated
+by the RL policy 𝜋and the data-generating (or behavior) policy
+𝜋𝐵(which can be estimated from the training data). We provide a
+high-level overview.
+Given a batch 𝐵={(𝜙𝑥𝑖,𝜓𝑎𝑖,𝑟𝑖,𝜙𝑥′
+𝑖)}𝑖of (embedded conversa-
+tion history) training data and a DM policy 𝜋, DualDICE learns a
+feed-forward DNN 𝜈𝜌:R𝑑×Rℎ→R, parameterized by 𝜌, where
+𝜈𝜌(𝜙𝑥𝑖,𝜓𝑎𝑖)is a proto-value function whose Bellman residuals are
+estimates of the required stationary distribution ratios [ 28]. Given a
+trained𝜈𝜌, the value of the RL-based DM’s policy 𝜋can be estimated
+by𝐽DD(𝜋𝜆):=Í|𝐵|
+𝑖=1𝑟𝑖·(𝜈𝜌∗(𝜙𝑥𝑖,𝜓𝑎𝑖)−𝛾𝜋𝜆(𝑎′
+𝑖|𝑥′
+𝑖)
+𝜋𝐵(𝑎′
+𝑖|𝑥′
+𝑖)𝜈𝜌∗(𝜙𝑥′
+𝑖,𝜓𝑎′
+𝑖)).
+Notice that this estimator assumes the knowledge of the behavior
+(data-generating) policy 𝜋𝐵(which is the supervised DM in our
+3https://github.com/google-research/bert
+4https://github.com/google-research/bert/blob/master/optimization.py
+5The choices of these discount factors are mainly to ensure training stability.
+Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning
+Model Type Model On-policy Off-policy
+Supervised RNN 5.75±1.99 5.28±0.44
+Transformer 5.67±2.18 4.55±0.37
+Stochastic RNN 5.17±2.29 5.13±0.52
+Actions Reg-RNN 6.48±1.13 5.51±0.39
+Transformer 5.71±2.26 4.76±0.40
+Reg-Transformer 5.58±2.02 4.73±0.45
+Continuous RNN 6.04±1.63 5.49±0.41
+Actions Transformer 5.86±1.79 4.91±0.38
+Reg-Transformer 5.46±2.25 4.78±0.46
+E2E Reg-Transformer 6.53±1.44−−
+Table 2: Off-policy and on-policy raters evaluation results.
+setting). However, since the supervised DM is trained to optimize
+for a myopic reward, it can be overly deterministic. This can drive
+large fluctuations in propensity scores 𝜋/𝜋𝐵, and high variance in
+𝐽DD. Instead, we use a behavior-agnostic form of DualDICE which
+requires no estimation of 𝜋𝐵(see [28] for details).
+The off-policy evaluation results generated by DualDICE are
+presented in Table 2 (second column). Since our use of DualDICE
+depends on language encoders 𝜙and𝜓, it cannot be used to evalu-
+ate the E2E model.6Note that our off-policy value estimates of the
+RNN-based and the transformer-based models are generated using
+an RNN-based and a transformer-based behavior policy, respec-
+tively. DualDice off-policy results show that SAQL-Reg-RNN and
+CAQL-RNN are among the best-performing RL-based policies (this
+coincides with on-policy evaluation results, see below). The offline
+performance of RNN-based models is consistently better than that
+of transformer-based models. This too is somewhat corroborated
+by on-policy evaluation, though this performance difference may
+be due in part to proto-function approximation error in DualDice
+caused by the inherent bias of the transformer-based data.
+DM On-policy Evaluation. We next conducted on-policy evalua-
+tion. Human evaluators were asked to conduct dialogues with our
+bot and rate the overall conversation experience on the same -3 to 7
+scale used to collect training data. Evaluation was blind—evaluators
+did not know which model they were conversing with. Overall 200
+dialogues for each model were rated. The results are presented in
+Table 2 (first column). SAQL-Reg-E2E and SAQL-Reg-RNN received
+the highest rating while SAQL-RNN performed worst. Notice that
+the models rated best by evaluators are trained with lower discount
+factors. We conjecture raters may be inherently biased to value my-
+opic quality.7We also note the high-variance in rater evaluations
+across all models (a point discussed further below).
+6 LIVE EXPERIMENT
+Evaluation by human raters facilitates policy assessment in con-
+trolled settings and is necessary before deployment in a user-facing
+commercial product. However, dedicated human evaluators typi-
+cally behave differently than real users. Specifically, the impact of
+6Extending DualDICE to evaluate E2E models requires a much more complex dual-
+function parameterization and will be left as future work.
+7The RL models trained with lower discount factors behave closer to the supervised
+DM. Their DualDice estimates have lower variance and also tend to perform better.conversation planning might be quite different with raters vs. real
+users. For example, raters might continue a conversation even after
+it reaches an awkward stage or they might not reflect a potential
+increase in user engagement after a successful focus change initi-
+ated by the bot. To gain an in-depth understanding of their impact
+on real users, we conducted a live experiment with our RL models.
+The Q-learning model that achieved the largest improvement in
+terms of user engagement was then fully deployed in the Google
+Assistant.
+6.1 Experimental Setup
+To conduct a live experiment, we build on the dynamic composi-
+tionbot from [ 38] (Sec. 3). This bot is integrated with the Google
+Assistant, dubbed the assistant below, and interacts with users in a
+real-time online setting.
+The experiment was conducted using an A/B testing protocol, in
+which a small percentage of assistant users were randomly sampled
+to interact with the bot using an RL-based DM while other users
+(same percentage) interact with the vanilla bot using a supervised
+DM. More precisely, the experiment was conducted with one con-
+trol arm, with the transformer-based supervised model, and eight
+experiment arms with the architectures listed in Sec. 5. We use
+the supervised transformer model as a baseline as it was shown to
+outperform the supervised RNN in a previous live experiment.
+Our experiment spanned the months of December 2021 and Jan-
+uary 2022, during which user assignment to control/experiments
+remained constant. The experiment was transparent to the users,
+who could not distinguish between the different DMs. A conversa-
+tion starts when a user triggers the experience by asking an animal
+related query (e.g., “how does a lion sound?”). Once initiated, a
+conversation with a user could end if the bot predicted that its
+response is not of sufficient quality (i.e., the DM score is too low),
+if the user issued a query outside of the animal domain (e.g., about
+the weather), or if the user issued a standard stop command. The
+last two options were handled by the assistant.
+6.2 Evaluation Metrics
+We measured daily user interaction with the assistant in the animal
+domain in both the experiment and control arms. To assess user
+engagement, we use several surrogate metrics that are directly
+measurable in the interaction logs. We define a conversation to be
+the succession of user and bot turns, starting with a triggering user
+turn. The conversation length is the number of turns (combined user
+and bot turns) in a conversation. We consider followup feedback
+after each bot response, where followup refers to the next query, if
+any, after the bot response. Specifically, we distinguish:
+•Cooperative responses to bot questions, such as “yes” in re-
+sponse to a question proposing additional content (e.g., “do
+you want to hear more?”) or “Tell me about lions” in response
+to a list selection question (e.g., “which animal do you want
+to hear about next?”).
+•Non-cooperative responses to bot questions, such as “no” in
+response to a question proposing additional content (e.g.,
+“do you want to learn about cheetahs?”).
+•Explicit positive feedback , which captures followup user queries
+with explicit gratitude, e.g., “ thank you ” or “ wonderful ”.
+Cohen et al.
+Table 3: Mean relative change of experiment vs. the control metrics. Here, T stands for transformer; green changes are desirable,
+red changes less so (to varying degrees).
+.Metric SAQL-RNN SAQL-T CAQL-RNN CAQL-T SAQL-Reg-E2E
+Conversation length +30% +23% +14% +18% -0.7%
+Cooperative response +8% -6.8% -5.8% -4% -8%
+Non-cooperative response +112% +178% +54% +120% +41%
+Explicit positive feedback +32% +9.7% -20% +6.8% -6%
+Explicit negative feedback -18% +8.6% +1% -14% +27%
+•Explicit negative feedback , reflecting followup user queries
+that contain negative feedback, such as “ stop” or “ shut up ”.
+For the last two metrics, we use predefined lists of positive and
+negative feedback phrases collected from user logs.
+6.3 Main Results
+The average relative change in metrics across all experiments w.r.t.
+the control is shown in Table 3 (for CQL variants, see Table 4 in the
+appendix). Interestingly, these results differ from the rater online
+evaluations in Table 2, demonstrating the substantial distinction be-
+tween the behaviors of raters and real users. This discrepancy may
+be, in part, due to the high variance in rater evaluations. Surpris-
+ingly, SAQL-Reg-E2E performs worst and is slightly outperformed
+by the supervised baseline. The E2E model behaves quite conser-
+vatively, similar to a supervised model, avoiding pivoting to other
+animals and changing the type of offered content (e.g., sounds, facts,
+quizzes). Such conservative behavior may be caused by the lower
+discount factor 𝛾=0.8used, making its expected trajectory horizon
+shorter. This might be preferred by raters who tend to evaluate
+bot responses more myopically; but at the same time, it provides a
+more boring, less engaging experience for users. The different SAQL
+models outperform their CAQL counterparts. A similar conclusion
+was drawn in [ 45], where discrete latent actions were deemed to
+be more suitable than continuous actions for dialogue agents.
+Overall, we find that SAQL-RNN performs best w.r.t. our main
+metrics, conducting longer, more engaging conversations. It in-
+creases conversation length by 32%, while also increasing user
+engagement as captured by multiple metrics. We see an increase of
+8%in cooperative responses to bot questions. While there is also
+a large increase of non-cooperative responses ( 112% ), this is ex-
+pected as the SAQL-RNN agent takes more risks by asking pivoting
+questions, generating many more occasions for non-cooperative
+user reactions. While the user may not be interested in the con-
+versational direction proposed by the bot (e.g., pivoting to another
+animal), the user often continues engaging in a dialogue about ani-
+mals. For example, in Fig. 1a, the user provides a non-cooperative
+answer in the 3rd turn. As a result, the bot modifies its plan and
+asks the user to choose the next conversation focus, to which the
+user responds positively. In addition, some followup user queries
+contain explicit positive or negative feedback. While an order of
+magnitude fewer than other followups, they offer a direct mea-
+sure of user (dis)satisfaction. SAQL-RNN increases explicit positive
+feedback by 32%and reduces negative feedback by 18%.
+Our CQL variants of the different models indeed behave more
+“conservatively,” closer to supervised model behavior. This translates
+into smaller changes in conversation length and user feedbackmetrics (see appendix). Interestingly, using the transformer (vs.
+RNN) state encoding does not improve SAQL performance, unlike in
+the supervised setting, where transformer-based candidate selection
+is superior: the RNN state representation seems sufficient for RL.
+For this reason, we focus our analysis on SAQL-RNN below.
+6.4 Qualitative Analysis of the RL DM
+To improve user engagement while conducting longer conversa-
+tions, SAQL-RNN uses several planning strategies. First, it ends
+20%more turns in questions relative to the control, prompting the
+user to choose additional content (e.g., learn more animal facts,
+hear another animal sound). While we observe an increase in co-
+operative responses, the cooperation rate to bot questions drops by
+9.5%. Although this may seem problematic, this is actually a result
+of a favorable policy learned by our bot: by taking more risks in
+eliciting a user’s preference for the next steps, SAQL-RNN achieves
+an overall improved user experience, as measured via increased
+conversation length, combined with a noticeable increase in explicit
+positive feedback and a decrease in negative feedback.
+A second planning strategy is to better exploit content diversity,
+including facts, sounds, quizzes, yes/no questions, open questions,
+etc. On average, SAQL-RNN uses 26%more unique providers per
+conversation than the supervised transformer-based model.
+Two additional planning strategies are related to the existence of
+two sub-dialogues with different characteristics. Dialogues around
+animal sounds are poorer in content and exhibit entity pivoting
+at every turn (after playing the sound of a given animal, we can
+either suggest the sound of a different animal or quiz the user about
+other animal sounds). In contrast, dialogues around animal facts
+typically contain richer content and a greater conversation depth.
+We observe that SAQL-RNN favors the richer experience of the
+latter, selecting 31%more fact-related content.
+Lastly, we observe that the average conversation breadth of
+dialogues conducted by SAQL-RNN is lower (it generates 13%fewer
+focus-pivoting turns). This is a consequence of fact dialogues having
+less breadth. However, when restricting analysis to fact dialogues,
+SAQL-RNN exhibits 60%more focus-pivoting turns.
+Some of these strategies are exemplified by the sample conver-
+sation in Fig. 1a, generated by the SAQL-RNN model, which we
+contrast with Fig.1b, conducted by the supervised transformer. Both
+conversations start with the same 2 turns. In the 3rd turn, after
+a non-cooperative user response, the transformer pivots back to
+sounds to maximize “immediate” user interest. By contrast, the RL
+model tries to pivot to facts for a richer conversational experience,
+suggesting that the user choose the next animal. We also observe
+Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning
+that the RL conversation includes more types of content, such as
+sounds, facts, quizzes, yes/no and open questions.
+7 CONCLUSION
+In this work we tackled the formidable task of building a rich, open-
+ended conversational bot that is deployed in the challenging setting
+of a real-time, global commercial assistant. Our approach relies
+on the framework of reinforcement learning, using a novel state
+representation based on the succinct embedding of a supervised
+language model and an RL algorithm that allows for a dynamic
+action space at each stage of the conversation. Ours is one of the
+few examples of RL-based conversational systems deployed in the
+wild at scale, and the substantial advantages demonstrated over the
+SOTA supervised model validates the decades-long premise that
+the dynamic planning ability of RL is a natural fit for the design of
+rich dialogue agents.
+An interesting insight from our live experiment highlights the
+power of RL to take counter-intuitive actions: an increase in non-
+cooperative responses, a seemingly negative phenomenon, is simply
+a tool with which the agent may elicit a user’s preference for the
+next phase of the conversation. This leads to a positive conversa-
+tional experience on average, with a measurable increase both in
+conversation length and positive feedback. We hope to discover
+other dialogue strategies that drive “great” conversations as we
+shift to learning models directly from rich user signals.
+REFERENCES
+[1]K. Asadi and J. D. Williams. 2016. Sample-efficient deep reinforcement learning
+for dialog control. arXiv:1612.06000 (2016).
+[2]R. Barzilay and K. R. McKeown. 2005. Sentence fusion for multidocument news
+summarization. Comp. Linguistics 31, 3 (2005), 297–328.
+[3] C. Boutilier, A. Cohen, A. Hassidim, Y. Mansour, O. Meshi, M. Mladenov, and D.
+Schuurmans. 2018. Planning and learning with stochastic action sets. In Proc. of
+the 27th International Joint Conf. on Artificial Intelligence . 4674–4682.
+[4]I. Casanueva, P. Budzianowski, S. Ultes, F. Kreyssig, B.-H. Tseng, Y.-C. Wu, and M.
+Gasic. 2018. Feudal dialogue management with jointly learned feature extractors.
+InProc. of the 19th Annual SIGDIAL Meeting on Discourse and Dialogue . 332–337.
+[5]D. Cer, Y. Yang, S. Kong, N. Hua, N. Limtiaco, R. S. John, N. Constant, M. Guajardo-
+Cespedes, S. Yuan, C. Tar, Y. Sung, B. Strope, and R. Kurzweil. 2018. Universal
+Sentence Encoder. arXiv:1803.11175 (2018).
+[6]S. Chandramohan, M. Geist, and O. Pietquin. 2010. Sparse approximate dynamic
+programming for dialog management. In Proc. of the SIGDIAL 2010 Conf. 107–115.
+[7]P. Dayan and G. E. Hinton. 1996. Varieties of Helmholtz machine. Neural Networks
+9, 8 (1996), 1385–1403.
+[8]M. Fatemi, L. E. Asri, H. Schulz, J. He, and K. Suleman. 2016. Policy networks
+with two-stage training for dialogue systems. arXiv:1606.03152 (2016).
+[9]M. Gašić, F. Jurčíček, B. Thomson, K. Yu, and S. Young. 2011. On-line policy
+optimisation of spoken dialogue systems via live interaction with human subjects.
+InIEEE Workshop on Automatic Speech Recognition & Understanding . 312–317.
+[10] M. Geva, E. Malmi, I. Szpektor, and J. Berant. 2019. DiscoFuse: A Large-Scale
+Dataset for Discourse-Based Sentence Fusion. In Proc. of the 2019 Conf. of the
+North American Chapter of the Association for Comp. Linguistics: Human Language
+Technologies . 3443–3455.
+[11] J. Henderson, O. Lemon, and K. Georgila. 2008. Hybrid reinforcement/supervised
+learning of dialogue policies from fixed data sets. Comp. Linguistics 34, 4 (2008),
+487–511.
+[12] R. A. Jacobs, M. I. Jordan, S. J. Nowlan, and G. E. Hinton. 1991. Adaptive mixtures
+of local experts. Neural computation 3, 1 (1991), 79–87.
+[13] N. Jaques, A. Ghandeharioun, J. H. Shen, C. Ferguson, A. Lapedriza, N. Jones, S.
+Gu, and R. Picard. 2019. Way off-policy batch deep reinforcement learning of
+implicit human preferences in dialog. arXiv:1907.00456 (2019).
+[14] N. Jaques, J. H. Shen, A. Ghandeharioun, C. Ferguson, A. Lapedriza, N. Jones, S. S.
+Gu, and R. Picard. 2020. Human-centric dialog training via offline reinforcement
+learning. arXiv:2010.05848 (2020).
+[15] J. Kober and J. Peters. 2011. Policy search for motor primitives in robotics.
+Machine learning 84, 1 (2011), 171–203.[16] S. Kotsiantis and P. Pintelas. 2003. Mixture of expert agents for handling imbal-
+anced data sets. Annals of Math., Comp. & Teleinformatics 1, 1 (2003), 46–55.
+[17] A. Kumar, A. Zhou, G. Tucker, and S. Levine. 2020. Conservative Q-Learning for
+Offline Reinforcement Learning. In Advances in Neural Information Processing
+Systems , Vol. 33. Curran Associates, Inc., 1179–1191.
+[18] E. Levin, R. Pieraccini, and W. Eckert. 1997. Learning dialogue strategies within
+the Markov decision process framework. In 1997 IEEE Workshop on Automatic
+Speech Recognition and Understanding Proc. 72–79.
+[19] J. Li, W. Monroe, A. Ritter, M. Galley, J. Gao, and D. Jurafsky. 2016. Deep rein-
+forcement learning for dialogue generation. arXiv:1606.01541 (2016).
+[20] J. Li, W. Monroe, T. Shi, S. Jean, A. Ritter, and D. Jurafsky. 2017. Adversarial
+learning for neural dialogue generation. arXiv:1701.06547 (2017).
+[21] L. Li, W. Chu, J. Langford, T. Moon, and X. Wang. 2012. An unbiased offline
+evaluation of contextual bandit algorithms with generalized linear models. In
+Proc. of the Workshop on On-line Trading of Exploration and Exploitation 2 . 19–36.
+[22] L. Li, J. D. Williams, and S. Balakrishnan. 2009. Reinforcement learning for dialog
+management using least-squares policy iteration and fast feature selection. In
+10th Annual Conf. of the International Speech Communication Association .
+[23] B. Liu, G. Tur, D. Hakkani-Tur, P. Shah, and L. Heck. 2018. Dialogue learning with
+human teaching and feedback in end-to-end trainable task-oriented dialogue
+systems. arXiv:1804.06512 (2018).
+[24] E. Malmi, S. Krause, S. Rothe, D. Mirylenka, and A. Severyn. 2019. Encode,
+Tag, Realize: High-Precision Text Editing. In Proc. of the 2019 Conf. on Empirical
+Methods in Natural Language Processing and the 9th International Joint Conf. on
+Natural Language Processing . Association for Comp. Linguistics, 5053–5064.
+[25] E. Marsi and E. Krahmer. 2005. Explorations in Sentence Fusion. In Proc. of the
+Tenth European Workshop on Natural Language Generation .
+[26] V. Mnih, A. P. Badia, M. Mirza, A. Graves, T. Lillicrap, T. Harley, D. Silver, and K.
+Kavukcuoglu. 2016. Asynchronous methods for deep reinforcement learning. In
+International Conf. on machine learning . PMLR, 1928–1937.
+[27] V. Mnih, K. Kavukcuoglu, D. Silver, A. Graves, I. Antonoglou, D. Wierstra, and M.
+Riedmiller. 2013. Playing atari with deep reinforcement learning. arXiv:1312.5602
+(2013).
+[28] O. Nachum, Y. Chow, B. Dai, and L. Li. 2019. Dualdice: Behavior-agnostic esti-
+mation of discounted stationary distribution corrections. Advances in Neural
+Information Processing Systems 32 (2019).
+[29] M. Ryu, Y. Chow, R. Anderson, C. Tjandraatmadja, and C. Boutilier. 2019. CAQL:
+Continuous Action Q-Learning. In International Conf. on Learning Representa-
+tions .
+[30] A. Saleh, N. Jaques, A. Ghandeharioun, J. Shen, and R. Picard. 2020. Hierarchical
+reinforcement learning for open-domain dialog. In Proc. of the AAAI Conf. on
+Artificial Intelligence , Vol. 34. 8741–8748.
+[31] J. Schulman, X. Chen, and P. Abbeel. 2017. Equivalence between policy gradients
+and soft q-learning. arXiv:1704.06440 (2017).
+[32] I. V. Serban, C. Sankar, M. Germain, S. Zhang, Z. Lin, S. Subramanian, T. Kim, M.
+Pieper, S. Chandar, N. R. Ke, S. Mudumba, A. de Brébisson, J. Sotelo, D. Suhubdy,
+V. Michalski, A. Nguyen, J. Pineau, and Y. Bengio. 2017. A Deep Reinforcement
+Learning Chatbot. arXiv:1709.02349 (2017).
+[33] J. Shin, P. Xu, A. Madotto, and P. Fung. 2020. Generating empathetic responses
+by looking ahead the user’s sentiment. In IEEE International Conf. on Acoustics,
+Speech and Signal Processing (ICASSP) . 7989–7993.
+[34] D. Silver, G. Lever, N. Heess, T. Degris, D. Wierstra, and M. Riedmiller. 2014.
+Deterministic policy gradient algorithms. In Conf. on machine learning .
+[35] S. Singh, M. Kearns, D. Litman, and M. Walker. 1999. Reinforcement Learning
+for Spoken Dialogue Systems. In Proc. of the 12th International Conf. on Neural
+Information Processing Systems (NIPS’99) . MIT Press, 956–962.
+[36] S. Singh, D. Litman, M. Kearns, and M. Walker. 2002. Optimizing dialogue
+management with reinforcement learning: Experiments with the NJFun system.
+Journal of Artificial Intelligence Research 16 (2002), 105–133.
+[37] R. S. Sutton, D. McAllester, S. Singh, and Y. Mansour. 1999. Policy gradient
+methods for reinforcement learning with function approximation. Advances in
+neural information processing systems 12 (1999).
+[38] I. Szpektor, D. Cohen, G. Elidan, M. Fink, A. Hassidim, O. Keller, S. Kulkarni, E.
+Ofek, S. Pudinsky, A. Revach, et al .2020. Dynamic composition for conversational
+domain exploration. In Proc. of The Web Conf. 2020 . 872–883.
+[39] P. Thomas, G. Theocharous, and M. Ghavamzadeh. 2015. High-confidence off-
+policy evaluation. In Proc. of the AAAI Conf. on Artificial Intelligence , Vol. 29.
+[40] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser,
+and I. Polosukhin. 2017. Attention is All you Need. In Advances in Neural Infor-
+mation Processing Systems 30 . 5998–6008.
+[41] M. A. Walker. 2000. An application of reinforcement learning to dialogue strategy
+selection in a spoken dialogue system for email. Journal of Artificial Intelligence
+Research 12 (2000), 387–416.
+[42] J. D. Williams and S. Young. 2007. Partially observable Markov decision processes
+for spoken dialog systems. Computer Speech & Language 21, 2 (2007), 393–422.
+[43] Y. Wu, G. Tucker, and O. Nachum. 2019. Behavior regularized offline reinforce-
+ment learning. arXiv:1911.11361 (2019).
+Cohen et al.
+[44] S. Young, M. Gašić, S. Keizer, F. Mairesse, J. Schatzmann, B. Thomson, and K. Yu.
+2010. The hidden information state model: A practical framework for POMDP-
+based spoken dialogue management. Computer Speech & Language (2010).
+[45] T. Zhao, K. Xie, and M. Eskenazi. 2019. Rethinking Action Spaces for Reinforce-
+ment Learning in End-to-end Dialog Agents with Latent Variable Models. In
+Proc. of the 2019 Conf. of the North American Chapter of the Association for Comp.
+Linguistics: Human Language Technologies . 1208–1218.
+[46] L. Zhou, J. Gao, D. Li, and H.-Y. Shum. 2020. The design and implementation of
+xiaoice, an empathetic social chatbot. Comp. Linguistics 46, 1 (2020), 53–93.A APPENDIX
+A.1 DM Training Hyper-Parameters
+Our supervised and RL models were trained with the following
+hyper-parameters.
+The supervised RNN model is trained with a learning rate of
+0.0001, batch size of 16, a dropout probability of 0.2 and 200K train-
+ing steps. Its architecture includes a GRU layer with 200 units.
+For the supervised transformer model, we use the BERT-Medium
+checkpoint8having uncased vocabulary, hidden dimension 𝐻=512,
+𝐿=8transformer layers, and 𝐴=8attention heads per layer. This
+model was trained for 20000 steps with a global batch size of 768
+divided among 8TPUv3 chips, using the Adam optimizer with an
+initial learning rate of 𝜖=5·10−5(decayed to zero), 𝛽1=0.9,
+𝛽2=0.999, and𝜖=10−6.
+For the RL models, SAQL-RNN, CAQL-RNN, SAQL-Reg-RNN,
+and CAQL-Reg-RNN use a fully connected feedforward network
+for𝑄-function approximation. These networks are composed of 3
+layers and each layer is composed of 1024 RELU units. The SAQL-
+RNN network is trained using a learning rate 𝜖=7·10−5and𝑘=2𝑀
+steps. Warmstarted with the SAQL-RNN weights, the SAQL-Reg-
+RNN network is trained with 𝜖=5·10−6and𝑘=2.4𝑀. The
+CAQL-RNN network is trained with 𝜖=5·10−5and𝑘=2𝑀, where
+the inner maximization problem uses a GA learning rate of 𝜖GA=1·
+10−6and runs for a maximum of 𝑘GA=25steps. Warmstarted with
+the CAQL-RNN weights, the CAQL-Reg-RNN network is trained
+with𝜖=3·10−6and𝑘=2𝑀. SAQL-Transformer, SAQL-Reg-
+Transformer, CAQL-Transformer, and CAQL-Reg-Transformer all
+follow almost the same settings as SAQL-RNN, SAQL-Reg-RNN,
+CAQL-RNN, and CAQL-Reg-RNN but are trained with 𝜖=3·10−4
+and𝑘=4𝑀,𝜖=1·10−5and𝑘=2.5𝑀,𝜖=3·10−5and𝑘=3𝑀,
+𝜖=1·10−5and𝑘=3𝑀respectively. The models are trained with
+batch size|𝐵|=32, and in all two-step CQL regularized models
+the regularization coefficient 𝛼is0.1.9SAQL-Reg-E2E was trained
+with𝑘=320,000,𝜖=5·10−5,|𝐵|=48,𝛾=0.8and𝛼=0.01. All
+these hyper-parameters are chosen from the best settings of their
+corresponding grid-search optimization.
+A.2 Full Live Experiment Results
+The average relative change in the live experiment metrics of the
+experiments w.r.t the control is shown in Table 4 for all models,
+including the CQL variants.
+8https://github.com/google-research/bert
+9Compared with learning rates, tuning 𝛼does not have much effect on model training.
+Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning
+Table 4: Mean relative change of experiments vs. the control metrics. Here, T stands for transformer.
+Metric SAQL-RNN SAQL-Reg-RNN SAQL-T SAQL-Reg-T CAQL-RNN CAQL-T CAQL-Reg-T SAQL-Reg-E2E
+Conversation length +30% +3.6% +23% +19% +14% +18% +8.9% -0.7%
+Cooperative response +8% -20% -6.8% -0.3% -5.8% -4% -4.3% -8%
+Non-cooperative response +112% +75% +178% +125% +54% +120% +130% +41%
+Explicit positive feedback +32% +42% +9.7% +0.4% -20% +6.8% +5.8% -6%
+Explicit negative feedback -18% -7% +8.6% -7.7% +1% -14% +15% +27%

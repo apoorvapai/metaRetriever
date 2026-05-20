@@ -1,0 +1,1076 @@
+Title: Investigating Failures of Automatic Translation in the Case of Unambiguous Gender
+
+arXiv:2104.07838v1  [cs.CL]  16 Apr 2021Investigating Failures of Automatic Translation
+in the Case of Unambiguous Gender
+Adithya Renduchintala
+Facebook AI
+adirendu@fb.comAdina Williams
+Facebook AI Research
+adinawilliams@fb.com
+Abstract
+Transformer based models are the modern
+work horses for neural machine translation
+(NMT), reaching state of the art across several
+benchmarks. Despite their impressive accu-
+racy, we observe a systemic and rudimentary
+class of errors made by transformer based
+models with regards to translating from a
+language that doesn’t mark gender on nouns
+into others that do. We ﬁnd that even when the
+surrounding context provides unambiguous
+evidence of the appropriate grammatical
+gender marking, no transformer based model
+we tested was able to accurately gender occu-
+pation nouns systematically. We release an
+evaluation scheme and dataset for measuring
+the ability of transformer based NMT models
+to translate gender morphology correctly in
+unambiguous contexts across syntactically
+diverse sentences. Our dataset translates from
+an English source into 20languages from
+several different language families. With the
+availability of this dataset, our hope is that the
+NMT community can iterate on solutions for
+this class of especially egregious errors.
+1 Introduction
+NMT models have come a long way since their
+widespread adoption. Modern Transformer based
+(Vaswani et al. ,2017 ) NMT architectures can
+be trained on vast amounts of data, and are con-
+stantly attaining higher BLEU scores on standard
+benchmarks ( Barrault et al. ,2020 ). Despite this
+impressive performance, we observed that state-of-
+the-art Transformer-based MT systems are largely
+unable to make basic deductions regarding how to
+correctly inﬂect nouns with grammatical gender,
+even when there is ample contextual evidence.
+For example, we observe that they struggle inﬂect
+occupation nouns like “doctor” with the correct
+gender when translating sentences like “my mother
+is a funny doctor”, despite there being no ambiguity
+that “doctor” ought to be marked with feminine.This suggests that our current training paradigm (or
+the architectures themselves), do not force models
+to pay sufﬁcient attention to very basic linguistic
+properties of a source sentence during inference.
+When an NMT model makes mistakes like these,
+it can degrade the trust a user places on translation
+quality, or also reinforce representational harms in
+the form of stereotypes ( Stanovsky et al. ,2019 ).
+To more systematically explore translation fail-
+ures for gender in unambiguous sentences, we have
+created a benchmark dataset that clearly surfaces
+these kinds of errors hoping that the wider NMT
+community can devise better, targeted mitigation
+strategies. Our benchmark contains specially con-
+structed English source sentences which unambigu-
+ously belie the gender of a person referred to with a
+noun that can be inﬂected for multiple grammatical
+genders. In our setting, we use sentences contain-
+ing occupation nouns from English (which do not
+bear grammatical gender marking in the source lan-
+guage) and translate them into languages for which
+occupation nouns must bear grammatical gender.
+We craft unambiguous source sentences by
+manipulating the context: In our dataset, an unam-
+biguously gendered word—i.e., a noun (such as
+father ) or pronoun (such as herself )—obligatorily
+corefers with the occupation noun making it clear
+what the gender on the occupation noun must be.
+Consider “My nurse is a good father ”, “I am a nurse
+who can inspire herself ”. Although all our occu-
+pations nouns are technically underspeciﬁed (i.e.,
+able to refer to any gender in the source language),
+we also vary whether the occupation noun is stereo-
+typically more likely to refer to a man or woman
+(e.g., janitor vs.nurse ). Finally, we vary whether
+the triggering word appears before or after the
+occupation noun, to see if this affects performance:
+compare “That janitor arrives early for hershift” to
+“That herown child laughed surprised the janitor”.
+To show the utility of our benchmark, we
+evaluate the accuracy of the gender inﬂection in the
+target language for several state-of-the art Trans-
+fomer based NMT systems. Previous work focuses
+primarily on ambiguous cases where the gender of
+an occupation noun is genuinely under-determined
+(Stanovsky et al. ,2019 ), since this allows for query-
+ing the underlying (often stereotypical) “assump-
+tions” of the translation model. We argue that our
+unambiguous task is an even clearer explication of
+the failures of NMT models, because in this set up,
+morphological gender mistakes are not forgivable.
+Because we expect existing MT systems to
+struggle on our unambiguous task, we also devised
+a somewhat simpler setting. It is well known that
+translation systems perform better when provided
+with more context (i.e., longer sentences; Tiede-
+mann and Scherrer 2017 ;Miculicich et al. 2018 ),
+so in our simpler setting, we augment our sentences
+with statistically gender-indicative adjectives (such
+aspretty and handsome , the former being used
+more often in practice to modify nouns referring
+to women and the latter, to men) and verbs (which
+take arguments that are statistically more likely to
+be men or women in large corpora). With these
+sentences, we can determine how much the deter-
+mination of the gender on gender-indeterminate
+nouns is affected by statistically gender-indicative
+contexts. We expect the incidence of correct
+inﬂection to rise in cases when a stereotypical
+contextual cue is also provided.
+Our contributions are as follows: We offer a
+new unambiguous benchmark to measure MT
+models’ ability to mark gender appropriately in
+20languages from English source. We ﬁnd that
+all tested Transformer-based NMT models reach
+fairly low accuracy—at best approximately 70%
+accuracy (Portuguese and German) and at worst
+below 50% (Urdu)—and do markedly better when
+the word that makes the target gender explicit
+(e.g., her,brother ) refers to a man as opposed
+to a woman. Moreover, we ﬁnd that accuracy
+is higher on examples for which the (statically
+more frequent) gender of the occupation matches
+the gender of the unambiguous triggering word,
+compared to examples for which they don’t match.
+2 Methods
+Our method crucially relies upon on linguistic
+theory to craft unambiguous examples. In most
+attempts to measure gender bias in NMT, there
+has been no ground-truth “correct translation”—
+model “preferences” ( Stanovsky et al. ,2019 ;Source/Target Label
+Src: My sister is a carpenter 4.CorrectTgt: Mi hermana es carpenteria(f) 4.
+Src: That nurse 1is a funny man .WrongTgt: Esa enfermera(f) 1es un tipo gracioso .
+Src: The engineer 1is her emotional mother .InconclusiveTgt: La ingenier´ ıa(?) 1es su madre emocional .
+Table 1: Examples of source-translation pairs. The
+gender-tags are shown in parenthesis and word-
+alignments indicated with subscript.
+Prates et al. ,2019 ) are reﬂected by the percentage
+of examples for which the MT system chooses the
+gender-stereotypical pronoun as opposed to the
+anti-gender-stereotypical. However, since both
+translations are practically possible in reality (for
+example, janitors come in all genders), we feel
+this setting might be overly optimistic about the
+capabilities of current models.
+Our set up has two main components: we have a
+“trigger” (i.e., a noun or pronoun in the source sen-
+tence that unambiguously refers to a person with
+a particular known gender1), and we have an occu-
+pation noun which bears no gender-marking in the
+source language and can be inﬂected with various
+genders in the target language. We call the former
+class “triggers” because they are the unambiguous
+signal which triggers a particular grammatical gen-
+der marking for the occupation noun. Triggers com-
+prise all “standard” American English pronouns
+and explicitly gendered kinship terms, which were
+chosen because they are very common concepts
+cross-linguistically and are (in nearly all cases,
+see fn. 1) interpreted as gender-unambiguous.
+Occupation nouns were drawn from the U.S.
+Bureau of Labor Statistics2, following Caliskan
+et al. (2017 );Rudinger et al. (2017 );Zhao et al.
+(2018 );Prates et al. (2019 ), and are statistically
+more likely to be performed by either women or by
+men respectively. We ensure that there is an equal
+number of triggers, occupation words, making our
+benchmark gender-balanced for binary gender. For
+a list, see Table 2 , and Table 5 in the Appendix.
+Crucially, we measure performance based on the
+inﬂection of the occupation noun, which depends
+on the syntactic structure of the sentence. To en-
+1Gender identity is not strictly binary, and even for our
+strongly gendered triggers, there still could be rare edge- cases:
+consider, for example, a Halloween party where your friend
+Sam, who identiﬁes as a man, dresses up as his own grand-
+mother. Someone can reasonably refer to Sam during the
+party as a “grandmother” or choose either “she” or “he”; See
+also ( Ackerman ,2019 ).
+2http://www.bls.gov/cps/cpsaat11.htm
+sure that we have unambiguous sentences, we con-
+structed a short English phrase structure grammar
+comprising 82 commands to construct our corpus.
+Although previous datasets for measuring gender
+failures in translation have had a handful unambigu-
+ous examples ( Stanovsky et al. ,2019 ), our dataset
+is unique in having only unambiguous examples
+(see also Gonz´ alez et al. 2020 ). We also make use
+of Binding Theory ( Chomsky ,1980 ,1981 ;B¨ uring ,
+2005 ) to ensure that (i) all of our pronoun triggers
+(both pronominals like “she” and anaphors like
+“herself”) are strictly coreferring with the occu-
+pations and (ii) that no other interpretations are
+possible.3Moreover, having a grammar is useful,
+since it allows for an increased diversity of source
+sentences and better control over the context.
+Since we anticipated poor performance on the
+task, we also devised an easier scenario, where we
+provide additionally contextual cues to the gender
+of the relevant entity. In this work, we explore
+two types of contextual cues, adjectives and verbs.
+Our list of adjectives is the union of stereotyped
+traits from several works in the social psychology
+literature on traits as gender stereotyping ( Bem ,
+1981 ;Prentice and Carranza ,2002 ;Haines et al. ,
+2016 ;Eagly et al. ,2020 ), where they were normed
+in the context of English. Verbs were automatically
+discovered from Wikipedia using dependency
+parses to ﬁnd verbs that take women or men
+preferentially highly as subjects or direct objects
+(Hoyle et al. ,2019 ).
+Finally, given that we had already written a toy
+grammar for English, we also craft our grammar
+to enable the exploration of a couple subsidiary
+questions about the nature of anaphoric relations:
+for example, does accuracy depend on whether
+the occupation precedes or follows the trigger?
+Moreover, when we include a contextual cue that
+is predictive of the gender required by the trigger
+(e.g., handsome forbrother ), does accuracy change
+when we attach it to the occupation (e.g., that hand-
+some nurse is my brother ) instead of to the trigger
+(that nurse is my handsome brother )? And ﬁnally,
+3Consider the sentence “Carlotta’s dog accompanies her
+to kindergarden” ( B¨ uring ,2005 , p.5). In this sentence, we can
+interpret this sentence as meaning that the dog accompanies
+Carlotta to kindergarden, or that the dog accompanies some
+other woman or girl to kindergarden—to strengthen this
+reading you can append to the front of the sentence the clause
+something like “whenever Mary’s parents have to go to work
+early, Carlotta’s dog accompanies her to kindergarden”. In
+this way, “her” can refer to either Carlotta or to Mary. We
+have avoided such ambiguity in our dataset.Type F M
+Trigger she, her, hers, her-
+self, sister , mother,
+aunt, grandmother,
+daughter, niece,
+wife , girlfriendhe, him, his, him-
+self, brother, father,
+uncle, grandfather,
+son, niece, husband,
+boyfriend
+Occupation editor, accountant,
+auditor, attendant,
+assistant, designer,
+writer, baker, clerk,
+cashier, counselor,
+librarian, teacher,
+cleaner, house-
+keeper, nurse,
+receptionist, hair-
+dresser, secretaryengineer, physician,
+plumber, carpenter,
+laborer, driver,
+sheriff, mover,
+developer, farmer,
+guard, chief, janitor,
+lawyer, CEO, ana-
+lyst, manager, super-
+visor, salesperson
+Table 2: Gendered words from our dataset. Accuracy
+is measured on the occupation word, and the Trigger(s)
+provide unambiguous information about the gender
+identity of the person being referred to in the sentence.
+Establishing co-reference between the two is obligatory,
+based on the syntactic structures included in the dataset.
+to what extent do these different syntactic factors
+interact with each other or vary across languages?
+2.1 Models
+We evaluate gendered translation of two pretrained
+open-source models, (i) OPUS-MT is a collection
+of 1000+ bilingual and multilingual (for certain
+translation directions) models ( Tiedemann and
+Thottingal ,2020 ). The architecture of each model
+was based on a standard transformer ( Vaswani et al. ,
+2017 ) setup with 6 self-attentive layers in both,
+the encoder and decoder network with 8 attention
+heads in each layer. (ii) M2M-100 is a large mul-
+tilingual model which supports “many-to-many”
+translation directions ( Fan et al. ,2020 ). M2M-100
+pretrained models are available in three sizes (418
+Million parameters, 1.2 Billion parameters and 15
+Billion parameters). We employ the small sized
+models for our experiments which are based on
+the transformer architecture with 12 encoder and
+decoder layers and 16 attention heads.
+2.2 Evaluation
+Using our grammar, we generate English source
+sentences and translate these into supported
+target languages. To ascertain whether the
+translation applied the correct morphological
+marker on the target-side occupation noun, we
+design a “reference-free” evaluation scheme.
+Following Stanovsky et al. (2019 ), we extract
+token-alignments between the source occupation
+noun token and its translation in the target side. We
+also extract morphological features for every token
+in the target sequence, using a morphological tag-
+ger. Thus, we can ascertain the gender associated
+with the translated occupation noun (as judged by
+the morphological tagger) and measure the NMT
+models’ accuracy concerning gender translation.
+We use Dou and Neubig (2021 ) for word-alignment
+andQi et al. (2020 ) as our morphological tagger.
+Note that our evaluation scheme only checks if
+the appropriate gender marking is applied on the
+occupation noun and does not check if the occupa-
+tion noun itself has been translated correctly. Thus,
+we do not prescribe our evaluation scheme as a
+replacement for traditional MT evaluation using
+BLEU or chrF++ scores ( Papineni et al. ,2002 ;
+Popovi´ c ,2015 ).
+Under our evaluation scheme, there are three
+possible evaluation outcomes for each sentence.
+We deem the output (i) correct if the gender
+of the target-side occupation noun is the ex-
+pected gender (based on the source-side trigger
+gender). (ii) wrong if the gender of the target–
+side occupation is explicitly the wrong gender,
+and (iii) inconclusive if we are unable to make a
+gender-determination of the target-side occupation
+noun. A translation can result be inconclusive if
+there are errors in the translation, word-alignments
+or morphological tagger. In most, cases we ﬁnd
+translation errors as the root cause of the inconclu-
+sive result. Note: if errors predominate more for
+one gender, this can also be taken as evidence of an
+imbalance that needs rectiﬁcation.
+3 Results
+Our dataset is very difﬁcult for current
+transformer-based models. We observe that ac-
+curacy doesn’t exceed the low 70s for any language
+(seeTable 3 ). This suggests that our dataset is ap-
+preciably difﬁcult, suggesting that it provides good
+signal about the failures of our current best models.
+For all languages and all MT systems, accuracy
+is higher when the trigger unambiguously refers
+to a man than when it unambiguously refers to
+a woman. In general, accuracy is lower when the
+trigger requires feminine morphology, hovering
+around 40% in most languages. The only language
+for which accuracy on feminine triggers exceeds
+50% is Serbian. For some languages, such as Urdu,
+occupation nouns are rarely inﬂected with the cor-
+rect gender marking for feminine triggers. TakenLanguage %Correct %Wrong %N/A
+de 0.73 0.26 0.01
+pt 0.72 0.26 0.02
+cs 0.67 0.30 0.03
+lt 0.63 0.35 0.02
+pl 0.65 0.33 0.03
+hr 0.65 0.31 0.04
+fr 0.63 0.30 0.07
+lv 0.62 0.36 0.02
+es 0.61 0.21 0.17
+ru 0.60 0.38 0.02
+uk 0.60 0.37 0.03
+el 0.59 0.34 0.07
+ro 0.59 0.33 0.08
+ca 0.56 0.23 0.21
+he 0.55 0.32 0.13
+it 0.53 0.25 0.22
+sr 0.52 0.42 0.06
+hi 0.51 0.39 0.10
+be 0.51 0.33 0.17
+ur 0.44 0.37 0.19
+Table 3: Aggregated accuracy for all languages and all
+data for M2M-100-1.2B.
+in aggregate, these results likely reﬂect the cultural
+fact than many (but not all) languages utilize mascu-
+line to refer to generic people ( Gastil ,1990 ;Hamil-
+ton,1991 ). Despite this, all our triggers are high fre-
+quency words, so we believe that a frequency based
+explanation of our ﬁndings won’t be sufﬁcient.
+Accuracy is higher when trigger gender and
+occupation gender match, than when they
+don’t. . . As we see in Figure 1 , the M2M models
+perform better on inﬂecting occupations nouns
+correctly when they are statistically more likely to
+refer to a person whose gender matches the gender
+required by the trigger: for example, our models
+is better at correctly morphologically gender
+marking nanny (a statistically feminine-indicative
+occupation) in the context of mother than they
+are at morphologically gender marking janitor
+(a statistically masculine-indicative one). This
+ﬁnding replicates previous work ( Stanovsky et al. ,
+2019 ) that showed that six then-state-of-the-art
+models were very susceptible to statistical gender
+biases encoded in occupation words.
+. . . However, gender marking accuracy drops
+less when the occupation is mismatched with a
+masculine trigger than when it is mismatched
+with a feminine one. Although statistical gender
+biases in how women are presented of the kind
+presented in Figure 1 are relatively well described
+in NLP and adjacent ﬁelds ( Bolukbasi et al. ,2016 ;
+Hovy and Spruit ,2016 ;Caliskan et al. ,2017 ;
+Rudinger et al. ,2017 ;Garg et al. ,2018 ;Garimella
+avg
+deptpl
+csru
+lt
+lv
+uk
+hr
+fr
+elesro
+hi
+he
+itur
+ca
+besr00.20.40.60.81
+(a) M-trigger, M-occupation
+avg
+deptpl
+csru
+lt
+lv
+uk
+hr
+fr
+elesro
+hi
+he
+itur
+ca
+besr00.20.40.60.81
+(b) F-trigger, F-occupationavg
+deptpl
+csru
+lt
+lv
+uk
+hr
+fr
+elesro
+hi
+he
+itur
+ca
+besr00.20.40.60.81
+(c) M-trigger, F-occupation
+avg
+deptpl
+csru
+lt
+lv
+uk
+hr
+fr
+elesro
+hi
+he
+itur
+ca
+besr00.20.40.60.81
+(d) F-trigger, M-occupation
+Figure 1: Results for M2M model (1.2B). Proportion of correc t (green), incorrect (red) and not available (yellow)
+are provided. Across the board, for all languages, gender in ﬂection (green) are more correct for masculine triggers,
+MM (a) and MF (c) than feminine triggers FF (b) and FM (d). Accu racy is high for both masculine- and feminine-
+triggers when the the occupation is indicative of the target gender (a, b) than when it isn’t (c,d). However, accuracy
+falls more more for F-triggers than for M-triggers when targ et occupation is indicative of the mismatched gender.
+et al. ,2019 ;Gonen and Goldberg ,2019 ;Dinan
+et al.,2020a ,b), we further observe in our results yet
+a higher order type of stereotyping that negatively
+affects women, namely androcentrism (Bem ,1993 ;
+Hegarty et al. ,2013 ;Bailey et al. ,2019 ). Androcen-
+trism is a wide reaching cultural phenomenon that
+treats the “male experience. . . as a neutral standard
+or norm for the culture of the species as a whole”
+(Bem ,1993 , p. 41)—one consequence of this
+cultural phenomenon is that women are restricted
+to their stereotypical domains more than men are
+to theirs. We see some tentative evidence that our
+MT systems encode this cultural androcentrism
+bias in the fact that the drop in accuracy is greater
+for sentences with feminine triggers (e.g., mother )
+and masculine-indicative occupations ( janitor )
+than for the converse (compare the magnitude of
+the drop in Figure 1 andFigure 2 between a and c
+to the drop between b and d, as well as Table 4 ).
+Models achieve higher accuracy for masculine-
+indicative than feminine-indicative occupation
+(and there is some variation). Finally, to
+understand the behavior of particular occupations,
+we plot the M2M 1.2B accuracy by occupation
+averaged across all languages. Recall that all
+occupations are frequent, are either statistically
+biased towards either men or towards women in the
+source, and are balanced in the dataset. In Figure 2 ,
+we observe that in the case of feminine grammati-
+cal gender triggers, only a few feminine-indicativeoccupations (e.g. houskeeper, nurse, secretary
+inFigure 2 b, d) reach the level of accuracy that
+the model achieves on most masculine-indicative
+occupations (in Figure 2 a, c). We also note that
+variation in accuracy is much higher for feminine-
+indicative occupations across both trigger types
+(compare Figure 2 b to c). These results also lend
+support to a cultural androcentrism hypothesis.
+4 Related Work
+Recently, several works ( Stanovsky et al. ,2019 ;
+Prates et al. ,2019 ;Gonen and Webster ,2020 ;
+Gonz´ alez et al. ,2020 ) investigated gender bias in
+multiple languages with complex morphology, and
+showed that state-of-the-art MT systems resolve
+gender-unbalanced occupation nouns (from the
+US Bureau of Labor Statistics) more often to
+masculine than feminine pronouns, despite the fact
+that people of many genders participate in all listed
+occupations. Our work improves upon these prior
+approaches by exploring the effects of gender-
+indicative contexts (e.g., additionally stereotypi-
+cally masculine and feminine traits and events) in
+range of syntactic positions (e.g., preceding or fol-
+lowing the clue, directly adjacent to the occupation,
+etc.). While Prates et al. (2019 ) did investigate
+some stereotypical traits in their work, they only
+investigate a few of them, only in the context of the
+ambiguous paradigm, and were narrowly focused
+on measuring the translation abilities of one com-
+avg
+laborerphysician
+engineer
+sheriffsupervisor
+lawyer
+farmer
+chiefcarpenter
+salesperson
+developer
+driverplumbermanager
+analyst
+janitor
+mover
+guard
+ceo00.20.40.60.81
+(a) M-trigger M-occupation
+avg
+housekeeper
+nurse
+secretary
+librarian
+teacherreceptionist
+hairdresser
+attendant
+cleaner
+baker
+writer
+cashier
+assistant
+accountant
+counselor
+clerk
+editor
+auditordesigner00.20.40.60.81
+(b) F-trigger F-occupationavg
+counselor
+writer
+editordesigner
+cashier
+auditor
+accountant
+baker
+teacher
+clerk
+cleaner
+hairdresser
+librarian
+assistant
+attendantsecretary
+receptionist
+housekeeper
+nurse00.20.40.60.81
+(c) M-trigger F-occupation
+avg
+laborerguard
+salesperson
+plumber
+carpenter
+janitor
+lawyer
+mover
+farmersupervisor
+developer
+analyst
+engineer
+physicianmanager
+ceo
+chief
+sheriff
+driver00.20.40.60.81
+(d) F-trigger, M-occupation
+Figure 2: Results for M2M model (1.2B). Proportion of correc t (green), incorrect (red) and not available (yellow) are
+provided. Across the board, for all occupations, accuracy i s higher when triggered gender matches the occupation
+(a, b), then when it mismatches (c, d). Additionally, accura cy is higher for masculine triggers (a, c) than for feminine
+ones (b, d).
+mercial translation product. We, on the other hand,
+explore not only more diverse example traits as well
+as additional verbal contextual cues, but we do so in
+unambiguously gendered sentences with a diverse
+range of sentences structures that allow us to vary
+linear precedence of contextual cues as well as their
+prevalence. Gonen and Webster (2020 ) also made
+use of minimally different sentences via an innova-
+tive perturbation method that mines examples from
+real world data and moves away from static word
+lists; however, their benchmark is also collected
+for the standard ambiguous gender setting.
+Of particular note here is Gonz´ alez et al. (2020 )
+which also focused on “unforgivable” grammatical
+gender-related errors in translation (as well as on
+other tasks) that come about as a result of syntactic
+structure and unambiguous coreference. In partic-
+ular, Gonz´ alez et al. investigated four languages
+(Danish, Russian, Chinese, Swedish) that afﬁx a
+reﬂexive marker to disambiguate whether a 3rd
+person possessive pronoun (e.g., his) must be obli-
+gatorily bound by its local referent (i.e., the subject
+of the sentence) or not. This approach is somewhat
+analogous to some of our examples, except that we
+rely on syntactic context to construct unambiguous
+examples as opposed to language-internal proper-
+ties: e.g., particularly those that make use of “own”to make obligatory the local coreference (in this
+case cataphora) as in “That her ownchild cried, sur-
+prised the doctor”. We take our work to be wholly
+complementary to theirs; while their approach
+focuses on more source languages, fewer target
+languages, and a wider range of tasks, we focus
+on fewer source languages, more target languages,
+and sentences from a wider range of (source) syn-
+tactic structures (as determined by our grammar).
+Concurrently, another approach to pronoun
+coreference utilized a hand-crafted grammar to
+generate sentences for measuring fairness ( Sore-
+mekun et al. ,2020 ), but in the context of NLP tasks
+other than NMT. Although Soremekun et al. (2020 )
+are interested in measuring performance for unam-
+biguous examples, it does not focused on the NMT
+use case, and its examples require cross-sentential
+coreferences, which will likely require a more
+complex linguistic toolbox than our intrasentential
+case ( Szabolcsi ,2003 ;Hardmeier and Federico ,
+2010 ;Reinhart ,2016 ). Moreover, the grammar
+created in that work is much less developed than
+ours: it does not manipulate the location of the trig-
+ger, there is limited syntactic diversity, and there
+is no incorporation of statistically gender-biased
+words above and beyond occupation nouns.
+At a high level, our work resurfaces problems
+M2M-100-1.2B Opus MT
+Language ∆M∆F∆M∆F
+be 0.17 0.25
+ca 0.13 0.25 0.20 0.29
+cs 0.23 0.33 0.16 0.19
+de 0.16 0.30 0.16 0.22
+el 0.08 0.19
+es 0.14 0.27 0.14 0.20
+fr 0.15 0.25 0.16 0.24
+he 0.00 0.29 -0.02 0.29
+hi -0.04 0.02
+hr 0.22 0.28
+it 0.11 0.23 0.17 0.23
+lt 0.05 0.10
+lv 0.15 0.20
+pl 0.19 0.34
+pt 0.15 0.25
+ro 0.12 0.17 0.14 0.22
+sr 0.16 0.23
+uk 0.19 0.30 0.12 0.19
+ur -0.02 -0.01
+Table 4: Accuracy drop ( ∆) is greater for feminine
+triggers when the occupation is statistically indicative o f
+the mismatched gender (M) than for masculine triggers
+when the occupations is statistically indicative of the
+mismatched gender (F) For example, ∆Mrefers to the
+drop in accuracy for sentences with triggers referring to
+men when the occupation is switched to stereotypically
+referring to women (e.g., difference in accuracy between
+“my father is a funny doctor” and “my father is a funny
+nurse”. Bold marks the delta with larger accuracy drop.
+with syntactic agreement in machine translation.
+While neural machine translations are more ﬂuent
+that phrase-based machine translation, it has long
+been observed that even high-resource models can
+struggle to generate faithful translations that are
+also syntactically correct ( Isabelle et al. ,2017 ) and
+the problem intensiﬁes for longer sentences with
+long-distance dependencies ( Choshen and Abend ,
+2019 ). We highlight yet another syntactic failure
+mode in NMT models in this work. There is also a
+long history of incorporating syntax explicitly into
+NMT models in the hope of reducing the preva-
+lence of such errors. For example, Eriguchi et al.
+(2016 ) model source-side syntax while Aharoni
+and Goldberg (2017 ) proposed models that gener-
+ate linearized dependency trees. Other works also
+consider modiﬁcations to the attention mechanism
+in order to improve NMT ( Kim et al. ,2017 ).
+5 Conclusion
+Many of our NLP tasks and dataset have been
+found to be rife with statistical gender biases that
+reﬂect, in language, the stereotypical associations
+we have about gender in our cultures. In this
+work, we present a new evaluation dataset formeasuring gender bias in machine translation
+for gender unambiguous sentences. Our dataset
+supports translation from an English source into 20
+languages, and is designed to answer questions not
+only about particular occupation words and gender
+triggering words, but also to further explicate
+the role of context in how MT systems translate
+gender morphology. We hope that our dataset will
+encourage the community to improve on this new
+setting for measuring gender biases in language.
+References
+Lauren Ackerman. 2019. Syntactic and cognitive issues
+in investigating gendered coreference. Glossa: a
+journal of general linguistics , 4(1).
+Roee Aharoni and Yoav Goldberg. 2017. Towards
+string-to-tree neural machine translation . In
+Proceedings of the 55th Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 2:
+Short Papers) , pages 132–140, Vancouver, Canada.
+Association for Computational Linguistics.
+April H Bailey, Marianne LaFrance, and John F Dovidio.
+2019. Is man the measure of all things? a social
+cognitive account of androcentrism. Personality and
+Social Psychology Review , 23(4):307–331.
+Lo¨ ıc Barrault, Magdalena Biesialska, Ondˇ rej Bojar,
+Marta R. Costa-juss` a, Christian Federmann, Yvette
+Graham, Roman Grundkiewicz, Barry Haddow,
+Matthias Huck, Eric Joanis, Tom Kocmi, Philipp
+Koehn, Chi-kiu Lo, Nikola Ljubeˇ si´ c, Christof
+Monz, Makoto Morishita, Masaaki Nagata, Toshiaki
+Nakazawa, Santanu Pal, Matt Post, and Marcos
+Zampieri. 2020. Findings of the 2020 conference
+on machine translation (WMT20) . In Proceedings
+of the Fifth Conference on Machine Translation ,
+pages 1–55, Online. Association for Computational
+Linguistics.
+Sandra L Bem. 1981. Bem sex role inventory. Journal
+of personality and social psychology .
+Sandra L Bem. 1993. The lenses of gender: Transform-
+ing the debate on sexual inequality . Yale University
+Press.
+Tolga Bolukbasi, Kai-Wei Chang, James Y Zou,
+Venkatesh Saligrama, and Adam T Kalai. 2016.
+Man is to computer programmer as woman is to
+homemaker? debiasing word embeddings. In
+Advances in neural information processing systems ,
+pages 4349–4357.
+Daniel B¨ uring. 2005. Binding theory . Cambridge
+University Press.
+Aylin Caliskan, Joanna J Bryson, and Arvind
+Narayanan. 2017. Semantics derived automati-
+cally from language corpora contain human-like
+biases. Science , 356(6334):183–186.
+Noam Chomsky. 1980. On binding. Linguistic inquiry ,
+11(1):1–46.
+Noam Chomsky. 1981. Lectures on government and
+binding: The Pisa lectures . Foris Publications,
+Holland.
+Leshem Choshen and Omri Abend. 2019. Auto-
+matically extracting challenge sets for non-local
+phenomena in neural machine translation . In
+Proceedings of the 23rd Conference on Compu-
+tational Natural Language Learning (CoNLL) ,
+pages 291–303, Hong Kong, China. Association for
+Computational Linguistics.
+Emily Dinan, Angela Fan, Adina Williams, Jack
+Urbanek, Douwe Kiela, and Jason Weston. 2020a.
+Queens are powerful too: Mitigating gender bias
+in dialogue generation . In Proceedings of the
+2020 Conference on Empirical Methods in Natural
+Language Processing (EMNLP) , pages 8173–8188,
+Online. Association for Computational Linguistics.
+Emily Dinan, Angela Fan, Ledell Wu, Jason Weston,
+Douwe Kiela, and Adina Williams. 2020b. Multi-di-
+mensional gender bias classiﬁcation . InProceedings
+of the 2020 Conference on Empirical Methods in
+Natural Language Processing (EMNLP) , pages
+314–331, Online. Association for Computational
+Linguistics.
+Zi-Yi Dou and Graham Neubig. 2021. Word alignment
+by ﬁne-tuning embeddings on parallel corpora.
+InConference of the European Chapter of the
+Association for Computational Linguistics (EACL) .
+Alice H Eagly, Christa Nater, David I Miller, Mich` ele
+Kaufmann, and Sabine Sczesny. 2020. Gender
+stereotypes have changed: A cross-temporal meta-
+analysis of us public opinion polls from 1946 to 2018.
+American psychologist , 75(3):301.
+Akiko Eriguchi, Kazuma Hashimoto, and Yoshimasa
+Tsuruoka. 2016. Tree-to-sequence attentional neural
+machine translation . InProceedings of the 54th An-
+nual Meeting of the Association for Computational
+Linguistics (Volume 1: Long Papers) , pages 823–833,
+Berlin, Germany. Association for Computational
+Linguistics.
+Angela Fan, Shruti Bhosale, Holger Schwenk, Zhiyi
+Ma, Ahmed El-Kishky, Siddharth Goyal, Mandeep
+Baines, Onur Celebi, Guillaume Wenzek, Vishrav
+Chaudhary, et al. 2020. Beyond english-centric
+multilingual machine translation. arXiv preprint
+arXiv:2010.11125 .
+Nikhil Garg, Londa Schiebinger, Dan Jurafsky, and
+James Zou. 2018. Word embeddings quantify
+100 years of gender and ethnic stereotypes. Pro-
+ceedings of the National Academy of Sciences ,
+115(16):E3635–E3644.Aparna Garimella, Carmen Banea, Dirk Hovy, and
+Rada Mihalcea. 2019. Women’s syntactic resilience
+and men’s grammatical luck: Gender-bias in
+part-of-speech tagging and dependency parsing .
+InProceedings of the 57th Annual Meeting of
+the Association for Computational Linguistics ,
+pages 3493–3498, Florence, Italy. Association for
+Computational Linguistics.
+John Gastil. 1990. Generic pronouns and sexist
+language: The oxymoronic character of masculine
+generics. Sex roles , 23(11):629–643.
+Hila Gonen and Yoav Goldberg. 2019. Lipstick on a
+pig: Debiasing methods cover up systematic gender
+biases in word embeddings but do not remove them.
+InProceedings of the 2019 Workshop on Widening
+NLP, pages 60–63, Florence, Italy. Association for
+Computational Linguistics.
+Hila Gonen and Kellie Webster. 2020. Automatically
+identifying gender issues in machine translation
+using perturbations . In Findings of the Association
+for Computational Linguistics: EMNLP 2020 , pages
+1991–1995, Online. Association for Computational
+Linguistics.
+Ana Valeria Gonz´ alez, Maria Barrett, Rasmus Hvin-
+gelby, Kellie Webster, and Anders Søgaard. 2020.
+Type B reﬂexivization as an unambiguous testbed for
+multilingual multi-task gender bias . InProceedings
+of the 2020 Conference on Empirical Methods in
+Natural Language Processing (EMNLP) , pages
+2637–2648, Online. Association for Computational
+Linguistics.
+Elizabeth L Haines, Kay Deaux, and Nicole Lofaro.
+2016. The times they are a-changing. . . or are they
+not? a comparison of gender stereotypes, 1983–2014.
+Psychology of Women Quarterly , 40(3):353–363.
+Mykol C Hamilton. 1991. Masculine bias in the attri-
+bution of personhood: People= male, male= people.
+Psychology of Women Quarterly , 15(3):393–402.
+Christian Hardmeier and Marcello Federico. 2010.
+Modelling pronominal anaphora in statistical ma-
+chine translation. In IWSLT (International Workshop
+on Spoken Language Translation); Paris, France;
+December 2nd and 3rd, 2010. , pages 283–289.
+Peter Hegarty, Orla Parslow, Y G´ avriel Ansara, and
+Freyja Quick. 2013. Androcentrism: Changing the
+landscape without leveling the playing ﬁeld. The
+Sage handbook of gender and psychology , pages
+29–44.
+Dirk Hovy and Shannon L Spruit. 2016. The social im-
+pact of natural language processing. In Proceedings
+of the 54th Annual Meeting of the Association for
+Computational Linguistics (Volume 2: Short Papers) ,
+pages 591–598.
+Alexander Miserlis Hoyle, Lawrence Wolf-Sonkin,
+Hanna Wallach, Isabelle Augenstein, and Ryan
+Cotterell. 2019. Unsupervised discovery of gen-
+dered language through latent-variable modeling .
+InProceedings of the 57th Annual Meeting of
+the Association for Computational Linguistics ,
+pages 1706–1716, Florence, Italy. Association for
+Computational Linguistics.
+Pierre Isabelle, Colin Cherry, and George Foster. 2017.
+A challenge set approach to evaluating machine
+translation . In Proceedings of the 2017 Conference
+on Empirical Methods in Natural Language Pro-
+cessing , pages 2486–2496, Copenhagen, Denmark.
+Association for Computational Linguistics.
+Yoon Kim, Carl Denton, Luong Hoang, and Alexan-
+der M Rush. 2017. Structured attention networks.
+arXiv preprint arXiv:1702.00887 .
+Lesly Miculicich, Dhananjay Ram, Nikolaos Pappas,
+and James Henderson. 2018. Document-level neural
+machine translation with hierarchical attention
+networks . InProceedings of the 2018 Conference on
+Empirical Methods in Natural Language Processing ,
+pages 2947–2954, Brussels, Belgium. Association
+for Computational Linguistics.
+Kishore Papineni, Salim Roukos, Todd Ward, and
+Wei-Jing Zhu. 2002. Bleu: a method for automatic
+evaluation of machine translation . InProceedings of
+the 40th Annual Meeting of the Association for Com-
+putational Linguistics , pages 311–318, Philadelphia,
+Pennsylvania, USA. Association for Computational
+Linguistics.
+Maja Popovi´ c. 2015. chrF: character n-gram f-score
+for automatic MT evaluation . InProceedings of the
+Tenth Workshop on Statistical Machine Translation ,
+pages 392–395, Lisbon, Portugal. Association for
+Computational Linguistics.
+Marcelo OR Prates, Pedro H Avelar, and Luis C Lamb.
+2019. Assessing gender bias in machine transla-
+tion: a case study with google translate. Neural
+Computing and Applications , pages 1–19.
+Deborah A Prentice and Erica Carranza. 2002. What
+women and men should be, shouldn’t be, are allowed
+to be, and don’t have to be: The contents of pre-
+scriptive gender stereotypes. Psychology of women
+quarterly , 26(4):269–281.
+Peng Qi, Yuhao Zhang, Yuhui Zhang, Jason Bolton, and
+Christopher D. Manning. 2020. Stanza: A python
+natural language processing toolkit for many human
+languages . InProceedings of the 58th Annual Meet-
+ing of the Association for Computational Linguistics:
+System Demonstrations , pages 101–108, Online.
+Association for Computational Linguistics.
+Tanya Reinhart. 2016. Anaphora and semantic
+interpretation . Routledge.
+Rachel Rudinger, Chandler May, and Benjamin
+Van Durme. 2017. Social bias in elicited natural
+language inferences . InProceedings of the First ACL
+Workshop on Ethics in Natural Language Processing ,pages 74–79, Valencia, Spain. Association for
+Computational Linguistics.
+Ezekiel Soremekun, Sakshi Udeshi, and Sudipta Chat-
+topadhyay. 2020. Astraea: Grammar-based fairness
+testing. arXiv preprint arXiv:2010.02542 .
+Gabriel Stanovsky, Noah A. Smith, and Luke Zettle-
+moyer. 2019. Evaluating gender bias in machine
+translation . InProceedings of the 57th Annual Meet-
+ing of the Association for Computational Linguistics ,
+pages 1679–1684, Florence, Italy. Association for
+Computational Linguistics.
+Anna Szabolcsi. 2003. Binding on the ﬂy: Cross-
+sentential anaphora in variable-free semantics. In
+Resource-sensitivity, binding and anaphora , pages
+215–227. Springer.
+J¨ org Tiedemann and Yves Scherrer. 2017. Neural ma-
+chine translation with extended context . InProceed-
+ings of the Third Workshop on Discourse in Machine
+Translation , pages 82–92, Copenhagen, Denmark.
+Association for Computational Linguistics.
+J¨ org Tiedemann and Santhosh Thottingal. 2020.
+OPUS-MT – building open translation services
+for the world . In Proceedings of the 22nd Annual
+Conference of the European Association for Machine
+Translation , pages 479–480, Lisboa, Portugal.
+European Association for Machine Translation.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N Gomez, Ł ukasz
+Kaiser, and Illia Polosukhin. 2017. Attention is all
+you need . In Advances in Neural Information Pro-
+cessing Systems , volume 30. Curran Associates, Inc.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente
+Ordonez, and Kai-Wei Chang. 2018. Gender bias
+in coreference resolution: Evaluation and debiasing
+methods . In Proceedings of the 2018 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 2 (Short Papers) , pages
+15–20, New Orleans, Louisiana. Association for
+Computational Linguistics.
+Type F M
+Context Adj affected, affection-
+ate, appreciative,
+emotional, excitable,
+imaginative, impres-
+sionable, intelligent,
+organized, outgoing,
+unambitious, under-
+standing, unintelligent,
+unselﬁsh, unstable,
+cautious, changeable,
+charming, cheer-
+ful, childlike, clean,
+compassionate, com-
+plaining, complicated,
+confused, cooperative,
+creative, critical, cu-
+rious, dainty, delicate,
+dependent, dreamy,
+family-oriented, fash-
+ionable, fault-ﬁnding,
+fearful, feminine,
+ﬁckle, ﬂatterable, ﬂir-
+tatious, foolish, forgiv-
+ing, friendly, frivolous,
+fussy, gentle, graceful,
+gullible, helpful, hon-
+est, kind, loyal, melo-
+dramatic, mild, mod-
+est, naive, nervous, pa-
+tient, pleasant, polite,
+prudish, romantic, self-
+pitying, sensitive, sen-
+timental, sexy, short,
+shy, small-boned,
+smart, soft, soft-
+hearted, sophisticated,
+spiritual, submissive,
+suggestive, supersti-
+tious, sympathetic,
+talkative, tender,
+timid, touchy, warm,
+weak, well-dressed,
+well-mannered, whole-
+some, worrying,
+yieldingaggressive, active, ad-
+venturous, aggressive,
+ambitious, analytical,
+arrogant, assertive,
+athletic, autocratic,
+enterprising, indepen-
+dent, indifferent, indi-
+vidualistic, initiative,
+innovative, intense,
+inventive, obnoxious,
+opinionated, oppor-
+tunistic, unfriendly,
+unscrupulous, bossy,
+broad-shouldered,
+capable, coarse, com-
+petitive, conceited,
+conﬁdent, consistent,
+controlling, coura-
+geous, cruel, cynical,
+decisive, demanding,
+dependable, deter-
+mined, disciplined,
+disorderly, dominant,
+forceful, greedy, hard-
+hearted, hardworking,
+humorous, jealous,
+lazy, level-headed, log-
+ical, loud, masculine,
+muscular, pleasure-
+seeking, possessive,
+precise, progressive,
+promiscuous, proud,
+quick, rational, re-
+alistic, rebellious,
+reckless, resourceful,
+rigid, robust, self-
+conﬁdent, self-reliant,
+self-righteous, self-
+sufﬁcient, selﬁsh,
+serious, sharp-witted,
+show-off, solemn,
+solid, steady, stern,
+stingy, stolid, strong,
+stubborn, sturdy, tall,
+tough, well-built,
+witty
+Context V-OBJ protect, treat, shame,
+exploit insult, scare,
+frighten, distract,
+escortreward, glorify, thank,
+praise, honor, inspire,
+enrich, appease, con-
+gratulate, respect,
+ﬂatter, destroy, de-
+ceive, bore, offend,
+scold, pay, ﬁght, defeat
+Context V-SUBJ smile, dance, laugh,
+play, giggle, weep,
+faint, scream, gossip,
+complain, lament,
+spin, celebrate, clapsucceed, ﬂourish, pros-
+per, win, protest, kill,
+threaten, rush, speak
+Table 5: Gendered context words from our dataset.

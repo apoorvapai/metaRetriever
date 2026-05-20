@@ -1,0 +1,1124 @@
+Title: Human-in-the-Loop for Data Collection: a Multi-Target Counter Narrative Dataset to Fight Online Hate Speech
+
+Human-in-the-Loop for Data Collection: a Multi-Target Counter
+Narrative Dataset to Fight Online Hate Speech
+Margherita Fanton1;2, Helena Bonaldi1;2, Serra Sinem Tekiro ˘glu2, Marco Guerini2,
+1University of Trento, Italy
+2Fondazione Bruno Kessler, Via Sommarive 18, Povo, Trento, Italy
+mfanton@fbk.eu ,hbonaldi@fbk.eu ,tekiroglu@fbk.eu ,guerini@fbk.eu
+Abstract
+Undermining the impact of hateful content
+with informed and non-aggressive responses,
+called counter narratives, has emerged as a
+possible solution for having healthier online
+communities. Thus, some NLP studies have
+started addressing the task of counter narra-
+tive generation. Although such studies have
+made an effort to build hate speech / counter
+narrative (HS/CN) datasets for neural gener-
+ation, they fall short in reaching either high-
+quality and/or high-quantity. In this paper,
+we propose a novel human-in-the-loop data
+collection methodology in which a generative
+language model is reﬁned iteratively by us-
+ing its own data from the previous loops to
+generate new training samples that experts re-
+view and/or post-edit. Our experiments com-
+prised several loops including dynamic vari-
+ations. Results show that the methodology
+is scalable and facilitates diverse, novel, and
+cost-effective data collection. To our knowl-
+edge, the resulting dataset is the only expert-
+based multi-target HS/CN dataset available to
+the community.
+1 Introduction
+The proliferation of online hatred has became
+an alarming issue (Williams, 2019) threatening
+not only the well-being of target individuals and
+groups, but also of society as a whole. While
+authorities establish regulations and policies, so-
+cial media platforms take actions against hate
+speech mostly through moderation activities, such
+as content removal, account suspension, or shadow-
+banning, at the risk of hindering the freedom of
+expression. Meanwhile, Non-Governmental Orga-
+nizations are qualifying volunteers for responding
+to online hate to promote human dignity and under-
+standing in society. Such responses, i.e., Counter-
+Narratives (CN), are non-aggressive textual feed-
+back using credible evidence, factual arguments,alternative viewpoints, and are considered as an ef-
+fective strategy (Benesch, 2014; Schieb and Preuss,
+2016) to confront hate speech while respecting the
+human rights (Kiritchenko et al., 2020).
+However, the vast amount of online hate speech
+makes an effective manual intervention impossible,
+which motivates a line of NLP research focusing
+on semi or fully automatized CN generation so-
+lutions1. In recent years, several CN collection
+strategies and datasets have been proposed address-
+ing the data-hungry nature of current state of the
+art generation technologies (Mathew et al., 2018;
+Qian et al., 2019; Chung et al., 2019).
+Considering the shortcomings of the existing
+collection strategies (that grant either quality or
+quantity, but not both), we present an approach to
+produce high quality CNs for multiple hate targets
+while reducing the need for expert intervention. To
+this end, we build on top of the previous hybrid
+data collection strategies, aiming to increase efﬁ-
+ciency while maintaining the requirements of data
+quality, novelty and diversity. In particular, we start
+from the work by Tekiro ˘glu et al. (2020) that uses
+an author-reviewer framework in which the author –
+a generative language model – is tasked with gener-
+ating HS/CN pairs while a pool of human reviewers
+ﬁlter and possibly post-edit the produced output. In
+the present work we propose to further reduce the
+data collection effort by closing the pipeline and
+feeding the post-edited output back to the language
+model in order to regularly update it and improve
+1In our view the generation process can be fully automatic
+but generation systems need human supervision and should
+not be fully autonomous, at least for delicate tasks such as
+hate countering on social media platforms. For this reason we
+advocate that generation systems should be used as suggesting
+tool for NGO operators, to make their countering work more
+effective. In this way there is always a “human moderator”
+taking the ﬁnal decision (Chung et al., 2019). Furthermore,
+this approach is also in line with de Lima Salge and Berente
+(2017)’s Ethical framework, since this “suggesting tool” con-
+ﬁguration grants compliance with their rules.arXiv:2107.08720v1  [cs.CL]  19 Jul 2021
+the quality of the generated pairs. Our experiments
+comprised of two sessions, spanning a period of 6
+months. In the ﬁrst session we set up a ‘simple’
+human-in-the-loop (HITL henceforth) procedure
+and iterated it several times, measuring at each loop
+the performance of the whole framework according
+to relevant metrics. In the second session we run
+several additional loops in which we test different
+strategies (i.e. author conﬁgurations) to improve
+the data collection according to the given metrics.
+Findings show that the HITL framework is scal-
+able, allowing to obtain datasets that are adequate
+in terms of diversity, novelty, and quantity. More-
+over, this framework improves on previous hybrid
+data collection strategies, reducing at each loop the
+post-editing effort of the human reviewers or the
+number of discarded examples (session one). On
+the other hand, with dynamic adaptation, possible
+unwanted behaviors or ﬂaws of the data collection
+can be handled at each loop by simply varying the
+author conﬁguration (session 2). The ﬁnal dataset
+contains 5000 HS/CN pairs in English Language,
+covering multiple hate targets, in terms of race,
+religion, country of origin, sexual orientation, dis-
+ability, or gender. To the best of our knowledge,
+this is the ﬁrst multi-target expert-based HS/CN
+dataset constructed through a semi-automatic mech-
+anism and can be downloaded at the following link:
+https://github.com/marcoguerini/CONAN .
+2 Related Work
+With regard to hatred countering, we will focus on
+three research aspects relevant for the present work,
+i.e. (i) publicly available datasets for detection,
+(ii) publicly available datasets for countering, (iii)
+approaches for hybrid data collection.
+Hate detection datasets. Several datasets for
+hate detection have been presented, most of which
+rely on material collected from SMPs, such as Twit-
+ter (Waseem and Hovy, 2016; Waseem, 2016; Ross
+et al., 2017), Facebook (Kumar et al., 2018), What-
+sApp (Sprugnoli et al., 2018), and forums (de Gib-
+ert et al., 2018). While the above datasets focus on
+a classiﬁcation task, Mathew et al. (2020) released
+a dataset annotated with rationales to improve hate
+speech interpretability and Sap et al. (2020) pro-
+posed the Social Bias Inference Corpus (SBIC)
+annotated with the description of the biases implic-
+itly present in the language. For a more extensive
+review, we refer the reader to Poletto et al. (2020)
+and Vidgen and Derczynski (2020).Hate countering datasets. While several social
+studies proved that counter-narratives are effec-
+tive in hate countering (Benesch, 2014; Silverman
+et al., 2016; Schieb and Preuss, 2016; Stroud and
+Cox, 2018; Mathew et al., 2019), only few works
+have focused on data collection for CN genera-
+tion. Mathew et al. (2018) focus on crawling,
+following the intuition that CNs can be found on
+SMPs as responses to hateful expressions. Qian
+et al. (2019) propose a crowdsourcing methodology
+where crowd-workers (non-expert) are instructed
+to write responses to hate content collected from
+SMPs. The study by Chung et al. (2019) also relies
+on outsourcing CNs writing, but via nichesourcing,
+using NGO operators expert in CN production.
+Hybrid models for data collection. Given the
+data-hungry nature of current NLP technologies,
+one line of research has recently focused on ad-
+vanced hybrid models for data collection. Wallace
+et al. (2019) proposed using model interpretation to
+guide humans in the creation of adversarial exam-
+ples for factoid question-answering systems. Dinan
+et al. (2019) and Vidgen et al. (2020) perform a data
+collection with HITL for detecting offensive lan-
+guage. In both studies, the dynamic procedure is
+shown to be successful in reducing model error rate
+across rounds. Vidgen et al. (2020) point out that
+the HITL approach has multiple advantages over
+the static data collection: design ﬂaws can be ad-
+dressed during the construction of the dataset and
+annotators’ work is optimized, since it is guided
+by the feedback from the model. Finally Tekiro ˘glu
+et al. (2020) propose a hybrid approach where an
+LM is trained on a seed datasets of HS/CN pairs
+to generate new pairs that are then validated and
+post-edited by annotators.
+3 Methodology
+In Figure 1 we present the pipeline of our method-
+ology. Following the idea presented by Tekiro ˘glu
+et al. (2020), we have an author module built using
+GPT-2 language model (Radford et al., 2019) and
+ﬁne-tuned on a seed dataset of HS/CN pairs. The
+author produces novel HS/CN candidates while
+the reviewer(s) ﬁlter and eventually post-edit them.
+We iterate this data collection several times, at each
+loop reviewed examples are added to training data
+and the author is ﬁne-tuned from scratch again on
+all available data. In the following sections we
+describe the main elements used in our procedures.
+Figure 1: The author-reviewer in the loop conﬁgura-
+tion. The author module produces HS/CN candidates
+and the reviewer(s) validates and eventually post-edits
+them. At each loop new examples are added to training
+data and the author is ﬁne-tuned from scratch.
+3.1 Seed dataset
+To start the process, we built a seed dataset of
+880 HS/CN pairs by nichesourcing its collection to
+20 experts from two different NGOs. We named
+this dataset V1. The methodology for collecting
+V1closely replicates the one presented by Chung
+et al. (2019). In particular we ﬁrst created a list of
+prototypical hate texts – with the help of an NGO
+expert – for the following hate targets: DISABLED ,
+JEWS ,OVERWEIGHT ,LGBT+ ,MUSLIM ,WOMEN ,
+PEOPLE OF COLOR ,ROMANI ,MIGRANTS . We
+then prepared two online data collection forms: in
+the ﬁrst, NGO operators were asked to respond to
+examples selected from the prototypical hate text
+list, in the second they were asked to write their
+own HS/CN pairs. This data collection session
+lasted roughly one month.
+3.2 Sessions
+Our experiments were run in two separate and
+subsequent sessions, meant to explore different
+aspects of the HITL approach.
+In the ﬁrst session , after using V1for the ini-
+tial ﬁne-tuning of GPT-2, we iterated the data
+collection 4 times, keeping the author-reviewer
+conﬁguration as close as possible to the orig-
+inal one presented by Tekiro ˘glu et al. (2020).
+Loops are numbered sequentially as V2:::Vn.
+At each loop, we acquired 500 examples of
+accepted and eventually post-edited HS/CN
+pairs2. To obtain a new set of 500 pairs ( Vi) we
+ﬁne-tuned GPT-2 every time from scratch using
+2The only exception is V2that accounts for 620 pairs to
+have a round number of examples by reaching 1500.V1:::Vi 1as training data and administered the
+generated samples to reviewers until the target
+number was reached. In total we iterated the pro-
+cedure 4 times reaching V5for a total of 3000 pairs.
+In the second session , we tested several alternative
+author conﬁgurations to ameliorate some unwanted
+behaviors/trends that emerged during the ﬁrst ses-
+sion. We ran 4 additional data collection loops, this
+time in parallel (i.e. all starting from V5dataset)
+instead of an iteration. For each loop, represented
+asV6;fconfig nameg, we collected 500 HS/CN pairs
+reaching a total of 5000 examples.
+3.3 Author Models
+In our experiments all models are variants of the
+author (GPT-2), obtained by changing the way
+it is ﬁne-tuned or conditioned. For consistency,
+each model is trained using the same hyperparam-
+eter conﬁgurations. In particular, we used GPT-
+2 medium model, ﬁne-tuned for 3 epochs with
+a batch size of 1024 tokens and a learning rate
+of 2e-5. Each pair has been represented as <
+jstartofhs j>HS< jendofhs j> < jstartofcn j>
+CN< jendofcn j>for the training. At the gen-
+eration time, Nucleus Sampling (Holtzman et al.,
+2019) has been utilized with a p value of 0.9.
+For the standard conﬁgurations we use only <
+jstartofhs j>for conditioning. Given an HS tag,
+the models produce a chunk of text, which is a
+list of HS/CN pairs. These pairs are then cleaned
+from the special tokens and administered to the
+reviewers for evaluation and possible post-editing.
+3.4 Reviewers
+We recruited 3 annotators, from a pool of internship
+students, as reviewers over a period of 18 weeks
+to ﬁlter and post-edit the generated pairs after an
+extensive training procedure.
+Training. Annotators underwent a training for 2
+weeks, so that they became “experts” on HS/CN
+post-editing. The training included: (i) reading and
+discussing NGO guidelines and public documenta-
+tion describing the activity of CN writing for hate
+countering, (ii) reading all V1pairs to better com-
+prehend the attributes of counter narratives, (iii)
+reading a sample of 100 HS/CN pairs that have
+been post-edited by an expert to see concrete ex-
+amples of post-editing activity, (iv) performing a
+practice session of CN post-editing and discussing
+it with an expert NGO operator.
+Instructions. We adapted the reviewing instruc-
+tions from Tekiro ˘glu et al. (2020). In particular, for
+each pair, we asked the operators: (a) to approve it
+without any modiﬁcations if it was a valid pair, (b)
+if the pair was not perfect, but easily amendable, to
+modify it, (c) if the CN is completely irrelevant, or
+does not follow NGO’s guidelines, to discard the
+pair regardless of HS quality, (d) whenever there
+are facts or statistics in the CN, check veracity of
+the information to avoid possible LM hallucination
+effects. We further instructed the annotators to pro-
+vide a hate target label for each accepted pair. The
+labels were useful both for analysis and for the sub-
+sequent label-based generation strategies present in
+V6. In Table 7 we give an example of GPT-2 output
+and its post-edited version.
+HS: Transgenders should rape our children
+CN: This is not true. Maybe they are worried
+because of the rise in hate crimes, incidents of
+which are down to 28 percent, since 2014.
+HSpe:Transgenders want to rape our children.
+CNpe:This is not true. Maybe you should be
+worried about the rise in hate crimes against
+queers, incidents of which are almost doubled
+since 2014.
+TARGET: LGBT+
+Table 1: An HS/CN example generated by GPT-2 and
+the post-edited version with hate target annotation.
+Mitigation procedure. We applied an adapted
+version of the guidelines by Vidgen et al. (2019)
+to safeguard the annotators’ well-being against the
+risk of harmful consequences of working with abu-
+sive content (present in the HSs and possibly in
+generated, not well-formed CNs). To this end we
+ﬁrst made sure that annotators understood the pro-
+social aspects of the research and explained them
+the purpose of their annotation activity in details.
+Then we instructed the annotators to work no more
+than 2/3 hours per day and take regular breaks, by
+adjusting their workload as needed. Finally, we
+had meetings and feedback from the annotators on
+a weekly basis to let possible problems or distress
+emerge. This procedure was repeated throughout
+the whole data collection campaign.
+4 Metrics
+To understand the ‘diachronic’ behavior of our
+HITL methodology across iterations, the followingmetrics have been computed at the end of each loop
+over the newly obtained pairs.
+Imbalance degree measures the difference be-
+tween a perfectly-balanced distribution of the
+hate target categories and the actual unbalanced
+datasets; we use Imbalance Degree (ID) since it
+is speciﬁcally devoted to the multi-class scenario
+(Ortigosa-Hern ´andez et al., 2017). Datasets that
+are balanced over multiple hate targets could al-
+low building more representative CN generation
+models.
+Acceptance Rate is the percentage of pairs ac-
+cepted by the reviewers (either untouched or post-
+edited) over the total number they scrutinised. It
+represents an overall estimate of the ability of the
+framework to produce reasonable-quality material.
+HTER is originally a measure of post-editing
+effort at sentence level translations (Specia and
+Farzindar, 2010). We adopted it to the measure
+reviewers’ effort in terms of the average number
+of edits over the accepted pairs. An upper-bound
+threshold value of 0.4 is used to account for easily
+post-editable pairs (Turchi et al., 2013).
+Novelty measures how different two collections
+of texts are from each other, and it is grounded on
+Jaccard similarity. We utilized it to compute the
+originality present in Viwith respect to the training
+data collected in previous loops (Dziri et al., 2019;
+Wang and Wan, 2018).
+Repetition Rate measures the intra-corpora
+quality in terms of language diversity by consider-
+ing the rate of non-singleton ngram types it con-
+tains (Cettolo et al., 2014; Bertoldi et al., 2013).
+We use it to measure the ability of the framework
+to provide diverse and varied examples. Repetition
+Rate (RR) has the advantage of being independent
+from corpus size, so it can be used to directly com-
+pare different versions of our dataset.
+Vocabulary Expansion is a measure we intro-
+duce to serve two main objectives: (i) quantifying
+the contribution of the author and the reviewers, by
+focusing on new tokens appeared at each loop (e.g.
+the term “ peace ” was introduced for the ﬁrst time
+by annotators in V2), (ii) quantifying the presence
+of cross-fertilization, i.e. tokens that appear for the
+ﬁrst time in version Vnfor a particular target, but
+they were present in a version antecedent to Vnfor
+the other targets (e.g. the term “ peace ” for the tar-
+getJEWS appears at V4but it was already present
+for the target MUSLIM inV2). The algorithm for
+computing V ocabulary Expansion is described in
+Appendix A.1.
+5 Session One
+In session one, all the versions of the dataset
+V2:::V5are generated using GPT-2 Vi, where the
+ﬁne-tuning is performed on all previous versions
+of the dataset V1:::Vi 1as explained earlier.
+To produce HS/CN pairs, the author condition-
+ing is performed using only <|startofhs|> tag
+and collecting all the generated material provided
+that each pair is encapsulated with the proper tags.
+For the analysis, we computed the metrics de-
+scribed in Section 4 on the HS/CN pairs obtained in
+each loop using micro-averaging (in Appendix A.4,
+Table 5 we report all results in detail). To isolate
+the possible effect of target-class imbalance, macro
+averages were also calculated; similarly, to account
+for element-wise differences we calculated micro
+averages for HS and CN sets separately3.
+Discussion. Considering our objective of collect-
+ing quality material in an efﬁcient way, we ﬁrst
+focus on the ratio of accepted pairs and the post-
+editing effort in each loop. As shown in Figure 2,
+the percentage of accepted pairs tends to increase
+across the loops, for both the pairs that are post-
+edited (“modiﬁed”) from 35.8 in V2to 50.1 in V5
+and the ones accepted without post-editing (“un-
+touched”) from 1.5 in V2to 10.9 in V5.
+Figure 2: On the left: Percentage of pairs accepted (i)
+modiﬁed and (ii) untouched. On the right: ID calcu-
+lated over the 7 main target classes.
+At the same time, the average post-editing effort
+of the reviewers tend to decrease across the ver-
+sions, as depicted in Figure 3. To ensure that the
+decrease in HTER is not due to the increasing ratio
+of untouched pairs to the total number of accepted
+3These results are in line with the ones showed in the
+paper, and do not change the discussion. They are reported in
+Appendix A.4, Table 6
+Figure 3: On the left: evolution of the post-editing ef-
+fort in terms of HTER across loops both for all pairs
+and modiﬁed only. On the right: Micro average of Rep-
+etition Rate (RR) across loops for the HS+CN pairs.
+pairs, we computed the HTER for the modiﬁed
+pairs alone. Consistently with the overall trend,
+HTER for modiﬁed pairs also declines, indicating
+that the data collection loops succeeded not only in
+reducing the reviewer effort, but also in improving
+the quality of the generated material to be post-
+edited. Notably, after V3the HTER falls below the
+0.4 acceptability threshold as deﬁned in (Turchi
+et al., 2013) for the AMT scenario (Figure 3). In
+view of this analysis, we can conclude that the efﬁ-
+ciency of data collection is increased by HITL as
+compared to a static approach that does not retrain
+the author module (that can be represented by V 2).
+Regarding the evaluations with the quality met-
+ric Repetition Rate (Figure 3), it increases from
+V2on signifying a decrease in the lexical diversity
+of the generated data. Moreover, we observed a
+consistent trend for the scores of the second quality
+metric, i.e. Novelty (Figure 4). Similar to the di-
+versity, novelty of the collected data also decreases
+across the versions, regardless of the dataset against
+which the novelty is computed. Particularly, the
+change in the cumulative novelty represents how
+the vocabulary becomes less and less enrichable
+as the loop number increases, indicating a possi-
+ble saturation point where novel material is highly
+difﬁcult to obtain. Finally, the distribution of hate
+targets shows a worsening also in terms of ID that
+increases from a score of 2.2 in V1to 4.5 in V5(see
+Figure 2) with some targets becoming predominant
+while others slowly disappearing. More details
+on each target distribution per loop are given in
+Appendix A.2, Figure 11.
+As for pair length, throughout the loops we
+found that “untouched” pairs are usually shorter
+(30.7 tokens on average) than the other accepted
+pairs (37.3 tokens on average before post-editing).
+During the discussion sessions, annotators reported
+that the “untouched” pairs are not only shorter but
+also somewhat stereotypical, with a small novelty
+added to the overall dataset (e.g. “ you cannot say
+this about an entire religion ”, “It’s unfair to say
+this about an entire religion ”).
+Figure 4: Novelty: (i) Viwith respect to V1seed dataset,
+(ii)Viwith respect to the previous version (iii) Cumu-
+lative novelty, i.e. Vivs.V1:::Vi 1.
+6 Session Two
+Given the problems emerged during the loops of
+the ﬁrst session (i.e. higher efﬁciency but lower
+quality at each loop), we organized an additional
+session to test several parallel methodologies
+to ameliorate them. The description of the V6
+conﬁgurations are as follows:
+V6;SBF : The model GPT-2 V5is conditioned with
+novel offensive speeches extracted from SBIC cor-
+pus (Sap et al., 2020). We chose this resource
+since: (i) it contains several thousand of social me-
+dia posts containing biases and stereotypes span-
+ning the same target categories with our study, (ii)
+for each post it provides an ‘implied statement’
+that closely resembles a ‘prototypical hate speech’
+on which we trained our system. We sampled the
+same number of ‘implied statements’ for each tar-
+get that maps to our labels4among the ones an-
+notated with ‘the intent behind the statement was
+to offend’ and/or ’the post could be offensive to
+someone’. We provide the statements as conditions
+by appending them to <jstartofhs j>.
+V6;LAB : The model is conditioned specifying
+on which hate target it should focus on. In this
+conﬁguration, we trained a variant of GPT-2 V5
+that takes into account the target label, and mod-
+iﬁed the original representation of our training
+data accordingly. In particular we accommodate
+hate target information within the starting token:
+<jstartofhs :target label j>.
+4In Table 4 in Appendix we provide the mapping we used.V6;ARG : We ﬁne-tuned GPT-2 on a dataset of
+argumentative pairs collected from Kialo5, an on-
+line debate platform for constructive and rational
+discussions among peers that has been exploited
+recently by the NLP community (Durmus et al.,
+2019a,b; Scialom et al., 2020). Each discussion in
+Kialo is represented as a tree of arguments in which
+a child node is connected to its parent via a “pro”
+or “con” relation. Extracting all the claims con-
+nected by a “con” relation, we obtained a dataset of
+128178 argument pairs covering a broader domain
+as compared to HS/CN pairs. We then ﬁne-tuned
+GPT-2 for 1 epoch over the argumentation dataset
+with the standard hyperparameters. Preliminary
+experiments showed that the best strategy was to
+represent these pairs with the same format as ours
+to facilitate transfer of task characteristics and argu-
+mentative knowledge. Then this model was again
+ﬁne-tuned using the standard V1:::V5data. At infer-
+ence time, conditioning has been performed using
+lists of unique HSs from the V1:::V5data.
+V6;MIX : The last model is obtained by blending
+the three previous versions together, i.e. ﬁrst ﬁne-
+tuning on Kialo dataset, second ﬁne-tuning using
+target label notation on V1:::V5data, conditioning
+using SBIC offensive speeches.
+Bearing in mind the problems emerged during
+Session One, our ﬁrst goal in Session Two was
+to balance the dataset with respect to the hate
+targets (i.e. reducing ID score). To this end
+the conditioning always takes into account the
+hate target label (with respect to 7 targets: JEWS ,
+LGBT+ ,MUSLIM ,WOMEN ,DISABLED ,PEOPLE
+OF COLOR ,MIGRANTS ) either explicitly as in
+V6;LAB orV6;MIX , or implicitly as in V6;SBF and
+V6;ARG . In addition, to better balance the number
+of pairs for each target, we administered only the
+ﬁrst 5 pairs of each generated chunk to the review-
+ers.
+Discussion. All the applied methodologies allow
+for a better balancing of data in terms of hate tar-
+gets, yielding an average ID score of 2.3 for the
+V6conﬁgurations in comparison to the ID score of
+4.5 for V56. As shown in Figure 5 - left, all V6con-
+ﬁgurations have a slightly higher acceptance rate
+thanV57. Thus introducing novel material or data
+5www.kialo.com
+6In Appendix, Table 3, we provide the target distribution
+over the ﬁnal dataset.
+7In order to estimate the trend of each metric after V5, we
+calculated also V6;PREDICTED , shown as a dashed line in
+representation in ﬁne-tuning stages has no strong
+perturbation effect. Second, and more interestingly,
+we observe a signiﬁcant variation in the ratio of
+untouched and modiﬁed pairs to all the reviewed
+samples: for all V6approaches while there is a
+strong decrease in ratio of untouched pairs (Fig-
+ure 5, right), there is a signiﬁcant increase in those
+modiﬁed (see Figure 5, left). In other words these
+models were able to produce a higher amount of
+suitable, albeit non perfect, pairs. In particular,
+comparing V6conﬁgurations we can observe that
+for the untouched pairs the highest acceptance rate
+is achieved via V6;ARG with 6.37% accepted pairs,
+whereas for the modiﬁed pairs V6;MIX yields the
+highest percentage, with 66.15% of the pairs ac-
+cepted.
+Concerning the reviewer’s effort, we see that the
+overall HTER increases for the all V6approaches
+(Figure 6, left). Considering that we had a lower
+number of untouched and a higher number of mod-
+iﬁed pairs this was expected, and if we turn to the
+HTER of modiﬁed pairs alone we see that there
+is a smaller difference between V5andV6HTER.
+Even more interestingly, the HTER scores of all
+V6conﬁgurations, even if higher than V5, are still
+below the acceptability threshold value of 0.4 de-
+ﬁned earlier. Going into details, amongst the V6
+conﬁgurations, HTER reaches its lowest value in
+V6;ARG , for both the modiﬁed and untouched pairs:
+since it was conditioned using gold HS material,
+this result is expected. As opposed to the other
+models, V6;LAB is conditioned only with a label
+representation and not with actual HSs. This af-
+fected negatively the post-editing effort, as we can
+notice a higher HTER for this conﬁguration. More-
+over, V6;LAB has a smaller amount of untouched
+pairs, so we expected HTER to spike up.
+Figure 5: Acceptance rate for V6conﬁgurations: modi-
+ﬁed pairs on the left, untouched pairs on the right.
+With regard to data quality (see Figure 7), we see
+that all V6strategies succeed in increasing the nov-
+the plots, using a linear regression model over V1:::V5.
+Figure 6: V6conﬁgurations HTER, for all pairs on the
+left, modiﬁed pairs on the right.
+elty both with respect to V5and expected V6(the
+dashed line) , except for V6;ARG , possibly due to its
+conditioning with HSs from V1...V5. Therefore,
+we also computed the novelty for CN set alone to
+discard the effect of HS on the metric. In this set-
+ting, all V6conﬁgurations reach a novelty between
+0.741 and 0.745, as compared to a CN novelty in V5
+of 0.737 (as in Appendix A.3). The effect of gold
+HS conditioning in V6;ARG can also be spotted in
+the lowest HTER results in Figure 6. The highest
+increase in novelty is recorded for V6;MIX , reach-
+ing a score of 0.76; also novelty scores computed
+with respect to V5andV1conﬁrm the result.
+AllV6conﬁgurations succeeded in reaching an
+RR lower than both V5and expected V6(the dashed
+line). It is interesting that V6;LAB has the highest
+RR among the V6conﬁgurations, possibly because
+it was not built using any external knowledge,
+but only with a different label representation. On
+the other hand, V6;ARG conﬁguration, for which
+an initial argumentation ﬁne-tuning has been
+performed, has the lowest RR (5.474).
+Figure 7: V6conﬁgurations. Cumulative Novelty (on
+the left), Repetition Rate (on the right).
+From this analysis we can conclude that V6con-
+ﬁgurations are better at producing sub-optimal ma-
+terial but worse at producing perfect material. Still
+the general quality of the pairs (in terms of nov-
+elty and RR) in Session Two is much higher than
+before, exhibiting the desired behavior for which
+these strategies were introduced.
+Figure 8: V ocabulary expansion throughout loops (per-
+centage of words) .
+7 Vocabulary analysis.
+We report vocabulary expansion ﬁndings in Fig-
+ure 8. For each loop V2:::V5the average percent-
+age of new words injected into the dataset by the
+author model (GPT-2) is higher than the average
+percentage of new words inserted by the three re-
+viewers during post-editing. Both trend-lines, even
+if slightly decreasing are not converging, implying
+that ﬁne-tuned GPT-2 is not reaching a “saturation
+point” and is continuously adding new material.
+This trend is in line with the decrease in novelty.
+On the other hand, instructions asked for a minimal
+post-edit, so the reviewers have less opportunity to
+inject new material than the author and the decrease
+is consistent with the decreasing HTER.
+As for the percentage of words generated by
+the author model pertaining to the same target, we
+see an increasing trend throughout the generations
+due to the cumulative nature of the metric. Still,
+the presence of words ﬁrst observed in other tar-
+gets throughout the loops, shows that the cross-
+fertilization phenomenon generated by GPT-2 per-
+sists. This desired feature shows the ability of GPT-
+2 to learn the ‘domain’ vocabulary of other targets
+and to use it effectively for the target under analysis,
+in a way that is approved by the humans - review-
+ers8. Finally, we can remark that V6versions are
+able to increase both the injection of novel words
+from GPT-2 and also its cross-fertilization ability.
+8 Qualitative Analysis
+During our exploratory experiments and the
+discussion sessions with the annotators, several
+8Even though we opted for a distinction in terms of source
+(same target, other target) for the ‘not-new’ words generated
+by the author module, we chose not to have the same dis-
+tinction for the reviewers’ ‘not-new’ words, since we cannot
+assess if the reviewer was (or not) aware of the presence of a
+word in previous versions of the dataset.HS:“We should kill all the jews. ”
+CN: “There are many alternatives to removing
+jews, such as converting them to another religion
+(e.g. Buddhism). ”
+HS: “All homosexuals are trying to undermine
+the family by trying to impose their sexual pref-
+erences. ”
+CN: “Thus far, people of various sexual orien-
+tations have attempted suicide twice as often as
+heterosexuals. Among youth, those that seriously
+contemplate suicide are at almost three times the
+rate of heterosexual. LGB youth are almost ﬁve
+times as likely to have attempted suicide com-
+pared to heterosexual youth. Tell me honestly:
+who do you think is imposing sexual orientation
+to whom?”
+HS: “I don’t like muggleborns, they are likely to
+do violence. ”
+CN: “We do not say that muggleborns are less
+likely to commit crimes. We are saying that they
+are almost certainly not the case. ”
+Table 2: HS/CN examples generated by GPT-2.
+interesting subjects have emerged, which can
+initiate future work.
+Argumentation and Counter Narratives. In or-
+der to obtain even more novelty in produced pairs,
+V6;ARG model could be used without ﬁne-tuning
+on the HS/CN dataset under the assumption that a
+counter argument is the same as a counter narra-
+tive. Still, the ability to argument on a variety of
+topics is not enough to provide a meaningful CN
+when prompted with an HS. A CN also presuppose
+values, so - for example - a logically valid argu-
+ment is not necessarily an acceptable CN, as the
+ﬁrst example in Table 2 shows (produced by GPT-2
+ﬁne-tuned only on Kialo arguments).
+New arguments or new paraphrases. One
+question that emerged is whether GPT-2 is able to
+produce novel arguments or it is just a very sophis-
+ticated paraphrasing tool. During the discussion
+sessions with annotators and also by manual anal-
+ysis, we could ﬁnd CNs that contained genuinely
+novel arguments, which were not present in the
+training data but produced by GPT-2. In the second
+example in Table 2, the novel argument is about
+capsizing the “imposing the homosexual agenda”
+argument by providing data on “suicidal attempts
+among homosexual youth”.
+Novel hate targets and general knowledge.
+GPT-2 proved to be able to generate HS/CN pairs
+also for unseen targets, including intersectional
+ones (e.g. “black women”). Still the lack of a
+“commonsense knowledge” can produce funny re-
+sults that are beyond the scope of hallucination
+(Zellers et al., 2019; Solaiman et al., 2019), such
+as the third example in Table 2, where GPT-2 ad-
+dresses muggleborns (target of hate in Harry Potter
+books).
+9 Conclusions
+In this paper we presented a novel HITL methodol-
+ogy for data collection based on an author-reviewer
+framework. This methodology puts together an
+LM and a set of human reviewers, where the LM is
+reﬁned iteratively, using data from previous loops
+that have been validated by experts. Experiments
+show that as loops are iterated, efﬁciency in data
+collection increases (acceptance rate and HTER
+metrics) while the dataset quality decreases in
+terms of novelty and diversity metrics. For this
+reason we experimented with additional dynamic
+loop adaptation that are able to increase the overall
+quality of the dataset without hindering the efﬁ-
+ciency signiﬁcantly.
+Acknowledgments
+This work was partly supported by the HATEME-
+TER project within the EU Rights, Equality and
+Citizenship Programme 2014-2020. We are deeply
+grateful to Stop Hate UK and its volunteers for
+their help and effort in preparing the seed dataset
+(version V1) necessary for this work.
+References
+Susan Benesch. 2014. Countering dangerous speech:
+New ideas for genocide prevention. Washington,
+DC: United States Holocaust Memorial Museum .
+Nicola Bertoldi, Mauro Cettolo, and Marcello Federico.
+2013. Cache-based online adaptation for machine
+translation enhanced computer assisted translation.
+InMT-Summit , pages 35–42.
+Mauro Cettolo, Nicola Bertoldi, and Marcello Federico.
+2014. The repetition rate of text as a predictor of the
+effectiveness of machine translation adaptation. In
+Proceedings of the 11th Biennial Conference of the
+Association for Machine Translation in the Americas
+(AMTA 2014) , pages 166–179.
+Yi-Ling Chung, Elizaveta Kuzmenko, Serra Sinem
+Tekiro ˘glu, and Marco Guerini. 2019. CONAN -COunter NArratives through nichesourcing: a mul-
+tilingual dataset of responses to ﬁght online hate
+speech. In Proceedings of the 57th Annual Meet-
+ing of the Association for Computational Linguis-
+tics, pages 2819–2829, Florence, Italy. Association
+for Computational Linguistics.
+Emily Dinan, Samuel Humeau, Bharath Chintagunta,
+and Jason Weston. 2019. Build it break it ﬁx it for
+dialogue safety: Robustness from adversarial human
+attack. In Proceedings of the 2019 Conference on
+Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natu-
+ral Language Processing (EMNLP-IJCNLP) , pages
+4529–4538.
+Esin Durmus, Faisal Ladhak, and Claire Cardie. 2019a.
+Determining relative argument speciﬁcity and stance
+for complex argumentative structures. In Proceed-
+ings of the 57th Annual Meeting of the Association
+for Computational Linguistics , pages 4630–4641.
+Esin Durmus, Faisal Ladhak, and Claire Cardie. 2019b.
+The role of pragmatic and discourse context in de-
+termining argument impact. In Proceedings of the
+2019 Conference on Empirical Methods in Natu-
+ral Language Processing and the 9th International
+Joint Conference on Natural Language Processing
+(EMNLP-IJCNLP) , pages 5672–5682.
+Nouha Dziri, Ehsan Kamalloo, Kory Mathewson, and
+Osmar R Zaiane. 2019. Augmenting neural re-
+sponse generation with context-aware topical atten-
+tion. In Proceedings of the First Workshop on NLP
+for Conversational AI , pages 18–31.
+Ona de Gibert, Naiara Perez, Aitor Garcıa-Pablos, and
+Montse Cuadros. 2018. Hate speech dataset from a
+white supremacy forum. EMNLP 2018 , page 11.
+Ari Holtzman, Jan Buys, Maxwell Forbes, and Yejin
+Choi. 2019. The curious case of neural text degener-
+ation. CoRR , abs/1904.09751.
+Svetlana Kiritchenko, Isar Nejadgholi, and Kathleen C.
+Fraser. 2020. Confronting abusive language online:
+A survey from the ethical and human rights perspec-
+tive. CoRR , abs/2012.12305.
+Ritesh Kumar, Atul Kr Ojha, Shervin Malmasi, and
+Marcos Zampieri. 2018. Benchmarking aggression
+identiﬁcation in social media. In Proceedings of the
+First Workshop on Trolling, Aggression and Cyber-
+bullying (TRAC-2018) , pages 1–11.
+Carolina Alves de Lima Salge and Nicholas Berente.
+2017. Is that social bot behaving unethically? Com-
+munications of the ACM , 60(9):29–31.
+Binny Mathew, Navish Kumar, Ravina, Pawan Goyal,
+and Animesh Mukherjee. 2018. Analyzing the hate
+and counter speech accounts on twitter. CoRR ,
+abs/1812.02712.
+Binny Mathew, Punyajoy Saha, Hardik Tharad, Sub-
+ham Rajgaria, Prajwal Singhania, Suman Kalyan
+Maity, Pawan Goyal, and Animesh Mukherjee. 2019.
+Thou shalt not hate: Countering online hate speech.
+InProceedings of the International AAAI Confer-
+ence on Web and Social Media , volume 13, pages
+369–380.
+Binny Mathew, Punyajoy Saha, Seid Muhie Yi-
+mam, Chris Biemann, Pawan Goyal, and Ani-
+mesh Mukherjee. 2020. HateXplain: A Bench-
+mark Dataset for Explainable Hate Speech Detec-
+tion. arXiv:2012.10289 [cs] . ArXiv: 2012.10289.
+Jonathan Ortigosa-Hern ´andez, I ˜naki Inza, and Jose A
+Lozano. 2017. Measuring the class-imbalance ex-
+tent of multi-class problems. Pattern Recognition
+Letters , 98:32–38.
+Fabio Poletto, Valerio Basile, Manuela Sanguinetti,
+Cristina Bosco, and Viviana Patti. 2020. Resources
+and benchmark corpora for hate speech detection: a
+systematic review. Language Resources and Evalu-
+ation .
+Jing Qian, Anna Bethke, Yinyin Liu, Elizabeth Beld-
+ing, and William Yang Wang. 2019. A bench-
+mark dataset for learning to intervene in online hate
+speech. In Proceedings of the 2019 Conference on
+Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natu-
+ral Language Processing (EMNLP-IJCNLP) , pages
+4757–4766, Hong Kong, China. Association for
+Computational Linguistics.
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan,
+Dario Amodei, and Ilya Sutskever. 2019. Language
+models are unsupervised multitask learners. OpenAI
+Blog , 1(8).
+Bj¨orn Ross, Michael Rist, Guillermo Carbonell, Ben-
+jamin Cabrera, Nils Kurowsky, and Michael Wo-
+jatzki. 2017. Measuring the reliability of hate
+speech annotations: The case of the european
+refugee crisis. CoRR , abs/1701.08118.
+Maarten Sap, Saadia Gabriel, Lianhui Qin, Dan Ju-
+rafsky, Noah A. Smith, and Yejin Choi. 2020. So-
+cial bias frames: Reasoning about social and power
+implications of language. In Proceedings of the
+58th Annual Meeting of the Association for Compu-
+tational Linguistics , pages 5477–5490, Online. As-
+sociation for Computational Linguistics.
+Carla Schieb and Mike Preuss. 2016. Governing hate
+speech by means of counterspeech on facebook. In
+66th ica annual conference, at fukuoka, japan , pages
+1–23.
+Thomas Scialom, Serra Sinem Tekiro ˘glu, Jacopo Sta-
+iano, and Marco Guerini. 2020. Toward stance-
+based personas for opinionated dialogues. In Pro-
+ceedings of the 2020 Conference on Empirical Meth-
+ods in Natural Language Processing: Findings ,
+pages 2625–2635.Tanya Silverman, Christopher J Stewart, Jonathan
+Birdwell, and Zahed Amanullah. 2016. The im-
+pact of counter-narratives. Institute for Strate-
+gic Dialogue, London. https://www. strategicdi-
+alogue. org/wp-content/uploads/2016/08/Impact-of-
+Counter-Narratives ONLINE. pdf–73 .
+Irene Solaiman, Miles Brundage, Jack Clark, Amanda
+Askell, Ariel Herbert-V oss, Jeff Wu, Alec Radford,
+and Jasmine Wang. 2019. Release strategies and
+the social impacts of language models. CoRR ,
+abs/1908.09203.
+Lucia Specia and Atefeh Farzindar. 2010. Estimating
+machine translation post-editing effort with hter. In
+Proceedings of the Second Joint EM+/CNGL Work-
+shop Bringing MT to the User: Research on Integrat-
+ing MT in the Translation Industry (JEC 10) , pages
+33–41.
+Rachele Sprugnoli, Stefano Menini, Sara Tonelli, Fil-
+ippo Oncini, and Enrico Piras. 2018. Creating a
+whatsapp dataset to study pre-teen cyberbullying. In
+Proceedings of the 2nd Workshop on Abusive Lan-
+guage Online (ALW2) , pages 51–59.
+Scott R Stroud and William Cox. 2018. The varieties
+of feminist counterspeech in the misogynistic on-
+line world. In Mediating Misogyny , pages 293–310.
+Springer.
+Serra Sinem Tekiro ˘glu, Yi-Ling Chung, and Marco
+Guerini. 2020. Generating counter narratives
+against online hate speech: Data and strategies. In
+Proceedings of the 58th Annual Meeting of the Asso-
+ciation for Computational Linguistics , pages 1177–
+1190, Online. Association for Computational Lin-
+guistics.
+Marco Turchi, Matteo Negri, and Marcello Federico.
+2013. Coping with the subjectivity of human judge-
+ments in mt quality estimation. In Proceedings of
+the Eighth Workshop on Statistical Machine Trans-
+lation , pages 240–251.
+Bertie Vidgen and Leon Derczynski. 2020. Direc-
+tions in abusive language training data, a system-
+atic review: Garbage in, garbage out. PLOS ONE ,
+15(12):e0243300.
+Bertie Vidgen, Alex Harris, Dong Nguyen, Rebekah
+Tromble, Scott Hale, and Helen Margetts. 2019.
+Challenges and frontiers in abusive content detec-
+tion. In Proceedings of the Third Workshop on Abu-
+sive Language Online , pages 80–93, Florence, Italy.
+Association for Computational Linguistics.
+Bertie Vidgen, Tristan Thrush, Zeerak Waseem, and
+Douwe Kiela. 2020. Learning from the worst: Dy-
+namically generated datasets to improve online hate
+detection. CoRR , abs/2012.15761.
+Eric Wallace, Pedro Rodriguez, Shi Feng, Ikuya Ya-
+mada, and Jordan Boyd-Graber. 2019. Trick me
+if you can: Human-in-the-loop generation of adver-
+sarial question answering examples. Transactions
+of the Association for Computational Linguistics ,
+7(0):387–401.
+Ke Wang and Xiaojun Wan. 2018. Sentigan: Gener-
+ating sentimental texts via mixture adversarial net-
+works. In IJCAI , pages 4446–4452.
+Zeerak Waseem. 2016. Are you a racist or am i seeing
+things? annotator inﬂuence on hate speech detection
+on twitter. In Proceedings of the ﬁrst workshop on
+NLP and computational social science , pages 138–
+142.
+Zeerak Waseem and Dirk Hovy. 2016. Hateful sym-
+bols or hateful people? predictive features for hate
+speech detection on twitter. In Proceedings of the
+NAACL student research workshop , pages 88–93.
+Matthew Williams. 2019. Hatred behind the screens:
+A report on the rise of online hate speech.
+Rowan Zellers, Ari Holtzman, Hannah Rashkin,
+Yonatan Bisk, Ali Farhadi, Franziska Roesner, and
+Yejin Choi. 2019. Defending against neural fake
+news. In Advances in Neural Information Process-
+ing Systems , pages 9051–9062.
+A Appendix
+A.1 Vocabulary expansion algorithm
+The pseudo-code for the vocabulary expansion met-
+ric described in Section 4 can be found in Algo-
+rithm 1. For each version and target, we deﬁne two
+following sets of words:
+V OCAB pe:words from the post-edited pairs
+V OCAB gen:words from the generated pairs
+A word is considered novel when it is not present in
+the collective vocabulary of the previous versions:
+V OCAB (V1;:::;i 1).
+Algorithm 1: V ocabulary expansion for
+each target
+foreach version Vido
+foreach word w inVido
+ifwinV OCAB peandwinV OCAB gen
+then
+author w←w
+ifauthor winV OCAB (V1;:::;i 1)then
+ifauthor winsame target V OCAB
+then
+same target author w←author w
+else
+other target author w←author w
+else
+novel author w←author w
+else
+reviewer w←w
+ifreviewer winV OCAB (V1;:::;i 1)
+then
+not novel reviewer w←reviewer w
+else
+novel reviewer w←reviewer w
+Each word is assigned to one of the following
+sets: Author-novel, Author-same-target, Author-
+other-target, Reviewer-novel, Reviewer-not-novel.
+Considering the size in terms of words of each set,
+we calculate the percentages for each target and
+version, so that we are able to obtain the vocabulary
+expansion scores as macro average percentages.
+A.2 Additional material for Session One
+In this section, we present the most interesting re-
+sults that we have obtained by analysing only the
+HS or the CN sets.
+Figure 9: Session One. HTER scores on the left. RR
+on the rigth.
+While HTER calculated on CN alone shows a
+clear decreasing trend (Figure 9 on the left), the
+results for HS alone are less consistent yielding
+higher scores for V3andV4. This can be mostly
+explained with the different approaches of post-
+editing the HSs by the annotators, which include
+the possibility to rewrite it entirely when needed.
+On the other hand, the decreasing trend of HTER
+for HS starting from V3, resulting in a lower score
+inV5than the one calculated on CN only, could
+be due to the increasing frequency of prototypical
+HSs. This implication is conﬁrmed by the higher
+RR scores for HSs as compared to CNs, which
+grow faster for the former than the latter (Figure 9
+on the right). Moreover, the increasing number of
+prototypical HSs contributes to the novelty scores
+for HSs only being lower than those of CNs and
+decreasing more rapidly (Figure 10).
+Figure 10: Session One. Novelty scores (HS on the left,
+CN on the right).
+In Figure 11 the target distribution at each loop
+of Session One is shown, in Table 3 the frequencies
+of targets in the ﬁnal dataset are displayed. The
+MUSLIMS target covers a signiﬁcant percentage of
+the generations in every loop and consists of more
+than the half of the pairs V5. In fact it is expected
+to cause even more imbalanced productions in the
+next loops. JEWS ,MIGRANTS andDISABLED
+targets diminish over the loops, while the other
+targets can be considered as stable.
+Figure 11: The targets distributions for the loops of Ses-
+sion One.
+Target Coverage Pairs
+DISABLED 4.40 220
+JEWS 11.87 594
+LGBT+ 12.33 617
+MIGRANTS 19.13 957
+MUSLIMS 26.68 1335
+POC 7.04 352
+WOMEN 13.23 662
+OTHER 5.32 266
+Total 100 5003
+Table 3: Target distribution over the ﬁnal dataset.
+A.3 Additional material for Session Two
+Concerning Session Two, the results for CNs are
+in line with the conclusions drawn in the paper
+for HS/CN pairs. The same holds for HSs, the
+only exception being for the cumulative novelty
+ofV6;ARG HSs, as can be seen in Figure 13 and
+in Table 6. As explained earlier in Section 6, this
+effect is due to the use of hate speeches from the
+training set for conditioning GPT-2. This result
+also corresponds to HSs from V6;ARG having lower
+HTER (Figure 12) and a higher RR (Figure 14).
+A.4 Tables
+In Table 5, the main results calculated on the
+HS/CN pairs are displayed. In Table 6, respec-
+tively, the results calculated on HS only and CN
+only are shown.V6;SBF Labels from Sap et al. (2020)
+DISABLED mentally disabled folks, physically
+disabled folks, autistic folks, blind
+people, folks with down syndrome,
+autistic
+JEWS jewish folks, jews, holocaust, holo-
+caust victims
+LGBT+ gay men, lesbian women, trans
+women, trans men, nonbinary folks,
+gay folks, bisexual women, trans
+people
+MIGRANTS immigrants, illegal immigrants,
+refugees
+MUSLIM muslim folks, islamic folks, mus-
+lims, islamic
+POC black folks, africans, africa, people
+of color, african folks african, poc
+WOMEN women, feminists, feminist
+*OVERWEIGHT fat folks
+*ROMANI gypsies
+Table 4: Label mapping for V6;SBF . Starred items are
+considered as “other targets” in Figure 11.
+Figure 12: HTER for HS and CN, computed on all
+pairs.
+Figure 13: Cumulative novelty, i.e. Vivs.i 1S
+x=1Vxfor
+HS and CN, computed on all pairs
+.
+Figure 14: Repetiton Rate for HS and CN, computed
+on all pairs.
+versions V2 V3 V4 V5V6;SBF V6;ARG V6;LAB V6;MIX
+imbalance degree 3.222 3.214 3.319 4.485 2.143 2.095 3.098 2.057
+acceptance rate (untouched) 1.475 1.941 5.684 10.936 5.146 6.367 3.308 4.213
+acceptance rate (modiﬁed) 35.820 34.004 47.053 50.061 53.099 56.055 60.305 66.152
+discarded pairs rate 62.705 64.055 47.263 39.003 41.755 37.578 36.387 29.635
+HTER (all pairs) 0.444 0.406 0.347 0.271 0.334 0.313 0.366 0.350
+HTER (modiﬁed) 0.462 0.429 0.389 0.330 0.367 0.349 0.386 0.372
+Vivs.cumulative novelty 0.818 0.792 0.766 0.738 0.755 0.728 0.752 0.760
+Vivs.V1novelty 0.818 0.812 0.806 0.799 0.812 0.795 0.809 0.813
+Vivs.Vi 1novelty 0.818 0.800 0.777 0.756 0.777 0.775 0.770 0.781
+RR 3.753 4.999 5.876 7.962 5.491 5.474 5.993 5.585
+vocab. GPT-2: new 18.897 9.060 7.256 5.303 6.924 5.407 5.111 6.859
+vocab. GPT-2: same target 27.997 42.017 49.703 57.137 56.419 62.550 58.653 58.104
+vocab. GPT-2: other targets 27.316 24.143 21.039 16.164 19.353 14.574 16.607 17.346
+vocab. human: new 10.373 5.610 5.230 3.343 3.040 3.227 2.844 3.440
+vocab. human: not new 15.417 19.170 16.773 18.053 14.264 14.241 16.784 14.251
+Table 5: All results for HS/CN pairs.
+versions V2 V3 V4 V5V6;SBF V6;ARG V6;LAB V6;MIX
+HS metrics
+HTER (all pairs) 0.399 0.497 0.405 0.189 0.424 0.301 0.385 0.444
+RR 6.508 9.496 9.101 15.576 9.062 10.479 10.700 11.361
+Vivs.cumulative novelty 0.757 0.697 0.624 0.463 0.618 0.436 0.582 0.606
+Vivs.V1novelty 0.757 0.761 0.731 0.678 0.760 0.689 0.743 0.758
+Vivs.Vi 1novelty 0.757 0.713 0.662 0.522 0.673 0.652 0.645 0.666
+CN metrics
+HTER (all pairs) 0.527 0.383 0.351 0.312 0.329 0.342 0.382 0.341
+RR 2.443 3.692 4.236 5.690 4.428 4.125 4.521 4.428
+Vivs.cumulative novelty 0.814 0.788 0.760 0.737 0.743 0.743 0.741 0.745
+Vivs.V1novelty 0.814 0.806 0.800 0.795 0.805 0.801 0.801 0.802
+Vivs.Vi 1novelty 0.814 0.798 0.779 0.758 0.771 0.771 0.768 0.774
+Table 6: All results for HS and CN sets alone.
+HS: Every Muslim is a potential terrorist, even if they are not born here!
+CN: A person’s place of birth is important. Some people prefer to identify as non-Muslim, some as
+Muslim, and still others as Christian. I prefer to call them what they are: people.
+HSpe:Every Muslim is a potential terrorist, even if they are born here!
+CNpe:A person’s place of birth is not relevant, but neither is a person’s religion. Some people are
+Muslims. I prefer to call them what they are: people, not potential terrorists.
+TARGET: MUSLIMS
+HS: men are more smart than women
+CN: It is about time women are given a chance to prove that they are intelligent as well.
+HSpe:Men are smarter than women, who should be excluded from education.
+CNpe:This is not true: it is about time women are given a chance to prove that they are intelligent
+as well... and it is sad that they still need to prove it.
+TARGET: WOMEN
+HS: Gays are just a bunch of disgusting animals trying to ruin other animals’ lives.
+CN: Being gay is not a problem, it is about orientation.
+HSpe:Gays are just a bunch of disgusting animals trying to ruin other people’s lives.
+CNpe:Being gay is not a problem, being homophobic is.
+TARGET: LGBT+
+HS: Jews are responsible for the 9/11 attacks.
+CN: I don’t think this idea is true: since the 9/11 attacks were committed by Muslims, it doesn’t
+seem fair to blame Jews.
+HSpe:Jews are responsible for the 9/11 attacks.
+CNpe:I don’t think this idea is true: since the 9/11 attacks were committed by al Qaeda extremists it
+doesn’t seem fair to blame Jews.
+TARGET: JEWS
+Table 7: Examples of HS/CN pairs before and after post-editing with assigned target labels.

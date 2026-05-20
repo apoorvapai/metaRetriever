@@ -1,0 +1,462 @@
+Title: On the Multilingual Capabilities of Very Large-Scale English Language Models
+
+On the Multilingual Capabilities of Very Large-Scale English Language
+Models
+Jordi Armengol-Estapé, Ona de Gibert Bonet, and Maite Melero
+Text Mining Unit
+Barcelona Supercomputing Center
+{jordi.armengol,ona.degibert,maite.melero}@bsc.es
+Abstract
+Generative Pre-trained Transformers (GPTs)
+have recently been scaled to unprecedented
+sizes in the history of machine learning. These
+models, solely trained on the language mod-
+eling objective, have been shown to exhibit
+outstanding few-shot learning capabilities in a
+number of different tasks. Nevertheless, aside
+from anecdotal experiences, little is known re-
+garding their multilingual capabilities, given
+the fact that the pre-training corpus is almost
+entirely composed of English text. In this
+work, we investigate the multilingual skills of
+GPT-3, focusing on one language that barely
+appears in the pre-training corpus, Catalan,
+which makes the results especially meaning-
+ful; we assume that our results may be relevant
+for other languages as well. We ﬁnd that the
+model shows an outstanding performance, par-
+ticularly in generative tasks, with predictable
+limitations mostly in language understanding
+tasks but still with remarkable results given the
+zero-shot scenario. We investigate its poten-
+tial and limits in extractive question-answering
+and natural language generation, as well as the
+effect of scale in terms of model size.
+1 Introduction
+Improving Natural Language Understanding
+(NLU) and Generation (NLG) by pre-training au-
+toregressive language models based on the Trans-
+former (Vaswani et al., 2017) decoder architec-
+ture has been commonplace since the original GPT
+(Generative Pretrained Transformer) (Radford and
+Narasimhan, 2018) ﬁrst appeared. In the race to
+scale up these language models (Radford et al.,
+2019), the arrival of GPT-3 (Brown et al., 2020)
+has changed the rules of the game. As claimed by
+their creators, its ability to learn from a few exam-
+ples "via text interaction" makes it stand out from
+the rest. Its impressive generative capabilities have
+caused a big sensation, not only at research level
+but also in the mainstream media.A particular feature of GPT-3 is, besides the
+sheer size of the data it has been trained on, the
+fact that, although the data is generally of good
+quality, it has not been ﬁltered for language (in
+purpose). Therefore, although GPT-3 is in prin-
+ciple a language model for English, its training
+data contains many other languages,1even if they
+account for a small portion of the dataset in com-
+parison to English (93% by word count). Intu-
+itively, one would expect that this quantity would
+not be enough to obtain a high-quality language
+model in these other languages, especially in the
+low-resource ones. Some evidence in this regard
+is provided by the large amount of data required
+to train language-speciﬁc models (Nozza et al.,
+2020). Even the multilingual ones2such as mBERT
+(Devlin et al., 2018) or XLM-R (Conneau et al.,
+2019) employ large multilingual datasets based
+on Wikipedia or CommonCrawl. A very recent
+work trained a language-speciﬁc Catalan model
+with around 1.7B tokens (Armengol-Estapé et al.,
+2021), but it was published after the elaboration of
+this article and thus is not included in our compar-
+isons. The code for reproducing the GPT-3 API
+queries and the results we obtained is openly avail-
+able.3
+2 Related Work
+In Brown et al. (2020), the authors of GPT-3 al-
+ready conducted a thorough evaluation in many dif-
+ferent benchmarks, including question-answering,
+cloze tasks, and Natural Language Inference (NLI),
+among many others. Crucially, they train and eval-
+uate models of different sizes, and ﬁnd that by
+simply scaling up the exact same architecture, the
+diminishing returns that one would expect are not
+1https://github.com/openai/gpt-3/tree/
+master/dataset_statistics
+2Note that both mBERT and XLM-R are encoder-based
+models, unlike GPT, but the point still holds.
+3https://github.com/TeMU-BSC/
+gpt3-queriesarXiv:2108.13349v1  [cs.CL]  30 Aug 2021
+observed. Recently, some works have estimated the
+increase in performance of autoregressive models
+in terms of model size, data, and compute (Kaplan
+et al., 2020; Henighan et al., 2020). Also in Brown
+et al. (2020), and relevant to our work, authors eval-
+uate GPT-3 in machine translation, both in zero and
+few-shot settings, and ﬁnd that in the latter, GPT-3
+outperforms previous unsupervised NMT models
+by 5 BLEU in some pairs. Speciﬁcally, this success
+is observed in the evaluated pairs in which English
+is the target language and not in the ones in which
+English is the source one, being GPT-3 an English
+language model. No other analysis involving lan-
+guages other than English was conducted.
+Since the original article of GPT-3, several works
+have investigated the capabilities and limits of the
+model in English (Zhao et al., 2021). Moreover,
+with the possibility of querying the model via API,
+hundreds of researchers, journalists and curious
+alike have embarked on all sorts of experiments,
+including automatic programming or solving arith-
+metic operations (Floridi and Chiriatti, 2020). The
+Internet is full of examples of the amazing genera-
+tive capabilities of the model, from poetry, news or
+essay writing (Elkins and Chun, 2020).
+Furthermore, many researchers are interested in
+the ethical concerns regarding such a capable gen-
+erative model and studying the impact it may had if
+it was released to the public (Dale, 2021; McGufﬁe
+and Newhouse, 2020). In a more consequential
+approach, with the purpose of harnessing the full
+learning potential of GPT, we are seeing the emer-
+gence of a new line of research exploring optimal
+ways to "prompt" the model (Liu et al., 2021).
+Nevertheless, to our knowledge, no work has
+studied its potential for solving tasks in languages
+other than English, aside from machine translation.
+In this work, we investigate the multilingual skills
+of GPT-3, focusing on Catalan, a language barely
+appearing in the pre-training corpus.
+3 Methodology
+In this work we have explored how good GPT-3
+is at generating natural text in Catalan and solving
+one NLU task, speciﬁcally extractive Q&A. Cata-
+lan only accounts for the 0,01798% of words in the
+training corpus, that is around 35M words. Lan-
+guage models, even if in a considerably smaller
+scale than GPT-3, are usually trained on corpora
+with a number of tokens in the billions as can be
+seen in Table 1. Even considering the effect ofModel Words (M) Catalan words (M)
+mBERT Unclear4~200
+XLM-R 295,00851,752
+GPT-3 196,755635
+Table 1: Pre-training word count in some models
+certain factors particular to each language, such as
+linguistic proximity to English (e.g. being an Indo
+European language), afﬁliation to well-populated
+families (e.g. Romance), number of tokens in the
+training corpus, etc. we can assume that our results
+may be relevant for other languages as well.
+3.1 Question-answering
+To evaluate GPT-3 in question-answering, we use
+a Catalan translation (introduced in Armengol-
+Estapé et al. (2021), Rodriguez-Penagos and
+Armentano-Oller (2021b)) of XQuAD (Artetxe
+et al., 2019), a cross-lingual question-answering
+dataset consisting of 240 paragraphs and 1,060
+question-answer pairs. We focus on the zero-shot
+setting, in which the model is not given any exam-
+ple. GPT-3 is asked to answer one question at a
+time, pieced with its context as prompts as shown
+below (in bold, GPT-3’s answer):
+Això és un sistema de resposta de pre-
+guntes en català.
+Context: La defensa dels Panthers va
+cedir només 308 punts [...]
+Pregunta: Quants punts va cedir la de-
+fensa dels Panthers?
+Resposta: 308 punts
+The whole prompt, including the instruction to
+answer the question (the ﬁrst sentence), the con-
+text, the question ( Pregunta ), and the ﬁnal word
+(Resposta , "Answer") are given in Catalan, with the
+hope that this will further condition the model to an-
+swer in Catalan. To study the effect of scale, we run
+the model with the 4 engines provided in OpenAI’s
+3mBERT was trained with the top 100 largest Wikipedias,
+but there are no details on the exact amount of tokens. For
+Catalan, we estimate the size in 200M tokens from a dump
+from January 2020.
+4Summing up tokens from all languages from Table 6 in
+Conneau et al. (2019).
+5In the dataset statistics in Github, OpenAI claims that
+English, with around 181B tokens, accounts for about 93% of
+the dataset. This implies a total size of around 197B tokens,
+the one we use in the table. However, in the article authors say
+the model was trained with a total of 300B tokens. We have
+not been able to clarify this apparent inconsistency.
+API,7in increasing size8(in parameters): Ada,
+Babbage, Curie, and Davinci, using the default
+sampling parameters9except for max_tokens ,
+which we set to 64 to allow the longest answers.
+As a reference, we include the results of
+what should be considered state-of-the-art, the
+ones obtained by ﬁne-tuning mBERT and XLM-
+RoBERTa ( base size for both models) in a Catalan
+question-answering dataset (Rodriguez-Penagos
+and Armentano-Oller, 2021a) using the script from
+the Huggingface library (Wolf et al., 2019) used for
+ﬁne-tuning on the SQuAD dataset. For all models
+(including GPT-3), we apply the same evaluation
+script as in SQuAD.10
+3.2 Natural Language Generation
+In order to evaluate the generative capabilities of
+GPT-3 in Catalan, we want to assess how “natural”
+the generated text is to Catalan natives. For this, we
+create a synthetic set of 60 sentences and mix them
+randomly with 60 control sentences coming from a
+news corpus,11and ask our evaluators to score each
+sentence based on their overall ﬂuency and correct-
+ness. To obtain the synthetic sentences, we ﬁrst
+query GPT-3 with a set of 20 headlines extracted
+from the same news corpus, and then sample 60
+sentences from the generated output. For this eval-
+uation we only use the output of the largest version
+of GPT-3 (i.e. Davinci). We manually checked that
+the sentences did not appear in the Internet,12to
+avoid sentences that could have been directly mem-
+orized in training. As in question-answering, we
+used the default sampling parameters of OpenAI’s
+API, this time, setting max_tokens to 1024, for
+generating more sentences to sample from. For the
+human evaluation, similarly to (Casas et al., 2020),
+sentences were evaluated by a pool of 9 annota-
+tors, who were requested to rate the sentence in
+an integer scale from 1 to 5. Each sentence, ran-
+7https://beta.openai.com/
+8To the best of our knowledge, OpenAI has not clariﬁed
+the exact size of each of the models in the API. However,
+some evaluations results seem to suggest that Ada, Babbage,
+Curie and Davinci would correspond to 350M, 1.3B, 6.7B,
+and 175B, respectively. See: https://blog.eleuther.
+ai/gpt3-model-sizes/ .
+9A temperature of 0.7, a frequency penalty of 0, a presence
+penalty of 0, and with top_p = 1.
+10https://github.com/allenai/
+bi-att-flow/blob/master/squad/
+evaluate-v1.1.py
+112021 crawling from https://www.acn.cat/ in
+Catalan
+12By searching them on Google. None of the sentences
+appeared verbatim although we removed a similar one.Model F1 EM
+GPT-3: Ada 5.26 0.38
+GPT-3: Babbage 10.08 1.13
+GPT-3: Curie 16.66 5.00
+GPT-3: Davinci 38.43 17.74
+XLM-RoBERTa 67.10 46.42
+mBERT 67.15 46.51
+Table 2: Question answering results for XQuAD-ca
+Figure 1: Question-answering results for GPT-3 sizes
+domly distributed among the pool of evaluators,
+was scored by 3 different evaluators; this redun-
+dancy accounts for the variance and subjectivity in
+human scores.
+4 Results
+Question-answering The results obtained by
+GPT-3 in this task are reported in table 2, show-
+ing the F1 score and the Exact Match value for
+XQuAD-ca, for the different GPT-3 model sizes.
+We also include the results of two supervised, ﬁne-
+tuned models considered state-of-the art as a refer-
+ence. Note that this is not a direct comparison,
+since for GPT-3 it is a zero-shot setting. GPT-
+3 Davinci obtains a F1 score that is more than
+50% the punctuation obtained by the SOTA mod-
+els, which is remarkable being a pure zero-shot
+setting. Figure 1 shows the scaling curves of the
+different model-sizes of GPT-3.
+Natural Language Generation Table 3 shows
+the results of the human evaluation. The sentences
+generated by GPT-3 obtain an average score of 3,89,
+compared to 4,49 of the control.13As can be seen
+13The difference is statistically signiﬁcant. With a t-test, we
+obtain a p-value of 0.00026 < 0.001.
+SourceAverage
+RatingSt. Dev.% >
+Human Av.
+Human 4.49 0.57 53.33
+GPT-3 3.83 1.05 33.33
+Table 3: Human evaluation (for GPT-3, Davinci)
+Figure 2: Distribution of Human Evaluation ratings
+by the difference between the standard deviations
+and the distribution of scores in Figure 2, GPT-3 is
+less consistent than the control in quality, however
+most of the sentences are rated between 4 and 5 by
+the evaluators. In fact, a third of the sentences is
+above the average of the control, versus half of the
+ones generated by humans.
+5 Discussion
+Qualitative analysis A closer inspection of the
+results shows some surprising abilities of GPT-3
+in addition to the naturalness of most of the sen-
+tences. An interesting example is that following
+the prompt of a headline about Valencia, GPT-3 is
+able to write using the Valencian variant of Catalan,
+which is truly remarkable. An analysis of the errors
+shows that those with score of 2 or less (13% of the
+sample) contain gibberish fragments, often mixing
+Catalan and English, and in fact no control sen-
+tence has received such low scores. On the other
+hand, sentences with score 3 (21,6%) are mostly
+syntactically impeccable but with some peculiari-
+ties in the meaning, as for example: "La IV Mostra
+de Patrimoni Cultural de Bétera ha comptat amb
+una participació de 15.000 persones, que han pogut
+gaudir d’un espai on diversos grups han mostrat els
+seus valors patrimonials ."Scaling As shown in Figure 1, there is a steep
+curve of F1 score in terms of model size, while
+pre-training data (and, thus, the amount of Catalan)
+remains the same. This shows that transfer learning
+between English and the other languages in zero-
+shot settings scales with model size in a very steep
+curve. This is coherent with Figure H.11 in Brown
+et al. (2020), where zero-shot translation in which
+English is the target language reaches a plateau, but
+when the target languages are languages other than
+English, the curves keep climbing.
+Usability in practice We believe the model can
+be useful in multilingual applications (at least, in
+a degree not far from the one for English), espe-
+cially since we used the model in zero-shot set-
+tings and without any effort in prompt design. We
+expect the model to perform considerably better
+in few-shot settings, and even better in languages
+with more data in GPT-3’s corpus. Nevertheless, a
+caveat, at least for Catalan, is that smaller versions
+of GPT-3 aren’t usable, and because the vocabu-
+lary was trained fundamentally on English, Catalan
+sentences are tokenized into considerably long se-
+quences, which makes them expensive to compute.
+Limitations of our study We have restricted our
+analysis to the case of Catalan, and to two speciﬁc
+tasks, even if we believe them to be relevant, and
+reasonably representative of the NLP scenario. We
+have constrained the analysis to the zero-shot set-
+ting, which we believe to be the most interesting
+one. For the human evaluation, we have tried to
+make it as balanced as possible by using a redun-
+dancy of 3 evaluators, but human ratings can be
+biased. Regarding the relevance to other languages,
+as already mentioned, Catalan probably beneﬁts
+from linguistic similarities with Romance and Indo
+European languages at large (including English).
+6 Conclusions and Future Work
+We have seen that GPT-3 does, indeed, exhibit re-
+markable zero-shot NLU and NLG capabilities in
+Catalan. This is surprising in view of the tiny pro-
+portion of Catalan in the training corpus. Our re-
+sults show that GPT-3 can be useful not only for
+English but for many other languages present in
+the corpus as well. Nevertheless, some practical
+concerns (the needed model scale and sub opti-
+mal tokenization) make it less computationally ef-
+ﬁcient than for English. On the overall, this is a
+very interesting exercise of how linguistic struc-
+tures (universals) transfer across languages. Given
+the large amount of tasks GPT-3 has been implicitly
+exposed to during the training procedure, handling
+a different language can be considered as work-
+ing on yet another domain. As future work, we
+suggest extending the study of the scaling laws of
+language models (Kaplan et al., 2020) in terms of
+cross-lingual transfer, similarly to Hernandez et al.
+(2021).
+References
+Jordi Armengol-Estapé, Casimiro Pio Carrino, Carlos
+Rodriguez-Penagos, Ona de Gibert Bonet, Carme
+Armentano-Oller, Aitor Gonzalez-Agirre, Maite
+Melero, and Marta Villegas. 2021. Are multilin-
+gual models the best choice for moderately under-
+resourced languages? A comprehensive assessment
+for Catalan. In Findings of the Association for Com-
+putational Linguistics: ACL-IJCNLP 2021 , pages
+4933–4946, Online. Association for Computational
+Linguistics.
+Mikel Artetxe, Sebastian Ruder, and Dani Yo-
+gatama. 2019. On the cross-lingual transferabil-
+ity of monolingual representations. arXiv preprint
+arXiv:1910.11856 .
+Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie
+Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, Sandhini Agarwal, Ariel Herbert-V oss,
+Gretchen Krueger, Tom Henighan, Rewon Child,
+Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu,
+Clemens Winter, Christopher Hesse, Mark Chen,
+Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin
+Chess, Jack Clark, Christopher Berner, Sam Mc-
+Candlish, Alec Radford, Ilya Sutskever, and Dario
+Amodei. 2020. Language models are few-shot learn-
+ers.CoRR , abs/2005.14165.
+Noe Casas, José AR Fonollosa, and Marta R Costa-
+jussà. 2020. Syntax-driven iterative expansion lan-
+guage models for controllable text generation. arXiv
+preprint arXiv:2004.02211 .
+Alexis Conneau, Kartikay Khandelwal, Naman Goyal,
+Vishrav Chaudhary, Guillaume Wenzek, Francisco
+Guzmán, Edouard Grave, Myle Ott, Luke Zettle-
+moyer, and Veselin Stoyanov. 2019. Unsupervised
+cross-lingual representation learning at scale. CoRR ,
+abs/1911.02116.
+Robert Dale. 2021. Gpt-3: What’s it good for? Natural
+Language Engineering , 27(1):113–118.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2018. BERT: pre-training of
+deep bidirectional transformers for language under-
+standing. CoRR , abs/1810.04805.Katherine Elkins and Jon Chun. 2020. Can gpt-3 pass
+a writer’s turing test. Journal of Cultural Analytics ,
+2371:4549.
+Luciano Floridi and Massimo Chiriatti. 2020. Gpt-3:
+Its nature, scope, limits, and consequences. Minds
+and Machines , 30(4):681–694.
+Tom Henighan, Jared Kaplan, Mor Katz, Mark Chen,
+Christopher Hesse, Jacob Jackson, Heewoo Jun,
+Tom B. Brown, Prafulla Dhariwal, Scott Gray, Chris
+Hallacy, Benjamin Mann, Alec Radford, Aditya
+Ramesh, Nick Ryder, Daniel M. Ziegler, John Schul-
+man, Dario Amodei, and Sam McCandlish. 2020.
+Scaling laws for autoregressive generative modeling.
+CoRR , abs/2010.14701.
+Danny Hernandez, Jared Kaplan, Tom Henighan, and
+Sam McCandlish. 2021. Scaling laws for transfer.
+CoRR , abs/2102.01293.
+Jared Kaplan, Sam McCandlish, Tom Henighan,
+Tom B. Brown, Benjamin Chess, Rewon Child,
+Scott Gray, Alec Radford, Jeffrey Wu, and Dario
+Amodei. 2020. Scaling laws for neural language
+models. CoRR , abs/2001.08361.
+Jiachang Liu, Dinghan Shen, Yizhe Zhang, Bill Dolan,
+Lawrence Carin, and Weizhu Chen. 2021. What
+makes good in-context examples for gpt-3? CoRR ,
+abs/2101.06804.
+Kris McGufﬁe and Alex Newhouse. 2020. The radical-
+ization risks of gpt-3 and advanced neural language
+models. arXiv preprint arXiv:2009.06807 .
+Debora Nozza, Federico Bianchi, and Dirk Hovy. 2020.
+What the [mask]? making sense of language-speciﬁc
+BERT models. CoRR , abs/2003.02912.
+A. Radford and Karthik Narasimhan. 2018. Improving
+language understanding by generative pre-training.
+Alec Radford, Jeff Wu, Rewon Child, David Luan,
+Dario Amodei, and Ilya Sutskever. 2019. Language
+models are unsupervised multitask learners.
+Carlos Gerardo Rodriguez-Penagos and Carme
+Armentano-Oller. 2021a. ViquiQuAD: an extractive
+QA dataset from Catalan Wikipedia.
+Carlos Gerardo Rodriguez-Penagos and Carme
+Armentano-Oller. 2021b. Xquad-ca.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz
+Kaiser, and Illia Polosukhin. 2017. Attention is all
+you need. CoRR , abs/1706.03762.
+Thomas Wolf, Lysandre Debut, Victor Sanh, Julien
+Chaumond, Clement Delangue, Anthony Moi, Pier-
+ric Cistac, Tim Rault, Rémi Louf, Morgan Funtow-
+icz, and Jamie Brew. 2019. Huggingface’s trans-
+formers: State-of-the-art natural language process-
+ing.CoRR , abs/1910.03771.
+Tony Z Zhao, Eric Wallace, Shi Feng, Dan Klein, and
+Sameer Singh. 2021. Calibrate before use: Im-
+proving few-shot performance of language models.
+arXiv preprint arXiv:2102.09690 .

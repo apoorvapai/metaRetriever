@@ -1,0 +1,2044 @@
+Title: Task-aware Retrieval with Instructions
+
+Task-aware Retrieval with Instructions
+Akari Asaiyz, Timo Schicky, Patrick Lewisy, Xilun Cheny, Gautier Izacardy,
+Sebastian Riedel|, Hannaneh Hajishirziz~, Wen-tau Yihy
+yMeta AIzUniversity of WashingtonENS, PSL University & Inria
+~Allen Institute for AI|University College London
+Abstract
+We study the problem of retrieval with instruc-
+tions , where users of a retrieval system ex-
+plicitly describe their intent along with their
+queries. We aim to develop a general-purpose
+task-aware retrieval system using multi-task
+instruction tuning, which can follow human-
+written instructions to ﬁnd the best documents
+for a given query. We introduce the ﬁrst
+large-scale collection of approximately 40 re-
+trieval datasets with instructions, BERRI , and
+present TART , a multi-task retrieval system
+trained on BERRI with instructions. TART
+shows strong capabilities to adapt to a new
+retrieval task via instructions and advances
+the state of the art on two zero-shot retrieval
+benchmarks, BEIR and LOTTE, outperform-
+ing models up to three times larger. We further
+introduce a new evaluation setup, X2-Retrieval
+to better reﬂect real-world scenarios, where di-
+verse domains and tasks are pooled and a sys-
+tem needs to ﬁnd documents aligning users’ in-
+tents. In this setup, TART signiﬁcantly outper-
+forms competitive baselines, further demon-
+strating the effectiveness of guiding retrieval
+with instructions.1
+1 Introduction
+Information retrieval (IR) is the task of ﬁnding rel-
+evant documents from a large collection of texts
+to fulﬁll a user’s information need, typically ex-
+pressed in the form of a textual query (Singhal et al.,
+2001). The notion of relevance from the user’s
+perspective (i.e., intent ) can be amorphous (Miz-
+zaro, 1998), and a query alone may not fully cap-
+ture user information needs (Ruthven and Lalmas,
+2003; Taylor, 1962). As illustrated in Figure 1
+(top), given the same query, “ implementing batch
+normalization in Python ,” a user may want to re-
+trieve a passage that describes how to do the task
+or to identify a similar query, or even to directly
+locate a code snippet.
+1Code, data and pretrained model checkpoints are available
+athttps://github.com/facebookresearch/tart .
+q: 
+Implementing 
+batch 
+normalization in 
+Python Python 
+Implementations 
+Duplicated questions 
+Answer Implicit  user intents Explicit  user query 
+def batchnorm_backward 
+(dout, cache): 
+N = dout.shape[0] 
+x_norm, x_centered, std, 
+gamma = cache  
+I am developing batch 
+normalization from scratch 
+Answer: 
+ You can just `import 
+torch.nn.BatchNorm2d` 
+Code 
+Retriever 
+Question 
+Retriever 
+Answer 
+Retriever qt1: I want to find 
+python code 
+t2: Retrieve 
+related questions 
+t2: Please 
+find answers Retriever q
+q
+qNormal Retrieval Retrieval with  Instructions d1 
+d2 
+d3 
+d3 d2 d1 d1 
+d2 
+d3 Figure 1: User intents are not fully captured in query q
+only (top). Conventional approaches (bottom left) take
+a query and retrieve documents from a closed corpus
+using a task-speciﬁc retriever. Retrieval with instruc-
+tions (bottom right) takes a query and explicit intent
+and retrieves documents aligning with the user’s expec-
+tations.
+Most existing work tries to learn those implicit
+intents from labeled data (e.g., pairs of queries
+and relevant documents), yielding separate models
+for different intents as shown in the bottom left of
+Figure 1. This approach has several limitations.
+First, a vast number of annotated examples may be
+required to train a model to capture the task-speciﬁc
+notion of relevance, while they could beneﬁt from
+the abundance of data available from related tasks.
+Second, a model trained on one task may not easily
+transfer to new tasks that are not closely related.
+In this work we advocate for a new task for-
+mulation, retrieval with instructions , toexplicitly
+model a user’s search intent by providing a natural
+language description of the search task (i.e., an in-
+struction). Here, the goal of retrieval systems is
+to retrieve documents that are both relevant to the
+query andwell-suited to the instructions.
+Despite active research in other settings,
+instruction-following has not been systematicallyarXiv:2211.09260v2  [cs.CL]  19 Dec 2022
+explored in retrieval, partly due to the lack of anno-
+tated resources. To facilitate research in retrieval
+with instructions, we introduce BERRI (Bank of
+Explicit RetRieval Instructions), a collection of
+approximately 40 retrieval datasets with diverse in-
+structions in a uniﬁed format, covering 10 diverse
+domains. Each task has on average 3.5 diverse
+instructions annotated by experts, following our
+novel instruction schema for retrieval tasks.
+We use BERRI to train TART (Task-aware
+ReTriever), a single multi-task retrieval system that
+follows instructions to perform diverse tasks with
+no parameter updates on each task. We employ
+two widely explored architectures: TART -dual is
+a dense dual-encoder architecture, retrieving doc-
+uments based on the similarity of independently
+encoded query and document embeddings; TART -
+full calculates probabilities of a document being rel-
+evant to the query according to the instruction using
+a cross-encoder. TART is trained with carefully
+designed negative samples, including our novel
+instruction-unfollowing negatives samples.
+TheTART models, particularly TART -full
+yields state-of-the-art results on two popular zero-
+shot retrieval benchmarks, BEIR (Thakur et al.,
+2021) and LOTTE-pooled (Santhanam et al., 2022),
+outperforming systems using three times more pa-
+rameters (Nogueira et al. 2020; Ni et al. 2021;
+Muennighoff 2022) as well as task-speciﬁc retriev-
+ers trained on millions of automatically generated
+examples (Dai et al., 2022; Wang et al., 2022a).
+We further introduce a new evaluation setup,
+X2-Retrieval ( Cross -task Cross -domain Retrieval),
+where a system needs to handle queries with di-
+verse intents to ﬁnd relevant documents from a
+large-scale, cross-domain pooled corpus, simulat-
+ing challenges in real-world retrieval applications.
+In this under-explored setting, TART outperforms
+other state-of-the-art methods, demonstrating its
+ability to ﬁnd documents in a large-scale open-
+domain corpus by leveraging explicit textual in-
+tents. Our analysis shows that training a model
+on diverse tasks with instructions, our new neg-
+ative samples leveraging instructions and giving
+informative instructions are crucial.
+In summary, our contributions are as follows:
+•Retrieval with instructions , a new formulation
+to model users’ intent explicitly (Section 3).
+•BERRI , a new large-scale collection of ap-
+proximately 40 retrieval datasets in diverse
+domains with instructions (Section 4).•TART , a task-aware retriever trained on
+BERRI that advances state of the art on zero-
+shot and cross-task retrieval (Section 5).
+2 Background and Related Work
+Zero-shot training of retrievers. Recent neu-
+ral retrievers (Karpukhin et al., 2020; Lee et al.,
+2019; Khattab and Zaharia, 2020) show their su-
+periority over term-based retrievers (e.g., BM25;
+Robertson and Zaragoza 2009) across domains
+when training data is abundant (Luo et al., 2022;
+Asai et al., 2021; Petroni et al., 2021). Due to the
+high cost of annotating retrieval datasets for new
+target tasks, improving neural retrievers in zero-
+shot settings is an active area of study. The ﬁrst
+line of work uses purely unsupervised approaches,
+such as pre-training neural retrievers on unlabeled
+data (e.g., Contriever; Izacard et al. 2022). The
+second line of work trains a single retrieval sys-
+tem on large-scale supervised datasets such as MS
+MARCO (Bajaj et al., 2016) and then performs a
+transfer to new datasets (Izacard et al., 2022; Khat-
+tab and Zaharia, 2020; Nogueira et al., 2020; Chen
+et al., 2022), which often struggle with tasks un-
+like those used for training (Dai et al., 2022). To
+address this, the third paradigm trains customized
+retrievers for each task using unlabeled corpora,
+leveraging another model to automatically generate
+training data (Wang et al., 2022a). Concurrent to
+our work, Dai et al. (2022) use task-speciﬁc tem-
+plates and few-shot samples to automatically gen-
+erate in-domain training queries given randomly
+sampled documents from the target corpus using
+FLAN (Wei et al., 2022a). It often entails running
+massive LMs and training separate retrievers, re-
+sulting in slow and costly adaptation.
+Instruction tuning. Training large language
+models (LLMs) with instructions or demonstrations
+on many tasks has proven very effective for zero-
+or few-shot transfer in a variety of settings (Wei
+et al., 2022a; Sanh et al., 2022; Ouyang et al., 2022;
+Min et al., 2022; Wang et al., 2022b; Mishra et al.,
+2022; Chung et al., 2022). However, such instruc-
+tion tuning has not been systematically explored
+in retrieval for several reasons. First, large-scale
+instruction-annotated datasets (Bach et al., 2022;
+Wang et al., 2022b) do not include retrieval tasks.
+Second, successful instruction-following LLMs are
+encoder-decoder or decoder-only models with tens
+of billions of parameters, which are difﬁcult to be
+adapted for retrieval tasks, as we typically need to
+Dataset Instruction
+NQ Retrieve a Wikipedia para graph that answers this ques tion.
+Med Simple Your task is to find a simplified para graph of this paragraph from a medical paper.
+QReCC Find a dialogue response from dialogue history to answer the user’s ques tion.
+Arguana Retrieve a para graph from anargument website that argues against the following argument.
+SciFact Find a sentence from a scientific paper to check if the state ment iscorrect ornot.
+MultiLexSum I want to find the one-sentence summary ofthis legal case.
+Table 1: Example instructions for natural questions (NQ; Kwiatkowski et al. 2019), medical text simpliﬁcation
+(Med Simple; Devaraj et al. 2021), QReCC (Anantha et al., 2021), Arguana (Wachsmuth et al., 2018), Sci-
+Fact (Wadden et al., 2020) and MultiLexSum (Shen et al., 2022). Each instruction deﬁnes intent,domain and
+unit.
+encode millions of documents.
+Retrieval with descriptions. To incorporate
+more ﬁne-grained information needs, retrieval with
+descriptions or narratives (e.g., TREC 2004 Robust
+Track; V oorhees 2005) has been studied. Descrip-
+tions or narratives are more detailed natural lan-
+guage explanations that describe the information
+needs (i.e., desirable documents) for each query
+mainly for query disambiguation. However, early
+work shows that concatenating descriptions or nar-
+ratives only marginally outperforms the baselines
+with titles only (Walker et al., 1998; Yates et al.,
+2021). More recent work (Dai and Callan, 2019,
+2020) suggests that powerful encoders such as
+BERT (Devlin et al., 2019) could better incorporate
+rich linguistic context and boost performance.
+3 Task Formulation
+This work introduces a new task formulation, re-
+trieval with instructions (Figure 1 bottom right).
+We are given a large collection of Ndocuments
+D=fd1; : : : ; dNg, a search task instruction tand
+a query q. The problem of retrieval with instruc-
+tions is to ﬁnd a document d2D that is relevant to
+qaccording to the instruction t. Compared to the
+standard retrieval problem setting (e.g., Figure 1
+bottom left), the difference is the explicit deﬁnition
+ofrelevance in the instruction tas additional input
+to the system, which can be diverse and may not
+be fully deﬁned by the query only (Ruthven and
+Lalmas, 2003). Thus, retrieval with instructions
+lets us build retrieval systems that are very general
+and task-aware—changing their relevance measure
+by attending to the instruction.
+This new formulation brings both new research
+challenges and opportunities. For instance, a re-
+triever is now required to modify its search be-
+havior according to the instructions. On the plusside, different datasets can be naturally grouped
+to train a single retriever, yielding beneﬁts from
+cross-task interdependence, which has been ob-
+served in instruction tuning of LLMs. Compared
+to training a retriever on multiple tasks with task
+identiﬁers (Maillard et al., 2021), instructions pro-
+vide greater ﬂexibility and enable zero-shot transfer
+via natural language instructions. Furthermore, a
+multi-task instruction-following retriever obviates
+the need to host multiple task-speciﬁc retrievers.
+As noted previously, multi-task training with
+instructions has not been studied in the area of
+retrieval due to the lack of resources and dedi-
+cated models. To facilitate the research on retrieval
+with instructions, we introduce the ﬁrst large-scale
+retrieval benchmark with expert-written annota-
+tions (Section 4) and subsequently the multi-task
+instruction-following retrievers (Section 5).
+4BERRI : Collections of
+Instruction-annotated Retrieval Tasks
+To facilitate research in retrieval with natural
+language instructions, we build a uniﬁed large-
+scale retrieval dataset, BERRI (Bank of Explicit
+RetRieval Instructions). BERRI consists of in-
+structions and instances from diverse domains and
+tasks, by carefully curating retrieval datasets and
+casting diverse NLP datasets as retrieval tasks.
+4.1 Uniﬁed Task and Instructions Scheme
+Task format. Each taskTinBERRI consists of
+a corpusD, queriesQ=fq1; : : : ; qKg, and an
+instruction t, where Kis the number of the queries
+included in the task. An instance of each task in-
+cludes a query q, gold (relevant) documents d+,
+and negative (irrelevant) documents d . For each
+task, an explicit intent t, which can be paraphrased
+in multiple ways, is given.
+Question Answering 
+Natural 
+Questions 
+HotpotQA 
+SQuAD 
+Yahoo 
+Answers 
+Stack 
+Exchange 
+ReCoRD 
+PubMedQA 
+MedMCQA MSMARCO 
+SearchQA 
+ELI5
+WikiHOW Duplicated 
+Question 
+OQA 
+StackExchange 
+(dup.questions) 
+Quora Questions 
+Fact Checking 
+FEVER 
+CNN / Daily 
+XSUM 
+NPR 
+Multi-LexSUM Summarization 
+SciTLDR 
+Wizard of Wiki. 
+QReCC Dialogue 
+Paraphrasing 
+Medical text 
+simplification 
+Others 
+Coco captions 
+ CodeSearchNet Figure 2: Examples of datasets included in BERRI .
+Instruction schema for retrieval. Informative
+and diverse instructions are key for successful in-
+struction tuning (Sanh et al., 2022). We introduce
+a novel scheme to deﬁne an informative instruction
+for retrieval tasks, which have not been studied
+in prior instruction-following literature. An in-
+struction that sufﬁciently describes an arbitrary re-
+trieval task should include: intent,domain andunit.
+Speciﬁcally, intentdescribes how the retrieved text
+relates to the query, such as whether the text an-
+swers a question in the query or paraphrases it.
+Domain is the expected source or type of retrieved
+text, such as Wikipedia or PubMed articles. Unit
+deﬁnes the text block to retrieve, such as a sen-
+tence or a paragraph. Table 1 shows examples of
+instructions, and Appendix A.3 shows the full list.
+4.2 Dataset Collection
+BERRI includes diverse datasets, including
+widely-used retrieval (e.g., MS MARCO; Bajaj
+et al. 2016), retrieval-centric datasets (NQ-open;
+Kwiatkowski et al. 2019) and non-retrieval datasets
+that can be repurposed as retrieval tasks. Figure 2
+shows the source datasets in BERRI . We manually
+annotate in multiple instructions per dataset, and
+conduct multiple post-processing steps to provide
+a set of the query, gold, and negative documents.
+Table 5 shows the full dataset list.
+Selecting source datasets. We manually collect
+datasets from (1) KILT (Petroni et al., 2021), (2) the
+Sentence-Transformers Training Data for Text Em-
+bedding Models2, and (3) manual searches in ACL
+anthologies and huggingface datasets3to cover a
+diverse set of tasks and domains. We observe
+that except for a few domains (e.g., Wikipedia)
+many domains do not have retrieval datasets while
+2https://huggingface.co/datasets/
+sentence-transformers/embedding-training-data
+3https://huggingface.co/docs/datasets/indexthere are a few datasets for other NLP tasks that
+can be cast as retrieval (e.g., sentence paraphrase).
+Re-purposing those non-retrieval tasks as retrieval
+tasks enables to diversity of the domains as well as
+the instructions in BERRI .
+From an initial list of more than 60 datasets,
+we assess whether it is suitable for repurposing
+as a retrieval task. Speciﬁcally, we sample 20 in-
+stances from the candidate dataset and check if
+the queries are self-contained.4If the majority of
+queries fail this test, we exclude the corresponding
+dataset. Consequently, we use 37 datasets, includ-
+ing more than 5 million instances in total. For
+datasets that are orders of magnitude larger than
+other datasets (e.g., PAQ; Lewis et al. 2021), we
+randomly sample up to 300k instances, except for
+MS MARCO.5As a result, BERRI covers diverse
+domains (e.g., Wikipedia, scientiﬁc papers) and
+tasks (e.g., fact veriﬁcation, dialogue response re-
+trieval, QA). See Appendix A.4 for more details.
+Uniﬁcation and instruction annotations. For
+retrieval datasets such as MS MARCO, we use the
+annotated gold documents as positive documents
+d+to a given query q. Regarding non-retrieval
+tasks, we use the original input sequence as a query
+qand the original output or given context as d+.
+For instance, given a summarization dataset we use
+a source text and a summary as a query and a gold
+document, respectively.
+For each dataset, the authors of this paper manu-
+ally wrote instructions (8 maximum and 3.5 aver-
+age number of instructions per task). For datasets
+without preprocessed retrieval targets,6we gather
+all positive and negative documents provided by
+4For examples, ﬁnding a corresponding review text for the
+review title “ I love this! ” is under-speciﬁed.
+5Prior work has shown that MS MARCO can be beneﬁcial
+to many downstream retrieval tasks (Izacard et al., 2022).
+6For example, KILT datasets such as FEVER or NQ use
+the uniﬁed Wikipedia corpus.
+q: How to compute square root in iOS?  
+q: Are armadillos native to a 
+Spanish-speaking part of the world? How can we calculate 
+the square root in 
+Objective C or Swift?  
+Yes, they are most 
+commonly found in 
+North, Central, and 
+South America. Which python function can 
+I use to compute sq root? 
+You can just use the Objective 
+C or Swift’s  sqrt  function 
+I love animals and think 
+armadillos are awesome 
+with their leathery shell. 
+Armadillos are medium-sized 
+mammals found in North, 
+Central, and South America 
+Dialogue Response Retrieval 
+t1: Find an informative dialogue 
+response to this user’s conversation Dup. Question Retrieval 
+t1: Retrieve a question asked in 
+StackOverflow similar to this 
+StackOverflow Question StackOverflow Question StackOverflow Answer 
+Dialogue Response Wikipedia Paragraph 
+Tasks  Dialogue Response 
+Gold documents Hard negative documents Instruction-unfollowing negatives 
+Negative documents 
+Figure 3: Examples of documents that are considered gold documents d+, and two types of negative documents
+d : hard negatives dHDand instruction-unfollowing negatives dUFfor two different query and instruction pairs.
+the original dataset to build a single task-speciﬁc
+retrieval corpusD. More details are described in
+Appendix Section A.2.
+Negative documents selection. Negative sam-
+ples are crucial for training retrieval systems (Zhan
+et al., 2021). In addition to the randomly sampled
+negative samples (random negative documents), we
+introduce two types of challenging negative sam-
+ples: denoised hard negative documents dHDand
+instruction-unfollowing negative documents dUF.
+Figure 3 shows examples of gold documents, hard
+negatives, and instruction-unfollowing documents.
+We mine hard negative documents dHDus-
+ing an off-the-shelf retriever and then ﬁlter out
+false negative documents using an off-the-shelf
+reranker, following Qu et al. (2021). In par-
+ticular, we retrieve top documents from the tar-
+get corpus using Contriever (Izacard et al., 2022)
+and then add new documents whose normal-
+ized scores predicted by a cross-encoder model,
+ms-marco-MiniLM-L-12-v27are below 0.1 as
+hard negative documents.
+We further introduce a new negative sampling
+strategy, instruction- unfollowing negative samples
+dUF, to make systems learn to follow instructions
+and retrieve documents that align with the speciﬁed
+intents. As shown in Figure 3, given an instruction
+“ﬁnd an informative dialogue response”, a system
+should not retrieve a Wikipedia paragraph about ar-
+madillos. To obtain those instruction-unfollowing
+negative documents, we retrieve documents from a
+different task’s target corpus using the same off-the-
+shelf Contriever and consider all those documents
+to be negatives since they do not satisfy the instruc-
+tion. More details about instruction-unfollowing
+negatives are in Appendix Section C.3.
+7https://huggingface.co/cross-encoder/
+ms-marco-MiniLM-L-12-v25TART : Multi-task Instructed
+Retriever
+We now present our uniﬁed multi-task re-
+triever TART (TAsk-aware ReTriever) trained on
+BERRI via multi-task instruction-tuning.
+5.1 Model Architecture
+TART -dual. TART -dual adopts a dual-encoder
+architecture, where a single encoder encodes
+queries with instructions and documents indepen-
+dently. We use maximum inner product search
+(MIPS) over the embeddings to ﬁnd relevant doc-
+uments (Karpukhin et al., 2020). Formally, the
+similarity scores between a query qand a document
+d, given an instruction t, is calculated as follows:
+s(t;q;d) =E([t;q])TE(d); (1)
+whereE()is the embedding function8and[t;q]
+is the concatenation of the instruction and query.
+For this model, document embeddings can be com-
+puted ofﬂine, improving inference efﬁciency at the
+cost of storage space (Yamada et al., 2021).
+TART -full. The bi-encoder architecture is
+known to be less expressive since it only has
+limited interactions between queries and docu-
+ments (Khattab and Zaharia, 2020), especially
+when the training data is limited (Hofstätter et al.,
+2021). To address this issue, we also explore a
+cross-encoder architecture (Nogueira and Cho,
+2019), which computes the relevance between
+a query and each document by jointly encoding
+them with cross-attention. A cross-encoder model
+is often prohibitively expensive to scale up to
+millions of documents, so we ﬁrst run a lightweight
+off-the-shelf retrieval system (e.g., a bi-encoder
+retrieval system) to retrieve the top documents. For
+8We use a shared encoder since having separate encoders
+gave no additional gains in preliminary experiments.
+each of these documents, our instruction-aware
+cross-encoder, TART -full, computes a similarity
+score between a query and the document das:
+s(t;q;d) = FFN( E([t;q;d])); (2)
+where FFN represents an additional feed-forward
+network that predicts whether the document fol-
+lows the instruction and is related to the query.
+We explored different encoder-only and encoder-
+decoder models to initialize our cross-encoder; we
+found that initializing TART -full with encoders
+of T5-based instruction-following pretrained mod-
+els, namely T0-3B (Sanh et al., 2022) and FLAN-
+T5 (Chung et al., 2022), empirically leads to supe-
+rior performance as found in prior work (Sachan
+et al., 2022). We follow the EncT5 approach (Liu
+et al., 2021) and prepended each sequence with a
+start-of-sequence token. The token representation
+is then fed to a newly initialized feed-forward net-
+work. Unlike MonoT5 (Nogueira et al., 2020), we
+use their encoders only to reduce parameters and
+improve inference-time efﬁciency.
+5.2 Training TART
+We train TART -dual and TART -full using the pos-
+itive documents and three types of negative docu-
+ments in BERRI with instructions (Figure 3).
+Training TART -dual. During training, we com-
+bine documents annotated with the queries in
+BERRI as well as in-batch negatives and train the
+model as follows:
+L= loges(q;d+;t)
+P
+d2Bes(q;d;t);
+whereBdenotes all documents in the same mini-
+batch (Karpukhin et al., 2020).
+Training TART -full. Following prior
+work (Nogueira and Cho, 2019), TART -full
+is trained with the cross entropy loss as:
+L= X
+d2d+logs(t;q;d) X
+d2d log(1 s(t;q;d)):
+Knowledge distillation from TART -full to
+TART -dual. The default hard negatives in
+BERRI rely on off-the-shelf models ﬁne-tuned on
+MS MARCO; for some domains, the hard negative
+samples mined by those models can be less reli-
+able. Especially for a smaller bi-encoder model,
+those false positive and negative samples can signif-
+icantly diminish performance (Qu et al., 2021). Wefound that leveraging more powerful TART -full
+to denoise and obtain better negative and positive
+samples lets us distill knowledge from the power-
+ful model to a smaller TART -dual. We ﬁrst train
+TART -full on the annotated gold documents and
+the negative documents mined in BERRI . We
+then re-run the denoising process described in Sec-
+tion 4.2 with the newly trained cross-encoder. Im-
+portantly, unlike the initial denoising step, we now
+leverage instructions and update hard negative doc-
+uments dHDand positive documents d+based on
+more accurate TART -full predictions.
+6 Experiments
+We evaluate TART on zero-shot retrieval (Sec-
+tion 6.1) and in a challenging new evaluation setup,
+X2-Retrieval (Cross-task Cross-domain Retrieval;
+detailed in Section 6.2), comparing them with state-
+of-the-art models described in Section 6.3.
+6.1 Zero-shot Retrieval Evaluations
+To evaluate the models’ ability to perform zero-
+shot transfer via instructions , we run experiments
+on two widely used zero-shot transfer evaluation
+benchmarks: BEIR (Thakur et al., 2021) and
+LOTTE-pooled (Santhanam et al., 2022). No-
+tably, none of the evaluation datasets and instruc-
+tions overlap with BERRI . Moreover, many tasks
+differ signiﬁcantly from tasks used during training
+(e.g., argument retrieval).
+BEIR is a collection of diverse retrieval tasks
+in multiple domains (e.g., Wikipedia, biomedical)
+where the retrieval target is restricted to the target
+corpus in a single domain. We used publicly avail-
+able datasets. Following Dai et al. (2022), we ex-
+clude Natural Questions, MS MARCO, HotpotQA,
+FEVER and CQADupStack from our evaluation
+targets for fair comparison since they are included
+either in encoders’ pretraining or in BERRI .
+LOTTE-Search samples GooAQ (Khashabi
+et al., 2021) questions whose answers come from
+certain forums in StackExchange. We evaluate
+our model in the pooled setup, where documents
+come from forums in diverse domains (e.g., cook-
+ing, technical). GooAQ is not included in our train-
+ing set. In LOTTE, our instructions specify which
+forum domains our system should retrieve evidence
+from (e.g., “Retrieve a cooking StackExchange fo-
+rum post that answers this question”).
+Metrics. Following Thakur et al. (2021), for
+BEIR, we use NDCG@10 as our primary metric on
+Task jqj jCj Domain Query Gold documents
+Ambig QA (Min et al., 2020) 1,172 18,809 Wikipedia question duplicated question
+WIKIQA (Yang et al., 2015) 369 26,196 Wikipedia question answer sentence
+SciFact (Wadden et al., 2020) 300 5183 Science claim scientiﬁc paper paragraph
+GooAQ-Technical (Khashabi et al., 2021) 1,000 4,086 Technical question StackOverﬂow answer
+LinkSo-Python (Liu et al., 2018) 1,000 485,413 Technical question StackOverﬂow question
+CodeSearchNet-Python (Husain et al., 2019) 1,000 457,414 Code comment Python code
+Table 2: The X2-Retrieval evaluation. Example pairs of queries and documents are shown in Table 8. In addition
+to the corpora listed above, we add the Natural Questions corpus data from BEIR (Thakur et al., 2021), which
+consists of 2,681,468 documents from Wikipedia.
+BEIR. For LOTTE-pooled, we use Success@5 ( =
+Recall@5) as our primary metric, as in the original
+paper (Santhanam et al., 2022).
+6.2X2-Retrieval: Cross-task Cross-domain
+Retrieval Evaluation
+Normal retrieval benchmarks often assume that a
+system must deal with only a single intent and a
+closed corpus, which may oversimplify real-world
+scenarios: users’ intents can be diverse, requiring
+searching in a truly open-domain environment that
+includes diverse documents (Piktus et al., 2021).
+We introduce a more realistic evaluation setup, X2-
+Retrieval, where several retrieval tasks with dif-
+ferent intents are pooled to form a single retrieval
+target containing diverse documents. This setup
+requires a system to adapt to a new task in a zero-
+shot manner and to model users’ intents expressed
+in natural languages, to ﬁnd documents aligning
+their expectations from an open-domain corpora.
+Tasks and queries. OurX2-Retrieval evaluation
+covers six datasets across three domains, namely,
+Wikipedia, Science, and Technical (Table 2) do-
+mains. The key challenge here includes datasets
+with different search intents that may not always
+be obvious from the queries alone.
+A pooled corpus. For the primary pooled setup,
+we combine all documents from different tasks and
+the BEIR NQ Wikipedia corpus to form a single
+retrieval corpus, consisting of approximately 3.7
+million documents. We also report the simpliﬁed
+closed setup performance as an oracle setup, where
+a system retrieves only from the original task cor-
+pus, which is similar to BEIR.
+Metrics. We report NDCG@10 on both pooled
+and closed setups for each task. In addition, we
+evaluate the performance gap between the closed
+and pooled setups and refer to it as robustness . Asmaller gap means that the model is distracted less
+by the documents from undesirable corpora.
+6.3 Baselines
+We compare TART with various state-of-the-art
+methods. The ﬁrst group we consider are unsuper-
+vised models that are not trained or trained only on
+unlabeled text; these include Contriever (Izacard
+et al., 2022) and BM25 . We also compare TART
+with UPR (Sachan et al., 2022), which reranks the
+Contriever results using a pretrained T0-3B.
+The second group trains retrievers and rerankers
+on MS MARCO or a few large-scale datasets
+and directly transfers them to new tasks with no
+adaptations, including MonoT5 (Nogueira et al.,
+2020), Contriever-MS MARCO andContriever-
+MS MARCO + Cross Encoder (CE) ,ColBERT
+v2(Santhanam et al., 2022), GTR (Ni et al., 2021)
+andSGPT-BE (Muennighoff, 2022).
+The ﬁnal group of models is specialized re-
+trievers trained for each task on additional task-
+speciﬁc data that was automatically generated
+given the target corpus. Promptagator (Dai
+et al., 2022) generates large amount of in-domain
+data using FLAN (Wei et al., 2022a), and
+GPL (Wang et al., 2022a) generates them using
+DocT5Query (Nogueira et al., 2019).
+6.4 Experimental Settings
+We initialize TART -full from the T0-3B en-
+coder (Sanh et al., 2022) and FLAN-T5 en-
+coder (Chung et al., 2022). We sample positive and
+negative passages with a 1:4 ratio. We train TART -
+full up to 10k steps and take the best checkpoint
+based on development split performance. We ini-
+tializeTART -dual from a Contriever-MS MARCO
+checkpoint (Izacard et al., 2022) and train up 30k
+steps. Per-GPU batch size is 16, and for each posi-
+tive document, we sample in total 5 negative pas-
+sages; 90% of them are randomly sampled from
+model size & rerank BEIR LOTTE
+Ret. Gen.K TREC NFC FQA ARG TOU DBP SCD CLI SCF Avg. Search-Pooled
+BM 25 0 0 0 65.6 32.5 23.6 31.5 36.7 31.3 15.8 21.3 66.5 36.0 48.3
+Contriever 110M 0 0 27.4 31.7 24.5 37.9 19.3 29.2 14.9 15.5 64.9 29.3 55.5
+UPRy3B 0 0 60.4 33.3 45.0 50.3 21.3 33.8 17.3 9.5 69.6 37.8 –
+Contriever (MS) 110M 0 0 59.6 32.8 32.9 44.6 23.0 41.3 16.5 23.7 67.7 38.0 66.0
+Contriever+CEy133M 0 100 70.1 34.4 36.7 41.3 29.8 47.1 17.1 25.8 69.2 41.3 73.5
+ColBERT-v2 110M 0 0 73.8 33.8 35.6 47.9 26.3 44.6 15.8 17.6 69.3 40.5 71.6
+BM25 + MonoT5 (3B)y3B 0 1000 79.6 38.4 51.2 28.8 20.0 47.8 18.4 28.9 77.7 43.4 –
+GTR-11B 4.8B 0 0 50.1 34.2 46.7 54.0 25.6 40.8 16.1 27.0 63.5 39.8 –
+SGPT-6.8B 6.8B 0 0 87.3 36.2 37.2 51.4 25.4 39.9 19.7 30.5 74.7 44.7 –
+GPL 66M9220M 0 72.6 – 32.8 – – – – – 66.4 – –
+Promptagator 110M9175B 0 72.7 33.4 40.4 53.8 26.6 36.4 16.3 21.4 62.3 40.4 –
+Promptagator (rank)y220M9175B 200 76.0 36.0 45.9 53.1 27.8 41.3 19.1 22.6 73.6 43.9 –
+TART -dual 110M 0 0 62.6 33.7 33.7 48.9 20.1 41.5 14.2 13.8 69.0 37.4 56.8
+TART -full (T0-3B)y1.5B 0 100 71.7 34.0 42.2 49.8 31.2 45.1 17.5 30.0 75.8 44.1 75.7
+TART -full (FLAN-T5)y1.5B 0 100 72.8 33.4 41.8 51.5 24.9 46.8 18.7 35.4 77.7 44.8 73.1
+Table 3: Zero-shot retrieval results on BEIR and LOTTE-Search (pooled). yindicates the models using cross-
+encoder-based reranking models. The ﬁrst group of models use no labeled data during training. The second
+group uses MS MARCO at training time but have no customized task-speciﬁc data. The third group trains in-
+dividual retrieval systems using automatically generated data. TREC, NFC, FQA, ARG, TOU, DBP, SCD, CLI,
+SCF indicates TREC-COVID (V oorhees et al., 2021), FIQA (Maia et al., 2018), NF Corpus (Boteva et al., 2016),
+Arguana (Wachsmuth et al., 2018), Touche-2020 (Bondarenko et al., 2020), DBPedia (Hasibi et al., 2017), Sci-
+Docs (Cohan et al., 2020), Climate- Fever (Diggelmann et al., 2020), and SciFact (Wadden et al., 2020), respec-
+tively. “9” of GPL, Promptagator means that those models train customized models for each of the datasets.
+AMB WQA SCF GAT LSO CSP Avg. 
+cl pl cl pl cl pl cl pl cl pl cl pl cl pl cl pl
+Contriever 96.8 93.8 80.9 54.1 67.7 57.4 73.2 59.8 28.0 26.7 36.7 36.1 63.9 54.6 9.3
+Contriever+CE 96.6 47.4 78.2 58.4 69.1 61.7 75.4 66.0 32.1 31.4 42.0 40.2 65.5 50.9 13.4
+TART -dual 96.3 95.3 80.2 63.1 70.1 66.2 75.0 65.0 23.0 23.4 31.3 31.3 60.5 53.6 6.9
+TART -full (T0) 91.1 90.5 82.1 52.5 74.7 66.2 80.5 68.6 25.1 24.9 51.4 51.4 67.5 59.1 8.4
+TART -full (FLAN) 94.0 89.6 86.9 55.9 77.4 66.3 78.3 66.7 18.1 18.4 51.8 50.1 67.7 57.8 9.9
+Table 4: Cross-task retrieval results. shows the performance gap between the averaged pooled performance
+and the averaged closed performance. AMB, WQA, SCF, GAT, LSO, CSP denote AmbigQA, WikiQA, SciFact,
+GooAQ-Technical, LinkSO-Python, and CodeSearchNet-Python, respectively.
+D, and 10% are sampled from dHDanddUFin
+addition to the in-batch negative documents. We
+use 8 GPUs to train TART -full and 64 GPUs to
+trainTART -dual. To retrieve the initial document
+candidates for TART -full, we use Contriever-MS
+MARCO and rerank the top 100 documents.9Ta-
+ble 9 shows the full list of instructions for evalua-
+tions. More details are in Appendix C.1.
+7 Results
+7.1 Zero-shot Evaluation Results
+As shown in Table 3, TART -full signiﬁcantly out-
+performs larger models and customized models
+9We found that combining TART -full with the original
+Contreiver performs better than combining TART -full with
+TART -dual, possibly because TART -full uses the hard nega-
+tive samples retrieved by Contriever’s top-retrieved results.trained on millions of synthetically generated in-
+domain data, advancing the state of the art on BEIR
+and LOTTE. Unlike prior methods that require ad-
+ditional data generation, TART only requires a
+single human-written instruction to adapt to a new
+task. Compared to other methods using cross-
+encoder-based reranking models (e.g., BM25 +
+MonoT5), TART -full uses a much smaller number
+of paragraphs to be re-ranked, which signiﬁcantly
+reduces latency caused by reranking at test time.
+The large performance gain from Contriever-MS
+MARCO to TART -dual on six out of the nine
+BEIR tasks (e.g., SciFact, Arguana) shows the ef-
+fectiveness of instructions and knowledge distilla-
+tions from a larger to a smaller model. On the other
+hand, for the other three datasets (e.g., Touche-
+2020, Climate-FEVER), TART -dual shows large
+performance deterioration, degrading average per-
+formance. We hypothesize that model capacity (i.e.,
+BERT-base encoder) and limited interactions be-
+tween the query and document embeddings could
+be major bottlenecks. Prior work on instruction
+training in LLMs has shown that smaller models
+often do not get as much beneﬁt as larger ones from
+instructions and increasing dataset size, possibly
+due to their limited model capacities (Chung et al.,
+2022; Wang et al., 2022b).
+For LOTTE-pooled, TART -full signiﬁcantly
+outperforms prior state of the art by a large margin.
+We found that simply adding instructions at test
+time does not help, indicating that our instruction
+models do not simply exploit lexical matching. See
+more detailed results in Section 8.1.
+7.2X2-Retrieval Evaluation Results
+Table 4 shows the models’ X2-Retrieval perfor-
+mance. Contriever and Contriever+CE show com-
+petitive closed performance in the closed setup, as
+in BEIR, but they struggle in the pooled setup due
+to their inability to handle human instructions. Es-
+pecially Contriever+CE shows a large performance
+drop on AmbigQA-pooled by retrieving documents
+instead of queries due to the biases from ﬁne-tuning
+on a QA dataset (i.e., MS MARCO) only.
+TART -full shows the best closed performance
+and pooled performance, indicating its strong zero-
+shot adaptation and cross-task abilities. We found
+that a model can ﬂexibly change its behavior based
+on the instructions, as shown in Table 11.
+Although the closed setting performance of
+TART -dual under-performs Contriever, TART -
+dual shows strong performance on the pooled setup,
+resulting in the best robustness among all. This
+indicates that even smaller models can be guided
+by instructions, although they may have limited
+capabilities of zero-shot transfer to new tasks due
+to the limited model capacity and interactions.
+8 Analysis
+We conduct a set of analyses to understand the fac-
+tors that contribute to the models’ ability to follow
+instructions, in particular, the effects of instruc-
+tions at training and inference (Section 8.1), dataset
+scale (Section 8.2), model scale (Section 8.3) and
+carefully-designed negative samples (Section 8.4).
+Our analysis in this section focuses on the more
+powerful TART -full initialized with T0-3B.
+BEIR LOTTE Cross-Task
+Benchmarks020406080100NDCG@10TART w/o I (train) w/o I (test) w/o I (train&test)Figure 4: Ablations of instructions. w/o I (train), w/o I
+(test), and w/o (train & test) indicate the ablations (a),
+(b), and (c), respectively.
+Cont +CE PT TART2426283032NDCG@10
+(a) Touche-2020
+Cont +CE PT TART6668707274 (b) SciFact
+Cont +CE PT TART24262830 (c) C-FEVER
+Figure 5: Performance variance across different instruc-
+tions. C-Fever indicates Climate-Fever. Blue circles
+indicate performance without instructions at test time,
+while red circles indicate performance with different in-
+structions. “PT”, “Cont”, “+CE” denote Promptagator,
+Contriever and Contriever+CE.
+8.1 Effects of Instructions
+Ablating instructions. To analyze the effective-
+ness of instructions, we compare TART -cross with
+three variants: (a) train without instructions, test
+with instructions prepends instructions at test time
+only to test if the models just exploit keyword
+matching only at test time; (b) train with instruc-
+tions, test without instructions usesTART -full
+without instructions at test time; (c) train without
+instructions, test without instructions does not use
+instructions at all during training and test time.
+Figure 4 shows the performance of those base-
+lines. On all benchmarks, ablating instructions
+during training or test time causes a notable per-
+formance drop. We also see that a model trained
+with instructions but given no instruction at test
+time still yields a few performance improvements
+over the model trained completely without instruc-
+tions, indicating the effectiveness of incorporating
+instructions during multi-task training.
+Robustness toward instructions. We evaluate
+TART -full’s robustness towards diverse instruc-
+tions. Figure 5 shows the performance variance
+given multiple different instructions. The blue cir-
+cles represent the performance with no instruction.
+5 10 20
+Dataset scale40.541.041.542.042.543.043.544.0
+(a) Dataset scale
+Base Large X-Large
+Model scale39404142434445Avg. NDCG@10
+ (b) Model scale
+Figure 6: Analysis of dataset and model scale.
+Instructions signiﬁcantly improve model perfor-
+mance without instructions. Although different in-
+structions give small performance variance, TART -
+full often outperforms other competitive baselines
+when informative and correct instructions are given.
+We also observe larger performance deterioration
+when inaccurate instructions are given. See Ta-
+ble 15 for individual instructions and performance.
+8.2 Dataset Scale
+To assess the effectiveness of diverse datasets, we
+conduct dataset ablation experiments, where we
+ablate datasets during training. Following prior
+work on language models instruction tuning, we
+conduct these experiments based on the number
+of datasets (Wang et al., 2022b) and task clus-
+ters (Wei et al., 2022a). In addition, we run ab-
+lations based on the number of domains, where
+we ablate datasets based on their source domains.
+Figures 6a and 7 show these experiments’ results.
+Number of datasets. Figure 6a shows the aver-
+age performance on four BEIR datasets of TART -
+full trained on randomly sampled 5, 10 and 20
+datasets. We observe that increasing the number of
+the training datasets helps TART to perform better.
+Task diversity. As shown in Figure 7, task diver-
+sity is a key to improve models’ zero-shot trans-
+fer performance. QA only struggles on Arguana,
+where the tasks signiﬁcantly differ from QA.
+Domain diversity. Figure 7 shows that having
+more diversity in training datasets’ domains is also
+crucial, especially when the target datasets are in
+non-general domains. For instance, a model trained
+only on Wikipedia datasets struggles on Touche-
+2020 or SciFact, where documents come from argu-
+ment websites and scientiﬁc papers, respectively.
+SciFact TREC-COVID Arguana Touche Avg.
+Datasets0102030405060708090NDCG@10All QA only Wikipedia onlyFigure 7: Dataset ablation results. Wikipedia-only de-
+notesTART -full performance trained on Wikipedia-
+based datasets only. QA-only denotes the model
+trained on QA datasets only.
+BEIR Cross-Task
+Benchmarks020406080100NDCG@10TART w/o d^HD and d^UF w/o d^UF
+Figure 8: Ablations of negative samples. “w/o
+dHDanddUF” denotes a model trained without hard
+and instruction-unfollowing negative documents while
+“w/o dUF” ablates instruction-unfollowing documents
+only.
+8.3 Model Scale
+We test different TART -full sizes to see how model
+scale affects ﬁnal performance. Prior work has
+shown that scaling up re-ranking models often im-
+proves reranking performance (Rosa et al., 2022),
+and models’ instruction-following abilities improve
+as models get larger (Wang et al., 2022b; Sanh et al.,
+2022; Wei et al., 2022b). We investigate how model
+scale affects the ability to generalize to new tasks
+and follow instructions. For a fair comparison,
+we train TART -full using different T5 LM-Adapt
+(base, large, and XL) and evaluate performance
+using them to rerank the top 100 Contriever results.
+Figure 6b shows TART -full’s average perfor-
+mance across different model scales. We observe
+clear performance improvements by increasing
+model size as observed in prior work on LLM.
+8.4 Negative Samples
+We analyze the effectiveness of negative samples
+by ablating them during training. Figure 8 shows
+the performance of the models trained without neg-
+ative samples on BEIR and X2-Retrieval. Adding
+more challenging negative documents (i.e., dHD
+anddUF) during training largely improves the
+model performance on BEIR. Moreover, the model
+trained without instruction-following samples (w/o
+dUF) results in lower X2-Retrieval performance,
+although this model performs on par with the orig-
+inalTART -full on BEIR. This indicates that our
+new instruction-unfollowing negative documents
+largely contribute to improving the ability to dis-
+tinguish instructions and are thus crucial to build a
+robust task-aware retrieval system.
+9 Discussions and Conclusion
+This paper lays the foundation for building a
+general-purpose task-aware retriever that can fol-
+low natural language instructions. We introduced a
+new problem, retrieval with instructions , to model
+users’ intents explicitly. We presented BERRI , the
+ﬁrst large-scale retrieval dataset with expert-written
+annotations. Building upon BERRI , we trained the
+ﬁrst instruction-following retrieval system by mas-
+sive multi-task instruction-tuning, TART , adopt-
+ing two widely used architectures. TART ad-
+vances the state of the art on the popular zero-
+shot retrieval benchmarks BEIR and LOTTE as
+well as on our newly introduced challenging eval-
+uation setup, X2-Retrieval. Our analysis shows
+that key factors to building a successful multi-task
+instruction-following retrieval system include infor-
+mative instructions at training and test time, diver-
+sity in data and model scale, and carefully designed
+negative samples. We conclude with two interest-
+ing open questions, which future work can explore.
+Improving efﬁciency of instruction-following
+retrievers. Although our TART -full model
+shows the effectiveness of instruction-tuning for
+retrieval, TART -dual shows some performance
+drop from its non-instruction-following counter-
+part, caused by large performance deteriorations
+on a few datasets. We hypothesize that a smaller
+model size (i.e., 110 million parameters) and lim-
+ited interactions between query and document em-
+beddings make building an instruction-following
+retrieval system more challenging. Future work can
+study the effect of scaling up bi-encoder models as
+well as explore modeling architectures that enable
+rich interaction but are still more efﬁcient than the
+cross-encoder, such as ColBERT-v2 (Santhanam
+et al., 2022).
+Further scaling up the number of datasets.
+Retrieval tasks are excluded in prior work on
+instruction-following of LLMs. This work is the
+ﬁrst to explore instruction-tuning in the area of re-
+trieval, and we annotate more than 100 instructionsfor approximately 40 tasks, and we demonstrate the
+effectiveness of the dataset scale in retrieval. Re-
+cent work (Wang et al., 2022b; Chung et al., 2022)
+show that scaling up the number of the training
+datasets improves LLMs’ ability to adapt to new
+task via instructions. We open-source our instruc-
+tion data and call for community efforts to collect
+more retrieval tasks and human-written instructions
+as in instruction-following for LMs (Wang et al.,
+2022b; Bach et al., 2022), to investigate whether
+further increasing the number of the datasets (e.g.,
+more than 100 datasets) improves zero-shot and
+cross-task retrieval.
+Acknowledgements
+We thank Allen School NLP and Meta AI re-
+searchers for their insightful discussions, and Jeff
+Dalton, Mike Lewis, Sheng-Chieh Lin, Sandy Ka-
+plan and Yizhong Wang for their helpful feedback
+on this paper and discussions.
+References
+Raviteja Anantha, Svitlana Vakulenko, Zhucheng Tu,
+Shayne Longpre, Stephen Pulman, and Srinivas
+Chappidi. 2021. Open-domain question answering
+goes conversational via question rewriting. Proceed-
+ings of the 2021 Conference of the North American
+Chapter of the Association for Computational Lin-
+guistics: Human Language Technologies .
+Akari Asai, Xinyan Yu, Jungo Kasai, and Hanna Ha-
+jishirzi. 2021. One question answering model for
+many languages with cross-lingual dense passage re-
+trieval. Proceedings of Advances in Neural Informa-
+tion Processing Systems .
+Stephen Bach, Victor Sanh, Zheng Xin Yong, Albert
+Webson, Colin Raffel, Nihal V . Nayak, Abheesht
+Sharma, Taewoon Kim, M Saiful Bari, Thibault
+Fevry, Zaid Alyafeai, Manan Dey, Andrea Santilli,
+Zhiqing Sun, Srulik Ben-david, Canwen Xu, Gun-
+jan Chhablani, Han Wang, Jason Fries, Maged Al-
+shaibani, Shanya Sharma, Urmish Thakker, Khalid
+Almubarak, Xiangru Tang, Dragomir Radev, Mike
+Tian-jian Jiang, and Alexander Rush. 2022. Prompt-
+Source: An integrated development environment
+and repository for natural language prompts. In Pro-
+ceedings of the 60th Annual Meeting of the Associa-
+tion for Computational Linguistics: System Demon-
+strations .
+Payal Bajaj, Daniel Campos, Nick Craswell, Li Deng,
+Jianfeng Gao, Xiaodong Liu, Rangan Majumder,
+Andrew McNamara, Bhaskar Mitra, Tri Nguyen,
+Mir Rosenberg, Xia Song, Alina Stoica, Saurabh
+Tiwary, and Tong Wang. 2016. MS MARCO: A
+human generated machine reading comprehension
+dataset.
+Alexander Bondarenko, Maik Fröbe, Meriem Be-
+loucif, Lukas Gienapp, Yamen Ajjour, Alexander
+Panchenko, Chris Biemann, Benno Stein, Henning
+Wachsmuth, Martin Potthast, and Matthias Hagen.
+2020. Overview of touché 2020: Argument retrieval:
+Extended abstract. In Proceedings of Experimental
+IR Meets Multilinguality, Multimodality, and Inter-
+action: 11th International Conference of the CLEF
+Association .
+Vera Boteva, Demian Gholipour, Artem Sokolov, and
+Stefan Riezler. 2016. A full-text learning to rank
+dataset for medical information retrieval. In Pro-
+ceedings of the 38th European Conference on Infor-
+mation Retrieval .
+Isabel Cachola, Kyle Lo, Arman Cohan, and Daniel
+Weld. 2020. TLDR: Extreme summarization of sci-
+entiﬁc documents. In Findings of the Association for
+Computational Linguistics: EMNLP 2020 .
+Xilun Chen, Kushal Lakhotia, Barlas O ˘guz, Anchit
+Gupta, Patrick Lewis, Stan Peshterliev, Yashar
+Mehdad, Sonal Gupta, and Wen-tau Yih. 2022.
+Salient phrase aware dense retrieval: Can a dense
+retriever imitate a sparse one? In Proceedings of the
+2022 Conference on Empirical Methods in Natural
+Language Processing .
+Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakr-
+ishna Vedantam, Saurabh Gupta, Piotr Dollár, and
+C Lawrence Zitnick. 2015. Microsoft coco captions:
+Data collection and evaluation server.
+Hyung Won Chung, Le Hou, Shayne Longpre, Barret
+Zoph, Yi Tay, William Fedus, Eric Li, Xuezhi Wang,
+Mostafa Dehghani, Siddhartha Brahma, Albert Web-
+son, Shixiang Shane Gu, Zhuyun Dai, Mirac Suz-
+gun, Xinyun Chen, Aakanksha Chowdhery, Sharan
+Narang, Gaurav Mishra, Adams Yu, Vincent Zhao,
+Yanping Huang, Andrew Dai, Hongkun Yu, Slav
+Petrov, Ed H. Chi, Jeff Dean, Jacob Devlin, Adam
+Roberts, Denny Zhou, Quoc V . Le, and Jason Wei.
+2022. Scaling instruction-ﬁnetuned language mod-
+els.
+Arman Cohan, Sergey Feldman, Iz Beltagy, Doug
+Downey, and Daniel Weld. 2020. SPECTER:
+Document-level representation learning using
+citation-informed transformers. In Proceedings
+of the 58th Annual Meeting of the Association for
+Computational Linguistics .
+Zhuyun Dai and Jamie Callan. 2019. Deeper text un-
+derstanding for IR with contextual neural language
+modeling. In Proceedings of the 42nd International
+ACM SIGIR Conference on Research and Develop-
+ment in Information Retrieval .
+Zhuyun Dai and Jamie Callan. 2020. Context-aware
+document term weighting for ad-hoc search. In Pro-
+ceedings of The Web Conference 2020 .
+Zhuyun Dai, Vincent Y . Zhao, Ji Ma, Yi Luan, Jianmo
+Ni, Jing Lu, Anton Bakalov, Kelvin Guu, Keith B.Hall, and Ming-Wei Chang. 2022. Promptagator:
+Few-shot dense retrieval from 8 examples.
+Ashwin Devaraj, Iain Marshall, Byron Wallace, and
+Junyi Jessy Li. 2021. Paragraph-level simpliﬁcation
+of medical texts. In Proceedings of the 2021 Con-
+ference of the North American Chapter of the Asso-
+ciation for Computational Linguistics: Human Lan-
+guage Technologies .
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing. In Proceedings of the 2019 Conference of
+the North American Chapter of the Association for
+Computational Linguistics: Human Language Tech-
+nologies .
+Thomas Diggelmann, Jordan L. Boyd-Graber, Jannis
+Bulian, Massimiliano Ciaramita, and Markus Leip-
+pold. 2020. CLIMATE-FEVER: A dataset for veriﬁ-
+cation of real-world climate claims. In Proceedings
+of Tackling Climate Change with Machine Learning
+Workshop at NeurIPS .
+Emily Dinan, Stephen Roller, Kurt Shuster, Angela
+Fan, Michael Auli, and Jason Weston. 2019. Wizard
+of wikipedia: Knowledge-powered conversational
+agents. In Proceedings of International Conference
+on Learning Representations .
+Matthew Dunn, Levent Sagun, Mike Higgins, V Ugur
+Guney, V olkan Cirik, and Kyunghyun Cho. 2017.
+SearchQA: A new q&a dataset augmented with con-
+text from a search engine.
+Anthony Fader, Luke Zettlemoyer, and Oren Etzioni.
+2014. Open question answering over curated and ex-
+tracted knowledge bases. In Proceedings of the 20th
+ACM SIGKDD International Conference on Knowl-
+edge Discovery and Data Mining .
+Angela Fan, Yacine Jernite, Ethan Perez, David Grang-
+ier, Jason Weston, and Michael Auli. 2019. ELI5:
+Long form question answering. In Proceedings of
+the 57th Annual Meeting of the Association for Com-
+putational Linguistics .
+Katja Filippova and Yasemin Altun. 2013. Overcom-
+ing the lack of parallel data in sentence compression.
+InProceedings of the 2013 Conference on Empirical
+Methods in Natural Language Processing .
+Antonio Gulli. 2004. Ag’s corpus of news articles.
+Felix Hamborg, Norman Meuschke, Corinna Bre-
+itinger, and Bela Gipp. 2017. news-please: A
+generic news crawler and extractor. In Proceedings
+of the 15th International Symposium of Information
+Science .
+Faegheh Hasibi, Fedor Nikolaev, Chenyan Xiong,
+Krisztian Balog, Svein Erik Bratsberg, Alexander
+Kotov, and Jamie Callan. 2017. Dbpedia-entity v2:
+A test collection for entity search. In Proceedings
+of the 40th International ACM SIGIR Conference on
+Research and Development in Information Retrieval .
+Christopher Hidey and Kathy McKeown. 2016. Identi-
+fying causal relations using parallel Wikipedia arti-
+cles. In Proceedings of the 54th Annual Meeting of
+the Association for Computational Linguistics .
+Sebastian Hofstätter, Sheng-Chieh Lin, Jheng-Hong
+Yang, Jimmy Lin, and Allan Hanbury. 2021. Ef-
+ﬁciently teaching an effective dense retriever with
+balanced topic aware sampling. In Proceedings of
+the 44th International ACM SIGIR Conference on
+Research and Development in Information Retrieval .
+Hamel Husain, Ho-Hsiang Wu, Tiferet Gazit, Miltiadis
+Allamanis, and Marc Brockschmidt. 2019. Code-
+searchnet challenge: Evaluating the state of seman-
+tic code search.
+Gautier Izacard, Mathilde Caron, Lucas Hosseini, Se-
+bastian Riedel, Piotr Bojanowski, Armand Joulin,
+and Edouard Grave. 2022. Unsupervised dense in-
+formation retrieval with contrastive learning. Trans-
+actions on Machine Learning Research .
+Qiao Jin, Bhuwan Dhingra, Zhengping Liu, William
+Cohen, and Xinghua Lu. 2019. PubMedQA: A
+dataset for biomedical research question answering.
+InProceedings of the 2019 Conference on Empiri-
+cal Methods in Natural Language Processing and
+the 9th International Joint Conference on Natural
+Language Processing .
+Mandar Joshi, Eunsol Choi, Daniel Weld, and Luke
+Zettlemoyer. 2017. TriviaQA: A large scale dis-
+tantly supervised challenge dataset for reading com-
+prehension. In Proceedings of the 55th Annual Meet-
+ing of the Association for Computational Linguis-
+tics.
+Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick
+Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and
+Wen-tau Yih. 2020. Dense passage retrieval for
+open-domain question answering. In Proceedings of
+the 2020 Conference on Empirical Methods in Natu-
+ral Language Processing .
+Daniel Khashabi, Amos Ng, Tushar Khot, Ashish Sab-
+harwal, Hannaneh Hajishirzi, and Chris Callison-
+Burch. 2021. GooAQ: Open question answering
+with diverse answer types. In Findings of the Associ-
+ation for Computational Linguistics: EMNLP 2021 .
+Omar Khattab and Matei Zaharia. 2020. ColBERT: Ef-
+ﬁcient and effective passage search via contextual-
+ized late interaction over bert. In Proceedings of the
+43rd International ACM SIGIR Conference on Re-
+search and Development in Information Retrieval .
+Mahnaz Koupaee and William Yang Wang. 2018. Wik-
+ihow: A large scale text summarization dataset.
+Tom Kwiatkowski, Jennimaria Palomaki, Olivia Red-
+ﬁeld, Michael Collins, Ankur Parikh, Chris Alberti,
+Danielle Epstein, Illia Polosukhin, Matthew Kelcey,
+Jacob Devlin, Kenton Lee, Kristina N. Toutanova,
+Llion Jones, Ming-Wei Chang, Andrew Dai, JakobUszkoreit, Quoc Le, and Slav Petrov. 2019. Natu-
+ral Questions: a benchmark for question answering
+research. Transactions of the Association of Compu-
+tational Linguistics .
+Kenton Lee, Ming-Wei Chang, and Kristina Toutanova.
+2019. Latent retrieval for weakly supervised open
+domain question answering. In Proceedings of the
+57th Annual Meeting of the Association for Compu-
+tational Linguistics .
+Patrick Lewis, Yuxiang Wu, Linqing Liu, Pasquale
+Minervini, Heinrich Küttler, Aleksandra Piktus, Pon-
+tus Stenetorp, and Sebastian Riedel. 2021. PAQ: 65
+million probably-asked questions and what you can
+do with them. Transactions of the Association for
+Computational Linguistics .
+Frederick Liu, Siamak Shakeri, Hongkun Yu, and Jing
+Li. 2021. EncT5: Fine-tuning t5 encoder for non-
+autoregressive tasks.
+Xueqing Liu, Chi Wang, Yue Leng, and ChengXiang
+Zhai. 2018. LinkSO: A dataset for learning to re-
+trieve similar question answer pairs on software de-
+velopment forums. In Proceedings of the 4th ACM
+SIGSOFT International Workshop on NLP for Soft-
+ware Engineering .
+Man Luo, Arindam Mitra, Tejas Gokhale, and Chitta
+Baral. 2022. Improving biomedical information re-
+trieval with neural retrievers. In Proceedings of the
+AAAI Conference on Artiﬁcial Intelligence .
+Macedo Maia, Siegfried Handschuh, André Freitas,
+Brian Davis, Ross McDermott, Manel Zarrouk, and
+Alexandra Balahur. 2018. WWW’18 open chal-
+lenge: Financial opinion mining and question an-
+swering. In Companion Proceedings of the The Web
+Conference 2018 .
+Jean Maillard, Vladimir Karpukhin, Fabio Petroni,
+Wen-tau Yih, Barlas Oguz, Veselin Stoyanov, and
+Gargi Ghosh. 2021. Multi-task retrieval for
+knowledge-intensive tasks. In Proceedings of the
+59th Annual Meeting of the Association for Compu-
+tational Linguistics and the 11th International Joint
+Conference on Natural Language Processing .
+Sewon Min, Mike Lewis, Luke Zettlemoyer, and Han-
+naneh Hajishirzi. 2022. MetaICL: Learning to learn
+in context. In Proceedings of the 2022 Conference of
+the North American Chapter of the Association for
+Computational Linguistics: Human Language Tech-
+nologies .
+Sewon Min, Julian Michael, Hannaneh Hajishirzi, and
+Luke Zettlemoyer. 2020. AmbigQA: Answering am-
+biguous open-domain questions. In Proceedings of
+the 2020 Conference on Empirical Methods in Natu-
+ral Language Processing .
+Swaroop Mishra, Daniel Khashabi, Chitta Baral, and
+Hannaneh Hajishirzi. 2022. Cross-task generaliza-
+tion via natural language crowdsourcing instructions.
+InProceedings of the 60th Annual Meeting of the
+Association for Computational Linguistics (Volume
+1: Long Papers) , pages 3470–3487, Dublin, Ireland.
+Association for Computational Linguistics.
+Stefano Mizzaro. 1998. How many relevances in infor-
+mation retrieval? Interacting with Computers .
+Niklas Muennighoff. 2022. SGPT: Gpt sentence em-
+beddings for semantic search.
+Shashi Narayan, Shay B. Cohen, and Mirella Lapata.
+2018. Don’t give me the details, just the summary!
+topic-aware convolutional neural networks for ex-
+treme summarization. In Proceedings of the 2018
+Conference on Empirical Methods in Natural Lan-
+guage Processing .
+Jianmo Ni, Chen Qu, Jing Lu, Zhuyun Dai, Gus-
+tavo Hernández Ábrego, Ji Ma, Vincent Y Zhao,
+Yi Luan, Keith B Hall, Ming-Wei Chang, et al. 2021.
+Large dual encoders are generalizable retrievers.
+Rodrigo Nogueira and Kyunghyun Cho. 2019. Passage
+re-ranking with bert.
+Rodrigo Nogueira, Zhiying Jiang, Ronak Pradeep, and
+Jimmy Lin. 2020. Document ranking with a pre-
+trained sequence-to-sequence model. In Findings
+of the Association for Computational Linguistics:
+EMNLP 2020 .
+Rodrigo Nogueira, Wei Yang, Jimmy Lin, and
+Kyunghyun Cho. 2019. Document expansion by
+query prediction.
+Long Ouyang, Jeff Wu, Xu Jiang, Diogo Almeida,
+Carroll L. Wainwright, Pamela Mishkin, Chong
+Zhang, Sandhini Agarwal, Katarina Slama, Alex
+Ray, John Schulman, Jacob Hilton, Fraser Kelton,
+Luke Miller, Maddie Simens, Amanda Askell, Pe-
+ter Welinder, Paul Christiano, Jan Leike, and Ryan
+Lowe. 2022. Training language models to follow in-
+structions with human feedback.
+Ankit Pal, Logesh Kumar Umapathi, and Malaikan-
+nan Sankarasubbu. 2022. Medmcqa: A large-scale
+multi-subject multi-choice dataset for medical do-
+main question answering. In Proceedings of the
+Conference on Health, Inference, and Learning .
+Fabio Petroni, Aleksandra Piktus, Angela Fan, Patrick
+Lewis, Majid Yazdani, Nicola De Cao, James
+Thorne, Yacine Jernite, Vladimir Karpukhin, Jean
+Maillard, Vassilis Plachouras, Tim Rocktäschel, and
+Sebastian Riedel. 2021. KILT: a benchmark for
+knowledge intensive language tasks. In Proceedings
+of the 2021 Conference of the North American Chap-
+ter of the Association for Computational Linguistics:
+Human Language Technologies .
+Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin,
+Dmytro Okhonko, Samuel Broscheit, Gautier Izac-
+ard, Patrick Lewis, Barlas O ˘guz, Edouard Grave,
+Wen-tau Yih, and Sebastian Riedel. 2021. The
+web is your oyster–knowledge-intensive nlp against
+a very large web corpus.pushshift. 2021. Npr corpus.
+Yingqi Qu, Yuchen Ding, Jing Liu, Kai Liu, Ruiyang
+Ren, Wayne Xin Zhao, Daxiang Dong, Hua Wu,
+and Haifeng Wang. 2021. RocketQA: An opti-
+mized training approach to dense passage retrieval
+for open-domain question answering. In Proceed-
+ings of the 2021 Conference of the North American
+Chapter of the Association for Computational Lin-
+guistics: Human Language Technologies .
+Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and
+Percy Liang. 2016. SQuAD: 100,000+ questions for
+machine comprehension of text. In Proceedings of
+the 2016 Conference on Empirical Methods in Natu-
+ral Language Processing .
+Soumik Rakshit. 2019. Yahoo answers dataset.
+Nils Reimers and Iryna Gurevych. 2019. Sentence-
+BERT: Sentence embeddings using Siamese BERT-
+networks. In Proceedings of the 2019 Conference on
+Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natu-
+ral Language Processing .
+Stephen Robertson and Hugo Zaragoza. 2009. The
+probabilistic relevance framework: Bm25 and be-
+yond. Foundations and Trends in Information Re-
+trieval .
+Guilherme Moraes Rosa, Luiz Bonifacio, Vitor
+Jeronymo, Hugo Abonizio, Marzieh Fadaee,
+Roberto Lotufo, and Rodrigo Nogueira. 2022. No
+parameter left behind: How distillation and model
+size affect zero-shot retrieval.
+Alexander M. Rush, Sumit Chopra, and Jason Weston.
+2015. A neural attention model for abstractive sen-
+tence summarization. In Proceedings of the 2015
+Conference on Empirical Methods in Natural Lan-
+guage Processing .
+Ian Ruthven and Mounia Lalmas. 2003. A survey on
+the use of relevance feedback for information access
+systems. The Knowledge Engineering Review .
+Devendra Singh Sachan, Mike Lewis, Mandar Joshi,
+Armen Aghajanyan, Wen-tau Yih, Joelle Pineau, and
+Luke Zettlemoyer. 2022. Improving passage re-
+trieval with zero-shot question generation. In Pro-
+ceedings of the 2022 Conference on Empirical Meth-
+ods in Natural Language Processing .
+Victor Sanh, Albert Webson, Colin Raffel, Stephen
+Bach, Lintang Sutawika, Zaid Alyafeai, Antoine
+Chafﬁn, Arnaud Stiegler, Arun Raja, Manan Dey,
+M Saiful Bari, Canwen Xu, Urmish Thakker,
+Shanya Sharma Sharma, Eliza Szczechla, Tae-
+woon Kim, Gunjan Chhablani, Nihal Nayak, De-
+bajyoti Datta, Jonathan Chang, Mike Tian-Jian
+Jiang, Han Wang, Matteo Manica, Sheng Shen,
+Zheng Xin Yong, Harshit Pandey, Rachel Bawden,
+Thomas Wang, Trishala Neeraj, Jos Rozen, Ab-
+heesht Sharma, Andrea Santilli, Thibault Fevry, Ja-
+son Alan Fries, Ryan Teehan, Teven Le Scao, Stella
+Biderman, Leo Gao, Thomas Wolf, and Alexan-
+der M Rush. 2022. Multitask prompted training en-
+ables zero-shot task generalization. In Proceedings
+of International Conference on Learning Represen-
+tations .
+Keshav Santhanam, Omar Khattab, Jon Saad-Falcon,
+Christopher Potts, and Matei Zaharia. 2022. Col-
+BERTv2: Effective and efﬁcient retrieval via
+lightweight late interaction. In Proceedings of the
+2022 Conference of the North American Chapter of
+the Association for Computational Linguistics: Hu-
+man Language Technologies .
+Abigail See, Peter J. Liu, and Christopher D. Manning.
+2017. Get to the point: Summarization with pointer-
+generator networks. In Proceedings of the 55th An-
+nual Meeting of the Association for Computational
+Linguistics (Volume 1: Long Papers) .
+Kornrel Csernai Shankar Iyer, Nikhil Dandekar. 2012.
+First quora dataset release: Question pairs.
+Zejiang Shen, Kyle Lo, Lauren Yu, Nathan Dahlberg,
+Margo Schlanger, and Doug Downey. 2022. Multi-
+lexsum: Real-world summaries of civil rights law-
+suits at multiple granularities. In Proceedings of the
+36th Conference on Neural Information Processing
+Systems Datasets and Benchmarks Track .
+Amit Singhal et al. 2001. Modern information retrieval:
+A brief overview. IEEE Data Engineering Bulletin .
+Robert S. Taylor. 1962. The process of asking ques-
+tions. American Documentation .
+Nandan Thakur, Nils Reimers, Andreas Rücklé, Ab-
+hishek Srivastava, and Iryna Gurevych. 2021. BEIR:
+A heterogeneous benchmark for zero-shot evalua-
+tion of information retrieval models. In Proceedings
+of the 35th Conference on Neural Information Pro-
+cessing Systems Datasets and Benchmarks Track .
+James Thorne, Andreas Vlachos, Christos
+Christodoulopoulos, and Arpit Mittal. 2018.
+FEVER: a large-scale dataset for fact extraction
+and VERiﬁcation. In Proceedings of the 2018
+Conference of the North American Chapter of the
+Association for Computational Linguistics: Human
+Language Technologies .
+Ellen V oorhees. 2005. Overview of the trec 2004 ro-
+bust retrieval track. In Proceedings of the Thirteenth
+Text REtrieval Conference .
+Ellen V oorhees, Tasmeer Alam, Steven Bedrick, Dina
+Demner-Fushman, William R. Hersh, Kyle Lo, Kirk
+Roberts, Ian Soboroff, and Lucy Lu Wang. 2021.
+TREC-COVID: Constructing a pandemic informa-
+tion retrieval test collection. SIGIR Forum .
+Henning Wachsmuth, Shahbaz Syed, and Benno Stein.
+2018. Retrieval of the best counterargument with-
+out prior topic knowledge. In Proceedings of the
+56th Annual Meeting of the Association for Compu-
+tational Linguistics .David Wadden, Shanchuan Lin, Kyle Lo, Lucy Lu
+Wang, Madeleine van Zuylen, Arman Cohan, and
+Hannaneh Hajishirzi. 2020. Fact or ﬁction: Verify-
+ing scientiﬁc claims. In Proceedings of the 2020
+Conference on Empirical Methods in Natural Lan-
+guage Processing .
+S. Walker, Stephen Robertson, M. Boughanem, G. J. F.
+Jones, and K. Sparck Jones. 1998. Okapi at trec-6:
+Automatic adhoc, vlc, routing, ﬁltering and qsdr. In
+The Sixth Text REtrieval Conference .
+Kexin Wang, Nandan Thakur, Nils Reimers, and Iryna
+Gurevych. 2022a. GPL: Generative pseudo label-
+ing for unsupervised domain adaptation of dense re-
+trieval. In Proceedings of the 2022 Conference of
+the North American Chapter of the Association for
+Computational Linguistics: Human Language Tech-
+nologies .
+Yizhong Wang, Swaroop Mishra, Pegah Alipoor-
+molabashi, Yeganeh Kordi, Amirreza Mirzaei,
+Anjana Arunkumar, Arjun Ashok, Arut Selvan
+Dhanasekaran, Atharva Naik, David Stap, et al.
+2022b. Super-NaturalInstructions: Generalization
+via declarative instructions on 1600+ nlp tasks. In
+Proceedings of the 2022 Conference on Empirical
+Methods in Natural Language Processing .
+Jason Wei, Maarten Bosma, Vincent Zhao, Kelvin Guu,
+Adams Wei Yu, Brian Lester, Nan Du, Andrew M.
+Dai, and Quoc V Le. 2022a. Finetuned language
+models are zero-shot learners. In Proceedings of
+International Conference on Learning Representa-
+tions .
+Jason Wei, Yi Tay, Rishi Bommasani, Colin Raf-
+fel, Barret Zoph, Sebastian Borgeaud, Dani Yo-
+gatama, Maarten Bosma, Denny Zhou, Donald Met-
+zler, Ed H. Chi, Tatsunori Hashimoto, Oriol Vinyals,
+Percy Liang, Jeff Dean, and William Fedus. 2022b.
+Emergent abilities of large language models. Trans-
+actions on Machine Learning Research . Survey Cer-
+tiﬁcation.
+Ikuya Yamada, Akari Asai, and Hannaneh Hajishirzi.
+2021. Efﬁcient passage retrieval with hashing for
+open-domain question answering. In Proceedings of
+the 59th Annual Meeting of the Association for Com-
+putational Linguistics and the 11th International
+Joint Conference on Natural Language Processing .
+Yi Yang, Wen-tau Yih, and Christopher Meek. 2015.
+WikiQA: A challenge dataset for open-domain ques-
+tion answering. In Proceedings of the 2015 Con-
+ference on Empirical Methods in Natural Language
+Processing .
+Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio,
+William Cohen, Ruslan Salakhutdinov, and Christo-
+pher D. Manning. 2018. HotpotQA: A dataset for
+diverse, explainable multi-hop question answering.
+InProceedings of the 2018 Conference on Empiri-
+cal Methods in Natural Language Processing .
+Andrew Yates, Rodrigo Nogueira, and Jimmy Lin.
+2021. Pretrained transformers for text ranking: Bert
+and beyond. In Proceedings of the 44th Interna-
+tional ACM SIGIR Conference on Research and De-
+velopment in Information Retrieval .
+Jingtao Zhan, Jiaxin Mao, Yiqun Liu, Jiafeng Guo, Min
+Zhang, and Shaoping Ma. 2021. Optimizing dense
+retrieval model training with hard negatives. In SI-
+GIR ’21: The 44th International ACM SIGIR Con-
+ference on Research and Development in Informa-
+tion Retrieval .
+Sheng Zhang, Xiaodong Liu, Jingjing Liu, Jianfeng
+Gao, Kevin Duh, and Benjamin Van Durme. 2018.
+ReCoRD: Bridging the gap between human and ma-
+chine commonsense reading comprehension.
+Appendix
+A Further BERRI Details
+A.1 Dataset List
+Table 5 shows all datasets we used in BERRI . Ta-
+ble 6 provides references for these datasets.
+A.2 Details of Dataset Uniﬁcation
+As shown in Table 5, some datasets were not
+originally retrieval datasets (e.g., summarization
+datasets). We describe how we convert these into
+the uniﬁed retrieval task format.
+QA. For QA datasets, where each instance con-
+sists of a query, a gold context, and answers, we
+assume the original gold context as the gold doc-
+ument used as a positive sample during training.
+For some exceptional datasets, we performed ad-
+ditional preprocessing. We found that ReCoRD
+instances are occasionally self-containing due to
+the nature of the cloze-style QA; therefore, for
+ReCoRD, we replace the original placeholder with
+the gold answer and use this original question with
+the answer as the query and the original context
+as a gold document. For MedMCQA, we use the
+source exam question as the query and the answer
+evidence as the positive document.
+Summarization. For summarization datasets,
+we use target summarizations as the gold document
+and source text as the query.
+Text simpliﬁcations. For text simpliﬁcation
+datasets, we use source (often more complex) sen-
+tences as the query and simpliﬁed sentences as the
+gold document.
+Code search. We use the source comment as the
+query and the corresponding implication as the
+gold document. We exclude the python subset from
+BERRI as we use it for X2-Retrieval.
+A.3 Instructions for BERRI
+Table 7 shows the full list of the instructions in
+BERRI . Note that we present only one instruction
+for each dataset. A full list of the instructions will
+be released in our repository.
+A.4BERRI Statistics
+We conduct analyses on BERRI to understand its
+domain and intent diversities.
+0 2 4 6 8 10QAsummarizationquestion duplicationscode searchsentence simplificationdialoguebody retrievalcaption genetationsfact verificationFigure 9: The task distributions of the datasets included
+inBERRI .
+0 1 2 3 4 5 6 7 8Wikipediawebnewscommunity QAtechnicalmedicalmisc.image captionssciencelegal
+Figure 10: The domain distributions of the datasets in-
+cluded in BERRI .
+Intents. Open-ended intents are diverse and hard
+to classify into ﬁxed sets of categories. As a proxy
+for intents, Figure 9 shows the distributions of the
+source task categories. QA is the most represen-
+tative category, while summarization and question
+duplication detection is also common due to their
+abundance in large-scale datasets. On the other
+hand, around 50 % of the tasks do not belong to
+those top three categories, such as code search or
+caption generations, which contribute to the diver-
+sity of BERRI . We also ﬁnd that traditional non-
+retrieval tasks, such as sentence simpliﬁcation or
+dialogue, can be repurposed as retrieval tasks. In
+Section 8.2, we analyze the effect of training data
+task diversity.
+Domains. Our dataset covers diverse domains.
+Figure 10 shows that Wikipedia (e.g., NQ), web
+(e.g., MS MARCO), Community QA (e.g., Quora),
+News(e.g., CNN/Daily) dominate, while we also
+have some expert domains (e.g., medical, legal,
+technical). We found that although many expert
+domain datasets are smaller than the ones in general
+domains like Wikipedia, adding those high-quality
+expert domain datasets helps the system learn to
+adapt to those domains or unseen expert domains
+with a similar writing style (e.g., scientiﬁc papers).
+dataset domain task unit
+1. Altlex Wikipedia sentence paraphrase sentence
+2. StackExchange (title !title) community forum duplicated questions title
+3. StackExchange (query !answer) community forum QA answer body
+4. Yahoo Answers (title !answers) community forum QA answer body
+5. MS MARCO web QA paragraph
+6. ELI5 web QA answer paragraph
+7. WikiHow community forum QA answer paragraph
+8. SearchQA web QA search snippets
+9. AGNews News summarization news summary
+10. NPR News summarization news summary
+11. CodeSearchNet (java) code code search Java code
+12. CodeSearchNet (ruby) code code search Ruby ode
+13. CodeSearchNet (JavaScript) code code search Java Script code
+14. CodeSearchNet (Go) code code search Go code
+15. PAQ Wikipedia QA paragraph
+16. Sentence Compression misc. sentence compression sentence
+17. CNN Daily Mail news summarization news summary
+18. XSUM news summarization news summary
+19. Coco captions image captions caption generations captions
+20. Quora Duplicated Questions community forum duplicated questions questions
+21. CCNews news summarization news summary
+22. FEVER (KILT) Wikipedia fact veriﬁcation paragraph
+23. HotpotQA (KILT) Wikipedia QA paragraph
+24. NQ (KILT) Wikipedia QA paragraph
+25. TriviaQA (KILT) Wikipedia QA paragraph
+26. WoW-KILT (knowledge) Wikipedia knowledge-grounded dialogue paragraph
+27. WoW-KILT (response) Wikipedia knowledge-grounded dialogue dialogue response
+28. medical simpliﬁcation medical sentence simpliﬁcation sentence
+29. SciTLDR science summarization paper summarization
+30. PubMedQA medical& science QA abstract
+31. MedMCQA medical QA answer explanation
+32. Gigaword web headline retrieval headline
+33. ReCoRD news QA news summary
+34. MultiLexSum legal summarization legal case summary
+35. Qrecc Wikipedia conversational QA response
+36. OQA Wikipedia duplicated questions question
+37. SQuAD Wikipedia QA paragraph
+Table 5: The complete list of datasets included in BERRI . Table 6 shows references for them.
+datasets used in BERRI
+Altlex(Hidey and McKeown, 2016), StackExchange (duplicate questions, question-title, question-question) (Reimers
+and Gurevych, 2019), Yahoo Answers(Rakshit, 2019), MSMARCO(Bajaj et al., 2016), ELI5(Fan et al., 2019),
+WikiHow(Koupaee and Wang, 2018), SearchQA(Dunn et al., 2017), AG News(Gulli, 2004), NPR(pushshift,
+2021), CodeSearchNet(Husain et al., 2019), PAQ(Lewis et al., 2021), Sentence Compression(Filippova and Altun,
+2013), CNN Daily Mail(See et al., 2017), XSUM(Narayan et al., 2018), COCO captions(Chen et al., 2015),
+Quora Duplicated Questions (Shankar Iyer, 2012), CC News(Hamborg et al., 2017), SQuAD(Rajpurkar et al.,
+2016), FEVERy(Thorne et al., 2018), HotpotQAy(Yang et al., 2018), Natural Questionsy(Kwiatkowski et al., 2019),
+TriviaQAy(Joshi et al., 2017), Wizard of Wikipediay(Dinan et al., 2019), Medical Simpliﬁcation Dataset (Devaraj et al.,
+2021), SCITLDR (Cachola et al., 2020), PubMedQA (Jin et al., 2019), MedMCQA (Pal et al., 2022), Gigaword (Rush
+et al., 2015), ReCoRD (Zhang et al., 2018), MultiLexSum (Shen et al., 2022), Qrecc (Anantha et al., 2021), OQA (Fader
+et al., 2014).
+datasets used during evaluations
+TREC-COVID (V oorhees et al., 2021), FIQA (Maia et al., 2018), NF Corpus (Boteva et al., 2016), Arguana (Wachsmuth
+et al., 2018), Touche-2020 (Bondarenko et al., 2020), DBPedia (Hasibi et al., 2017), SciDocs (Cohan et al., 2020),
+Climate-Fever (Diggelmann et al., 2020), SciFact (Wadden et al., 2020), GooAQ (Khashabi et al., 2021), LinkSO (Liu
+et al., 2018), AmbigQA (Min et al., 2020), WIKIQA (Yang et al., 2015).
+Table 6: References for datasets used in BERRI and evaluations. We use the preprocessed versions available on
+the SentenceTransformers (Reimers and Gurevych, 2019) embedding data page10for the datasets with. We use
+the preprocessed versions from KILT (Petroni et al., 2021) for the datasets withy.
+Dataset Instruction
+1. Altlex Retrieve a sentence from Wikipedia that simplifies the following
+2. SE (title!title) I want to find a related question asked in StackExchange. Can you find one
+for me?
+3. SE (title!title) StackExchange is a community QA forum for diverse topics including technical
+or science. Help me to find a question body that duplicates my question
+4. YahooAnswers Retrieve the most voted answer for this question from Yahoo Answers.
+5. MSMARCO I want to know the answer to the question. Can you find good evidence on the
+web?.
+6. ELI5 You have to answer a why / how question from users. Retrieve a Wikipedia
+paragraph that provides a piece of good evidence for the answer.
+7. WikiHow Find a detailed paragraph from WikiHow that explains how-to to achieve
+8. SearchQA Pick up the top web search results snippets for the following question.
+9. AGNews Find a news summary sentence corresponding to the following header.
+10. NPR Given a news article headline published at npr.org, find a corresponding
+summary of the news
+11. CodeSearchNet (Java) Match the following natural language instruction to Java codes
+12. CodeSearchNet (ruby) Retrieve ruby codes from GitHub commit history that implement this feature
+13. CodeSearchNet (JavaScript) Find a javascript code implementation on GitHub for the following natural
+language instructions
+14. CodeSearchNet (Go) Can you find a Go implementation of this?
+15. PAQ Can you answer my question by finding an article on the web?
+16. Sentence Compression You have to match this long sentence to a shorter compressed one
+17. CNN Daily Mail The following sentences are the summaries of a news article. Find the source
+news article.
+18. XSUM Retrieve a news article that is summarized as following.
+19. Coco captions Can you find an image caption talking about the same image as.
+20. Quora Dup. Questions Check if a Quora question is duplicated with this question.
+21. CC News I want to know the details of this news. Can you find a detailed news article
+on this for me?
+22. FEVER Retrieve a Wikipedia paragraph to verify this claim
+23. HotpotQA Find a paragraph that provides useful information to answer this question
+24. NQ Retrieve passages from Wikipedia to answer
+25. TriviaQA I want to find an answer for this Trivia question. Can you find some paragraphs
+that provide evidence from Wikipedia?
+26. WoW-Knowledge Find a Wikipedia paragraph related to the following conversation topic.
+27. WoW-Response Find a meaningful dialogue response to answer the user’s question
+28. Medical Simpliﬁcation Please retrieve a medical paper summary that is written in a simple language
+so that my patient can understand
+29. SciTLDR Find a sentence-length summary of this paper.
+30. PubMedQA Help me to find a highly related PubMed paper to answer this question.
+31. MedMCQA Find the explanation for the correct answer of this medical question.
+32. Gigaord Retrieve an extremely short summary of the following Gigaword article.
+33. Record Find a News article to verify the following sentence
+34. MultiLexSum Map this legal case summary to a sentence-long summary
+35. Qrecc You need to find a good response from a collection of previous responses and
+help users to know this topic more
+36. OQA Find a question that is paraphrased of this
+37. SQuAD Find a Wikipedia paragraph that answer the question
+Table 7: Full list of the instructions for the BERRI datasets. We present one instruction per dataset. All of the
+instructions are available at our GitHub repository.
+B Further Detail about the X2-Retrieval
+evaluation
+Query and corpus creations. For AmbigQA,
+we use the ofﬁcial development split, including1,172 queries, as the ofﬁcial test split annotations
+are not publicly available. We use all paraphrased
+questions for all train and development sets to form
+the retrieval corpus. For WIKIQA, we combine
+the development split and test split available at the
+Dataset q dgold
+WIKIQAWho plays henry tudor in the
+white princess?Jacob Collins-Levy as Henry VII, the King of England,
+Elizabeth’s husband
+AmbigWho played lead guitar for the
+rolling stones?Who played lead guitar for the rolling stones since 1962?
+SciFactThe risk of male prisoners
+harming themselves is ten times
+that of female prisoners.5-6% of male prisoners and 20-24% of female inmates
+self-harmed every year (scientiﬁc paper).
+GooAQ-techproject facet java version 1.8 is
+not supported eclipse mars?You can remove and create it again, or just update it. It is
+because the Java version in your Project Facet is 1.8 make it 1.7.
+Go to Project Properties -> Project Facets and on right side
+checkboxes, select the java checkbox(It might be already
+selected) and select the version as 1.7.
+LinkSOcould use batch normalization
+tensorﬂowtrying implement batch normalization layer tensor ﬂow problem
+running train step using tf moments get mean variance test time
+CodeSearchCreate a Basilisp function,
+setting meta and supplying a
+with_metadef _basilisp_fn(f): assert not hasattr(f, "meta") f._basilisp_fn =
+True f.meta = None f.with_meta = partial(_fn_with_meta, f)
+return f
+Table 8: X2-Retrieval examples data.
+Dataset Instruction
+TREC-COVID Retrieve Scientific paper paragraph to answer this question
+NF Corpus Retrieve Scientific paper paragraph to answer this question
+FIQA Find financial web article paragraph to answer
+Arguana Retrieve an argument that counter argues the following paragraph
+Touche You have to retrieve an argument to this debate question
+DBPedia Retrieve a Wikipedia introduction paragraph of the following entity
+SCIDOCS Find scientific paper titles that are related to the following
+Climate-Fever I want to know if the following claim is true or not. Retrieve a Wikipedia
+paragraph on climate change for this.
+SciFact Retrieve a scientific paper sentence to verify if the following claim is true
+WIKIQA Retrieve an answer sentence from Wikipedia
+AmbigQA Retrieve a question that is similar to this
+SciFact Retrieve scientific evidence to verify this claim
+GooAQ-technical Find a StackExchange forum that answers this question
+Codesearchnet-py Retrieve a python code that implements the following feature.
+LinkSO-Py You have to find a python implementation of this
+Table 9: Full list of the instructions used for evaluations.
+huggingface datasets,11and we use the question
+and answer sentence pairs that are labeled as 1
+as the queries for evaluations, and use the answer
+sentences as the gold documents. Regarding the
+retrieval target, we use all sentences available in
+the WIKIQA dataset, including the sentences that
+are labeled as 0. For LinkSO, we use the origi-
+nal datasets’ test split for the python domain and
+sample 1,000 queries.12We ﬁnd questions that
+11https://huggingface.co/datasets/wiki_qa
+12https://sites.google.com/view/linksoare labeled as duplicated and use their corpus as
+our retrieval target. For GooAQ-technical, we sam-
+ple 1,000 GooAQ questions whose answers are
+from stackoverflow.com . As 20% of the sam-
+pled GooAQ tech queries share the same answer
+posts, we remove the duplicated paragraphs. For
+CodeSearchNet-Python, we use the comments de-
+scribing the codes as queries and the corresponding
+python codes as positive documents. We sample
+1,000 queries from the test split.
+Examples. Examples of X2-Retrieval are shown
+in Table 8. As shown, queries themselves often do
+not fully indicate the users’ intents. By specifying
+users’ intents as explicit textual instructions, our
+model can effectively perform multi-task retrieval
+over a single pooled corpus.
+Human evaluations of quality. To access the
+possibility of having false negative passages, we
+run an off-the-shelf retrieval system to retrieve the
+top 10 documents for randomly sampled 20 ques-
+tions for each task, and we evaluate if any of the
+negative passages, especially from the non-target
+corpus, are indeed positive. We found that the false
+negative ratio is less than 10%.
+C Modeling Details
+C.1 Hyperparameters of TART
+TART -dual. We set the learning rate to be 1
+10 5and warm-up steps to be 1,000. The soft-
+max temperature is set to 0.05. The batch size is
+1024. We use 7 negative samples per instance; 10%
+of the time we use hard negative or instruction-
+unfollowing negatives, while 90% of the time we
+use negative documents that are randomly sampled
+from the same target corpus. The maximum docu-
+ment chunk length is set to 256.
+TART -full. To train a cross-encoder using the
+T0-3B encoder, we set the maximum sequence
+length to 512 and the batch size to 1, increas-
+ing the gradient accumulation steps to 8. We set
+the dropout rate to 0.1 and the learning rate to 1
+10 5.
+C.2 Instructions for Evaluations
+Table 9 lists the instructions used for the BEIR and
+X2-Retrieval evaluation.
+C.3 Negative Sampling
+Mining instruction-unfollowing samples. To
+sample instruction-unfollowing samples, given a
+query from a target dataset, we retrieve the top
+20 documents from another task’s corpus using
+Contriever-MS MARCO. For instance, given a Pub-
+MedQA, a system should not retrieve a document
+from a Wikipedia paragraph. A list of source target
+task and retrieval corpus combinations is shown in
+Table 10.
+Sampling d forTART -full training. Chal-
+lenging negative samples help a system to effec-
+tively learn the task. On the other hand, prior workalso shows that it can lead to large performance
+drops in out-of-domain datasets, and having both
+randomly sampled negative documents and care-
+fully designed negative documents is a key to build-
+ing a system that is competitive in both in-domain
+and out-of-domain retrieval (Ni et al., 2021). To
+effectively combine the negative documents during
+training, we ﬁrst combine random samples and hard
+negative samples, and then we randomly sample
+4 negative documents per one positive document.
+The number of instruction-unfollowing documents,
+if applicable, is limited to less than 20% of the neg-
+ative documents, and we set the maximum number
+of instruction-unfollowing samples from certain
+combinations listed in Table 10 up to 10k.
+D Further Results and Analyses
+D.1 Qualitative Results on X2-Retrieval
+Table 11 shows the qualitative examples given
+different instructions on X2-Retrieval, and Ta-
+ble 12 compares TART -full with Contriever MS
+MARCO.
+D.2 Analysis of Instruction Effectiveness
+Full results of instruction ablations. Table 13
+shows the full BEIR results of ablating instructions
+in Section 8.1, and Table 14 shows the ones on
+LOTTE and X2-Retrieval. On all of the bench-
+marks, removing instructions at training or test
+time largely hurts the performance, indicating the
+effectiveness of instructions.
+Examples of prompts with performance. Ta-
+ble 15 shows the instructions and TART -full per-
+formance on three BEIR datasets. We also provide
+a comparison of the model performance when un-
+informative instructions are given in Table 16. We
+see that more informative and related instructions
+often result in a strong performance, while irrele-
+vant instructions degrade it.
+D.3 Analysis on Model and Dataset Scale
+Table 17 shows the NDCG@10 across different
+model scales. We compare the TART -full initial-
+ized with different sizes of T5-LM-adapt for a fair
+comparison. We see in general that larger models
+perform better.
+Table 18 shows the full BEIR results of TART -
+full trained on varying numbers of datasets. We
+see that as we increase the number of datasets
+used during training, model performance often im-
+dataset expected output instruction-unfollowing corpus
+Gigaword article summary Wikipedia paragraph
+Medical Paragraph Simpliﬁcation simpliﬁed text of medical cases Wikipedia paragraph
+MS MARCO web answers OQA questions
+OQA similar questions Yahoo Answers answer
+PubMedQA medical paper abstract Wikipedia paragraph
+Qrecc dialogue responses Wikipedia paragraph
+Quora duplicated questions Wikipedia paragraph
+sentence compression simpliﬁed sentence Wikipedia paragraph
+StackExchange (question !answer) title StackExchange answer StackExchange title
+StackExchange (title !title) title StackExchange title StackExchange answer
+Yahoo Answers Yahoo Answers answer Wikipedia paragraphs
+Table 10: The list of the combinations of the dataset and corresponding instruction-unfollowing corpora to mine
+instruction-unfollowing negative documents.
+Query : how to calculate the distance between two points using longitude and latitude
+Instruction Top document
+Retrieve an answer post from
+StackOverﬂow to this questionSELECT getDistance(lat1,lng1,lat2,lng2) as distance FROM your_table. Here’s a
+MySQL function that will take two latitude longitude pairs, and give you the distance in
+degrees between the two points. It uses the Haversine formula to calculate the distance.
+Find a similar question asked in
+StackOverﬂowtried implementing formula good two points testing yet code working distance returns.
+Query : When did the kim family come to power?
+Instruction Top document
+ﬁnd an answer sentence Kim came to lead the Soviet-backed North’s provisional government, becoming the ﬁrst
+premier of its new government, the Democratic People’s Republic of Korea (commonly
+known as North Korea), in 1948. He started the Korean War in 1950 with hopes to
+reunify the region. (Wikipedia)
+Find a similar question When did the kim family come to power in North Korea? (Ambig QA)
+Query : 10% of sudden infant death syndrome (SIDS) deaths happen in newborns aged less than 6 months
+Instruction Top document
+retrieve a scientiﬁc paper para-
+graph to verify thisDespite declines in prevalence during the past two decades, sudden infant death syndrome
+(SIDS) continues to be the leading cause of death for infants aged between 1 month
+and 1 year in developed countries. Behavioral risk factors identiﬁed in epidemiological
+studies include prone and side positions for infant sleep, smoke exposure, soft bedding,
+and sleep surfaces, and overheating. (Scientiﬁc paper)
+Find a Wikipedia paragraph to
+verify thisBy deﬁnition, SIDS deaths occur under the age of one year, with the peak incidence
+occurring when the infant is at 2 to 4 months of age. (Wikipedia)
+Table 11: Examples of the model’s predictions given different instructions with the same query. The queries and
+documents are from X2-Retrieval.
+proves, which is consistent with previous work on
+instruction-tuning in LLMs (Wang et al., 2022b).
+D.4 Analysis on Different Pre-trained Models
+OurTART -full is initialized with the T0-3B en-
+coder. We experiment with more recent pre-
+trained instruction-following models: FLAN-T5-
+XL (Chung et al., 2022) and Tk-Instruct (Wang
+et al., 2022b), which are trained on the order of
+magnitude of more datasets. We analyze TART -
+full performance when we initialize encoders us-
+ing different pre-trained encoder models, includ-
+ing the ones that are released recently. Table 19shows the results of TART -full, when the encoder
+is initialized with three different recent instruction-
+following pretrained models, T0-3B, FLAN-T5-
+XL (Chung et al., 2022) and Tk-Instruct-3B (Wang
+et al., 2022b). FLAN-T5 shows the best aver-
+age BEIR performance, outperforming TART-full
+by 0.7 NDCG@10. Tk-Instruct shows a notable
+performance drop on some datasets (e.g., TREC
+COVID), resulting in slightly lower performance
+than the original TART -full (T0-3B).
+Query : 10% of sudden infant death syndrome (SIDS) deaths happen in newborns aged less than 6 months.
+Instructions : Retrieve a scientiﬁc paper abstract to verify this
+Contriever TART -full
+7By deﬁnition, SIDS deaths occur under the age of one
+year, with the peak incidence occurring when the infant is
+at 2 to 4 months of age. This is considered a critical period
+because the infant’s ability to rouse from sleep is not yet
+mature (Wikipedia paragraph)XDespite declines in prevalence during the past two
+decades, sudden infant death syndrome (SIDS) continues
+to be the leading cause of death for infants aged between 1
+month and 1 year in developed countries. Behavioral risk
+factors identiﬁed in epidemiological studies include prone
+and side positions for infant sleep, smoke exposure, soft
+bedding, and sleep surfaces, and overheating. (paper)
+Query : Which city will host the next winter Olympics?
+Instructions : ﬁnd an answer from Wikipedia
+Contriever TART -full
+7Where will the next winter Olympics be held 2018? (Am-
+big question)XThe host city for the 2022 Winter Olympics, is Beijing in
+northern China, elected on 31 July 2015, at the 128th IOC
+Session in Kuala Lumpur. Beijing will be the ﬁrst city ever
+to have hosted both the Summer and Winter Olympics. The
+2022 Winter Olympics will take place between 4 and 20
+February 2022. (Wikipedia paragraph)
+Query : use batch normalization tensorﬂow
+Instructions : Can you ﬁnd python code implementing this?
+Contriever TART -full
+7could use batch normalization tensorﬂow would like use
+batch normalization TensorFlow since found source code
+rel noreferrer core ops nn ops cc however ﬁnd documented
+different semantics mlp cnn sure exactly bn ﬁnd method
+called either c code copied reference (StackOverﬂow post)X
+def batch_norm ( i n p u t s , t r a i n i n g ,
+d a t a _ f o r m a t ) :
+o u t p u t s = t f . l a y e r s .
+b a t c h _ n o r m a l i z a t i o n (
+i n p u t s = i n p u t s , a x i s =1 ,
+momentum=_BATCH_NORM_DECAY,
+e p s i l o n =_BATCH_NORM_EPSILON,
+c e n t e r =True ,
+s c a l e =True , t r a i n i n g = t r a i n i n g ,
+f u s e d =True )
+return o u t p u t s
+(GitHub code)
+Query : how many planets is jupiter away from the sun?
+Instructions : Can you ﬁnd an answer sentence to this question for me?
+Contriever TART -full
+7Jupiter is the only planet whose barycenter with the Sun
+lies outside the volume of the Sun, though by only 7% of
+the Sun’s radius.[80] The average distance between Jupiter
+and the Sun is 778 million km (about 5.2 times the average
+distance between Earth and the Sun, or 5.2 AU) (Wikipedia
+paragraph)XJupiter is the ﬁfth planet from the Sun and the largest
+planet in the Solar System. (Wikipedia answer sentence)
+Query : Who won the ﬁnal hoh big brother 20?
+Instructions : a question similar to this
+Contriever TART -full
+•XWho won the Final HoH in the American reality
+show Big Brother 20? (AmbigQA)
+•XWho won the ﬁnal vote in the British reality show
+Celebrity Big Brother 20? (AmbigQA)
+•7Caleb Reynolds was a castaway on Survivor: Kaôh
+R¯ong; he was medically evacuated from the game, and
+placed 15th. Nicole Franzel returned as a HouseGuest
+on Big Brother 18 where she was crowned the winner
+and became the ﬁrst female winner to win against a
+male in the ﬁnal 2. (Wikipedia paragraph)•XWho won the ﬁnal vote in the British reality show
+Celebrity Big Brother 20? (AmbigQA)
+•XWho is left in the American big brother house at
+the end of season 20? (AmbigQA)
+•XWho won the Final HoH in the American reality
+show Big Brother 20? (AmbigQA)
+Table 12: We compare TART -full outputs with the Contriever-MS MARCO (Izacard et al., 2022) predictions on
+X2-Retrieval. We show the top one prediction for the ﬁrst four examples, and show the top three predictions for the
+bottom examples. Xmean that the documents follow instructions while 7mean that the documents do not satisfy
+the instructions.
+Using instructions BEIR
+at training at test TREC NFC FQA ARG TOU DBP SCD CLI SCF avg. best
+TART -full X X 72.8 34.6 42.0 50.0 35.3 46.1 18.4 35.2 73.7 44.4 5
+AblationsX 61.1 21.9 38.4 39.8 23.6 36.1 15.0 24.7 65.2 36.2 0
+X 67.6 34.9 40.6 39.5 20.5 47.1 17.5 39.8 75.4 42.5 3
+57.2 37.1 41.3 50.0 18.3 41.3 18.3 32.5 73.2 41.1 2
+Table 13: The full results of the instruction ablations on BEIR. TREC, NFC, FQA, ARG, TOU, DBP, SCD, CLI,
+SCF indicate TREC-COVID, FIQA, NF Corpus, Arguana, Touche-2020, DBPedia, SciDocs, Climate-Fever, and
+SciFact, respectively.
+Using instructions LOTTE X2-Retrieval
+at training at test AMB WQA SCF GAT LSO CSP avg.
+TART -full X X 75.7 90.5 52.5 66.2 68.6 24.9 51.4 59.1
+AblationsX 68.5 59.3 54.4 61.7 62.0 15.1 46.8 49.9
+X 70.5 40.1 47.2 64.0 69.5 25.5 43.7 48.3
+69.9 34.5 32.5 60.8 58.2 24.2 49.3 43.3
+Table 14: : Instruction ablations on LOTTE (Search pooled) and X2-Retrieval (pooled) evaluation. AMB,
+WQA, SCF, GAT, LSO, CSP denotes AmbigQA, WikiQA, SciFact, GooAQ-Technical, LinkSO-Python, and
+CodeSearchNet-Python, respectively.
+Dataset Instruction NDCG@10
+SciFactFind a scientific paper sentence to verify this questions 75.4
+Retrieve a scientific paper abstract to verify this claim 75.7
+can you retrieve reliable scientific evidence to check if
+the following claim is true or not?74.3
+please retrieve evidence for me to verify the following 73.8
+a scientific paper sentence supporting or refuting the
+following statement74.7
+Touche-2020retrieve an argument paragraph to answer this question 30.6
+retrieve a paragraph to answer this debate question 30.9
+Find a opinion to this debate question 29.5
+retrieve an argument paragraph that supports this debate
+question to this debate question31.2
+Climate-FEVERRetrieve a scientific paper abstract to verify the
+following claim29.3
+Retrieve a Wikipedia paragraph to answer this question 30.4
+Retrieve a Wikipedia paragraph to verify the following
+claim about climate change30.8
+I want to know if the following claim is true or not. Can
+you find Wikipedia evidence?30.6
+Find a Wikipedia paragraph to verify the following claim 30.8
+Table 15: Performance on SciFact, Climate-FEVER and Touche-2020 with different instructions.
+Dataset Instruction NDCG@10
+SciFactXRetrieve a scientific paper abstract to verify this claim 75.7
+7Retrieve a Wikipedia paragraph to verify the following claim 74.0
+[NULL] 69.1
+ArguanaXRetrieve an article that contradict the following paragraph 50.6
+7Retrieve a Wikipedia paragraph that answers this question 47.3
+[NULL] 39.8
+Touche-2020XRetrieve an argument for this topic 29.6
+7retrieve a Wikipedia passage that answers this question 26.7
+[NULL] 22.1
+Table 16: Full list of the instructions used for evaluations. [NULL] means that at inference time, no instruction is
+given to TART -full.Xmeans a correct instruction, while 7means incorrect instructions.
+model size BEIR
+pretrained models TREC NFC FQA ARG TOU DBP SCD CLI SCF avg. best
+T5-LM-base 110M 62.9 29.7 33.9 37.8 30.8 38.6 15.1 29.2 70.7 38.7 0
+T5-LM-large 385M 73.3 34.2 40.2 47.1 32.8 45.3 18.2 35.2 74.9 43.7 3
+T5-LM-XL 1.5B 71.6 33.1 41.8 43.1 34.0 46.0 18.5 38.3 75.5 44.7 6
+Table 17: Zero-shot retrieval results for different sizes of TART -full on BEIR. TREC, NFC, FQA, ARG, TOU,
+SCD, CLI, SCF indicate TREC-COVID, FIQA, NF Corpus, Arguana, Touche-2020, DBPedia, SciDocs, Climate-
+Fever, and SciFact, respectively.
+dataset number BEIR
+pretrained models TREC NFC FQA ARG TOU DBP SCD CLI SCF avg. best
+T5-LM-XL 5 63.3 28.3 37.6 47.8 24.3 42.3 17.0 30.8 73.4 40.5 0
+T5-LM-XL 10 68.8 30.5 39.5 47.5 29.4 46.7 18.2 26.9 76.0 42.6 3
+T5-LM-XL 20 71.0 33.7 41.7 48.7 33.2 46.1 18.2 29.8 74.7 44.1 6
+Table 18: Zero-shot retrieval results for different training dataset scales of TART -full on BEIR. TREC, NFC,
+FQA, ARG, TOU, SCD, CLI, SCF indicate TREC-COVID, FIQA, NF Corpus, Arguana, Touche-2020, DBPedia,
+SciDocs, Climate-Fever, and SciFact, respectively.
+BEIR
+pretrained models TREC NFC FQA ARG TOU DBP SCD CLI SCF avg.
+T0-3B 71.7 34.0 42.2 49.8 31.2 45.1 17.5 30.0 75.8 44.1
+FLAN-T5 72.8 33.4 41.8 51.5 24.9 46.8 18.7 35.4 77.7 44.8
+Tk-Instruct 65.4 34.7 32.3 44.5 24.3 42.3 19.2 34.0 76.2 41.4
+Table 19: Zero-shot retrieval results for TART -full initialized using different pretrained models on BEIR. TREC,
+NFC, FQA, ARG, TOU, SCD, CLI, SCF indicate TREC-COVID, FIQA, NF Corpus, Arguana, Touche-2020,
+DBPedia, SciDocs, Climate-Fever, and SciFact, respectively.

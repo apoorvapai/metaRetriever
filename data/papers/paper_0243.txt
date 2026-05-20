@@ -1,0 +1,1604 @@
+Title: Alignment of Language Agents
+
+Alignment of Language Agents
+Zachary Kenton, Tom Everitt, Laura Weidinger, Iason Gabriel, Vladimir Mikulikand Geoﬀrey Irving
+DeepMind
+For artiﬁcial intelligence to be beneﬁcial to humans the behaviour of AI agents needs to be aligned with
+what humans want. In this paper we discuss some behavioural issues for language agents, arising from
+accidental misspeciﬁcation by the system designer. We highlight some ways that misspeciﬁcation can
+occur and discuss some behavioural issues that could arise from misspeciﬁcation, including deceptive or
+manipulative language, and review some approaches for avoiding these issues.
+1. Introduction
+Society, organizations and ﬁrms are notorious for
+making the mistake of rewarding A, while hoping
+forB(Kerr,1975),andAIsystemsarenoexception
+(Krakovna et al., 2020b; Lehman et al., 2020).
+WithinAIresearch, wearenowbeginningtosee
+advances in the capabilities of natural language
+processing systems. In particular, large language
+models (LLMs) have recently shown improved per-
+formance on certain metrics and in generating text
+that seems informally impressive (see e.g. GPT-3,
+Brown et al., 2020). As a result, we may soon see
+the application of advanced language systems in
+many diverse and important settings.
+Inlightofthis,itisessentialthatwehaveaclear
+grasp of the dangers that these systems present.
+In this paper we focus on behavioural issues that
+arise due to a lack of alignment , where the system
+does not do what we intended it to do (Bostrom,
+2014; Christiano, 2018; Leike et al., 2018; Russell,
+2019). These issues include producing harmful
+content, gaming misspeciﬁed objectives, and pro-
+ducing deceptive and manipulative language. The
+lackofalignmentweconsidercanoccurbyaccident
+(Amodei et al., 2016), resulting from the system
+designermakingamistakeintheirspeciﬁcationfor
+the system.
+Alignment has mostly been discussed with the
+assumption that the system is a delegate agent – an
+agent which is delegated to act on behalf of the
+human. Often the actions have been assumed to
+be in the physical, rather than the digital world,
+and the safety concerns arise in part due to the
+directconsequencesofthephysicalactionsthatthe
+delegate agent takes in the world. In this setting,the human may have limited ability to oversee or
+intervene on the delegate’s behaviour.
+In this paper we focus our attention on language
+agents– machine learning systems whose actions
+are restricted to give natural language text-output
+only, rather than controlling physical actuators
+whichdirectlyinﬂuencetheworld. Someexamples
+of language agents we consider are generatively
+trained LLMs, such as Brown et al. (2020) and
+Radford et al. (2018, 2019), and RL agents in text-
+based games, such as Narasimhan et al. (2015).
+While some work has considered the contain-
+ment of Oracle AI (Armstrong et al., 2012), which
+we discuss in Section 2, behavioral issues with lan-
+guage agents have received comparatively little at-
+tention compared to the delegate agent case. This
+isperhapsduetoaperceptionthatlanguageagents
+would have limited abilities to cause serious harm
+(Amodei et al., 2016), a position that we challenge
+in this paper.
+The outline of this paper is as follows. We de-
+scribe some related work in Section 2. In Section 3
+we give some background on AI alignment, lan-
+guage agents, and outline the scope of our investi-
+gation. Section4outlinessomeformsofmisspeciﬁ-
+cation through mistakes in specifying the training
+data, training process or the requirements when
+out of the training distribution. We describe some
+behavioural issues of language agents that could
+arise from the misspeciﬁcation in Section 5. We
+conclude in Section 6.
+Corresponding author(s): zkenton@google.com
+©2021 DeepMind. All rights reservedarXiv:2103.14659v1  [cs.AI]  26 Mar 2021
+Alignment of Language Agents
+2. Related Work
+See references throughout on the topic of natural
+languageprocessing(NLP).Foraninformalreview
+of neural methods in NLP, see Ruder (2018).
+There are a number of articles that review the
+areas of AGI safety and alignment. These have
+mostly been based on the assumption of a delegate
+agent, rather than a language agent. Amodei et al.
+(2016)hasafocusonMLaccidents,focusingonthe
+trend towards autonomous agents that exert direct
+control over the world, rather than recommenda-
+tion/speech systems, which they claim have rela-
+tively little potential to cause harm. As such, many
+of the examples of harm they consider are from
+a physical safety perspective (such as a cleaning
+robot) rather than harms from a conversation with
+an agent. AI safety gridworlds (Leike et al., 2017)
+alsoassumesadelegateagent,onewhichcanphys-
+ically move about in a gridworld, and doesn’t focus
+on safety in terms of language. Ortega and Maini
+(2018) give an overview of AI safety in terms of
+speciﬁcation, robustness and assurance, but don’t
+focus on language, with examples instead taken
+from video games and gridworlds. Everitt et al.
+(2018) give a review of AGI safety literature, with
+both problems and design ideas for safe AGI, but
+again don’t focus on language.
+Henderson et al. (2018) look at dangers with di-
+alogue systems which they take to mean ‘oﬀensive
+or harmful eﬀects to human interlocutors’. The
+work mentions the diﬃculties in specifying an ob-
+jective function for general conversation. In this
+paperweexpanduponthiswithourmorein-depth
+discussionofdatamisspeciﬁcation,aswellasother
+forms of misspeciﬁcation. We also take a more in-
+depth look at possible dangers, such as deception
+and manipulation.
+Armstrong et al. (2012) discuss proposals to us-
+ing and controlling an Oracle AI – an AI that does
+notactintheworldexceptbyansweringquestions.
+TheOracleAIisassumedtobe1)boxed(placedon
+a single physical spatially-limited substrate, such
+as a computer), 2) able to be reset, 3) has access
+to background information through a read-only
+module, 4) of human or greater intelligence. They
+conclude that whilst Oracles may be safer than un-
+restricted AI, they still remain dangerous. They ad-vocateforusingsensiblephysicalcapabilitycontrol,
+andsuggestthatmoreresearchisneededtounder-
+stand and control the motivations of an Oracle AI.
+We view Armstrong et al. (2012) as foundational
+for our work, although there are some notewor-
+thy changes in perspective. We consider language
+agents, which in comparison to Oracle AIs, are not
+restricted to a question-answering interaction pro-
+tocol, and most importantly, are not assumed to be
+of human-or-greater intelligence. This allows us to
+consider current systems, and the risks we already
+face from them, as well as futuristic, more capable
+systems. We also have a change of emphasis in
+comparison to Armstrong et al. (2012): our focus
+is less on discussing proposals for making a system
+safe and more on the ways in which we might mis-
+specify what we want the system to do, and the
+resulting behavioural issues that could arise.
+A recent study discusses the dangers of LLMs
+Bender et al. (2021), with a focus on the dangers
+inherent from the size of the models and datasets,
+such as environmental impacts, the inability to
+curate their training data and the societal harms
+that can result.
+Another recent study (Tamkin et al., 2021) sum-
+marizesadiscussiononcapabilitiesandsocietalim-
+pacts of LLMs. They mention the need for aligning
+model objectives with human values, and discuss
+a number of societal issues such as biases, disinfor-
+mation and job loss from automation.
+We see our work as complimentary to these. We
+take a diﬀerent framing for the cause of the dan-
+gers we consider, with a focus on the dangers aris-
+ing from accidental misspeciﬁcation by a designer
+leading to a misaligned language agent.
+3. Background
+3.1. AI Alignment
+3.1.1. Behaviour Alignment
+AI alignment research focuses on tackling the so-
+calledbehaviouralignmentproblem (Leikeetal.,
+2018):
+How do we create an agent that behaves in accor-
+dance with what a human wants?
+2
+Alignment of Language Agents
+It is worth pausing ﬁrst to reﬂect on what is
+meant by the target of alignment, given here as
+"what a human wants”, as this is an important nor-
+mative question. First, there is the question of who
+the target should be: an individual, a group, a
+company, a country, all of humanity? Second, we
+must unpack what their objectives may be. Gabriel
+(2020) discusses some options, such as instruc-
+tions, expressed intentions, revealed preferences,
+informedpreferences,interest/well-beingandsoci-
+etalvalues,concludingthatperhapssocietalvalues
+(or rather, beliefs about societal values) may be
+most appropriate.
+Inadditiontothenormativeworkofdecidingon
+anappropriatetargetofalignment,thereisalsothe
+technical challenge of creating an AI agent that is
+actuallyalignedtothattarget. Gabriel(2020)ques-
+tions the ‘simple thesis’ that it’s possible to work
+on the technical challenge separately to the nor-
+mative challenge, drawing on what we currently
+know about the ﬁeld of machine learning (ML).
+For example, diﬀerent alignment targets will have
+diﬀerentproperties, suchasthe cost andreliability
+of relevant data, which can aﬀect what technical
+approach is appropriate and feasible. Furthermore,
+somemoraltheoriescouldbemoreamenabletoex-
+istingMLapproachesthanothers,andsoshouldn’t
+necessarily be considered separately from the tech-
+nical challenge.
+We might expect that our technical approaches
+may have to take into account these normative
+propertiesinordertobedeployedintherealworld.
+Even restricting to the simplest case where the
+alignment target is an individual human, solving
+thebehaviouralignmentproblemischallengingfor
+several reasons.
+Firstly, it’s diﬃcult to precisely deﬁne and mea-
+sure what the human wants, which can result in
+gamingbehaviour, where loopholes in the sup-
+plied objective are exploited in an unforeseen way
+(Krakovna et al., 2020b; Lehman et al., 2020). We
+discuss this further in Section 5.4. Secondly, even
+if the supplied objective is correct, a capable agent
+may still exhibit undesired behaviour due to sec-
+ondaryobjectivesthatariseinpursuitofitsprimary
+objective,suchastamperingwithitsfeedbackchan-
+nel (Everitt et al., 2021b). Thirdly, it’s possible
+that the challenge of alignment gets harder as thestrength of our agent increases, because we have
+less opportunity to correct for the above problems.
+For example, as the agent becomes more capable,
+it may get more eﬃcient at gaming and tamper-
+ing behaviour, leaving less time for a human to
+intervene.
+3.1.2. Intent Alignment
+To make progress, Christiano (2018) and Shah
+(2018) consider two possible decompositions of
+the behaviour alignment problem into subprob-
+lems:intent-competence anddeﬁne-optimize . In the
+intent-competence decomposition, we ﬁrst solve
+the so-called intent alignment problem (Chris-
+tiano, 2018):
+Howdowecreateanagentthatintendstodowhat
+a human wants?
+To then get the behaviour we want, we then
+need the agent to be competent at achieving its in-
+tentions. Perfect behaviour is not required in order
+to be intent aligned – just that the agent is trying
+to do what the human wants. Solving the intent
+alignment problem might help to avoid the most
+damaging kind of behaviour, because where the
+agent gets things wrong, this will be by mistake,
+rather than out of malice. However, solving the
+intent alignment problem presents philosophical,
+psychological and technical challenges. Currently
+we don’t know how to mathematically operational-
+ize the fuzzy notion of an AI agent having intent
+– to betryingto do something (Christiano, 2018).
+It would not be suﬃcient to just ask an AI system
+whatit’stryingtodo,aswewon’tknowwhetherto
+trust the answer it gives. It is unclear whether we
+should consider our current systems to have intent
+or how to reliably set it to match what a human
+wants.
+In the second decomposition, deﬁne-optimize ,
+we ﬁrst solve the deﬁnesubproblem: specify an
+objectivecapturingwhatwewant. Wethenuseop-
+timization to achieve the optimal behaviour under
+that objective, e.g. by doing reinforcement learn-
+ing (RL). Solving the deﬁne subproblem is hard,
+because it’s not clear what the objective should be,
+andoptimizingthewrongobjectivecanleadtobad
+outcomes. One approach to the deﬁne subproblem
+is to learn an objective from human feedback data
+3
+Alignment of Language Agents
+(rather than hard-coding it), see Christiano et al.
+(2017) and references therein.
+One might view the deﬁne-optimize decomposi-
+tionasanapproachtosolvingtheintentalignment
+problem, by learning an objective which captures
+‘try to assist the human’, and then optimizing for
+it. However, the downside of this is that we are
+still likely to misspecify the objective and so opti-
+mizing for it will not result in the agent trying to
+assist the human. Instead it just does whatever the
+misspeciﬁed objective rewards it for.
+3.1.3. Incentive Alignment
+Outside of these two decompositions, there is also
+the problem of aligning incentives – secondary ob-
+jectives to learn about and inﬂuence parts of the
+environment in pursuit of the primary objective
+(Everitt et al., 2021a). Part of having aligned in-
+centives means avoiding problematic behaviours
+such as tampering with the objective (Everitt et al.,
+2021b)ordisablinganoﬀ-switch(Hadﬁeld-Menell
+et al., 2017a).
+In contrast to the notion of intent, there has
+been some progress on a formal understanding of
+how these incentives arise through graphical crite-
+ria in a causal inﬂuence diagram (CID) of agent-
+environment interaction (Everitt et al., 2021a). In
+modeling the system as a CID, the modeler adopts
+the intentional stance towards the agent (Dennett,
+1989),whichmeansit’snotimportantwhetherthe
+agent’s primary objective has an obvious physical
+correlate,aslongastreatingthesystemasanagent
+optimizing for that primary objective is a good
+model for predicting its behaviour (Everitt et al.,
+2019a). As such, this doesn’t limit this analysis to
+just the deﬁne-optimize decomposition, although
+identifying the primary objective is easier in this
+case, as it is explicitly speciﬁed (either hard coded
+or learnt).
+3.1.4. Inner Alignment
+A further reﬁnement of alignment considers be-
+haviour when outside of the training distribution.
+Of particular concern is when an agent is optimiz-
+ing for the wrong thing when out of distribution.
+Hubinger et al. (2019) introduce the concept of a
+mesa-optimizer – a learnt model which is itself anoptimizer for some mesa-objective , which may dif-
+ferfromthebase-objectiveusedtotrainthemodel,
+whendeployedoutsideofthetrainingenvironment.
+This leads to the so-called inner alignment prob-
+lem:
+How can we eliminate the gap between the mesa
+and base objectives, outside of the training distribu-
+tion?
+Of particular concern is deceptive alignment
+(Hubinger et al., 2019), where the mesa-optimizer
+acts as if it’s optimizing the base objective as an in-
+strumental goal, whereas its actual mesa-objective
+is diﬀerent.
+3.1.5. Approaches to Alignment
+We now discuss some proposed approaches to get-
+tingalignedagents, based on humanfeedback. For
+a more detailed review of approaches to alignment
+see Everitt et al. (2018).
+Asmentionedabove,Christianoetal.(2017)pro-
+pose to communicate complex goals using human
+feedback, capturing human evaluation of agent be-
+haviour in a reward model, which is used to train
+an RL agent. This allows agents to do tasks that a
+human can evaluate, but can’t demonstrate. But
+what if we want agents that can do tasks that a hu-
+mancan’tevenevaluate? Thisisthemotivationfor
+scalable alignment proposals, where the idea is to
+give humans extra help to allow them to evaluate
+more demanding tasks.
+Irving et al. (2018) propose to use a debate pro-
+tocol between two agents, which is judged by a
+human. This shifts the burden onto the agents to
+provideconvincingexplanationstohelpthehuman
+decide which agent’s answer is better.
+Iterated Ampliﬁcation (Christiano et al., 2018)
+progressively builds up a training signal for hard
+problems by decomposing the problem into sub-
+problems, then combining solutions to easier sub-
+problems.
+Recursive Reward Modeling (Leike et al., 2018)
+proposes to use a sequence of agents trained using
+RL from learnt reward models to assist the user in
+evaluating the next agent in the sequence.
+So far, these scalable alignment proposals have
+4
+Alignment of Language Agents
+only been empirically investigated in toy domains,
+so their suitability for solving the behaviour align-
+ment problem remains an open research question.
+One suggestion for addressing the inner align-
+ment problem involves using interpretability tools
+for evaluating and performing adversarial training
+(Hubinger,2019). Thereareanumberofworkson
+interpretability and analysis tools for NLP, see for
+example the survey of Belinkov and Glass (2019).
+Forabroadoverviewofinterpretabilityinmachine
+learning, see Shen (2020) and references therein.
+3.2. Language Agents
+As discussed in the introduction, our focus in this
+document is on language agents, which are re-
+stricted to act through text communication with a
+human, as compared to delegate agents which are
+delegatedtotakephysicalactionsintherealworld.
+Note that this distinction can be fuzzy; for exam-
+ple, one could connect the outputs of the language
+agent to physical actuators. Nonetheless, we still
+consider it a useful distinction, because we believe
+thereareimportantrisksthatthatareidiosyncratic
+to this more restricted type of agent. We now dis-
+cuss some reasons why it’s important to focus on
+alignment of language agents in particular.
+Firstly,asmentionedintheintroduction,wehave
+recentlyseenimpressiveadvancesinmayNLPtasks
+due to LLMs, see e.g. Brown et al. (2020). In this
+approach,LLMswithhundredsofbillionsofparam-
+eters are trained on web-scale datasets with the
+taskofpredictingthenextwordinasequence. Suc-
+cess on this task is so diﬃcult that what emerges
+is a very general sequence prediction system, with
+high capability in the few-shot setting.
+Secondly, the limitation on the agent’s action
+space to text-based communication restricts the
+agent’s ability to take control of its environment.
+This means that we might avoid some physical
+harms due to a delegate agent taking unwanted
+actions, whether intentional or accidental, mak-
+ing language agents arguably safer than delegate
+agents. As Armstrong et al. (2012) notes, how-
+ever, there is still a potential risk that a suﬃciently
+intelligent language agent could gain access to a
+less restricted action space, for example by manip-
+ulating its human gatekeepers to grant it physicalactuators. Nonetheless, on the face of it, it seems
+easiertocontrolamorerestrictedagent,whichmo-
+tivates focusing safety eﬀorts on aligning language
+agents ﬁrst.
+Thirdly, language agents have the potential to
+be more explainable to humans, since we expect
+natural language explanations to be more intu-
+itively understood by humans than explanations
+by a robot acting in the physical world. Explain-
+ability is important since we want to be able to
+trust that our agents are beneﬁcial before deploy-
+ingthem. Forarecentsurveyofexplainablenatural
+language processing (NLP), see Danilevsky et al.
+(2020). Note that explainability doesn’t come for
+free–therestillneedstobeincentivesforlanguage
+agentsto givetrueand useful explanations of their
+behaviour.
+Note also that in contrast to explainability meth-
+ods, which are requested post-hoc of an output,
+interpretability methods seek to give humans un-
+derstanding of the internal workings of a system.
+Interpretabilityislikelyashardforlanguageagents
+as it is for delegate agents. For a survey of inter-
+pretability/analysis methods in neural NLP see Be-
+linkov and Glass (2019).
+How we prioritise what aspects of alignment to
+focus on depends on timelines for when certain ca-
+pabilities will be reached, and where we perceive
+there to be demand for certain systems. Given the
+rapid improvement in language systems recently,
+we might estimate the timelines of capability ad-
+vance in language agents to be earlier than previ-
+ously thought. Moreover, digital technologies are
+often easier and more rapidly deployed than physi-
+cal products, giving an additional reason to focus
+on aligning language agents sooner rather than
+later.
+3.3. Scope
+Thescopeofthispaperisquitebroad. Forconcrete-
+ness, we sometimes consider existing language
+agent frameworks, such as language modeling. In
+other places we imagine future language agent
+frameworks which have further capabilities than
+existing systems in order to hypothesise about be-
+havioural issues of future agents, even if we don’t
+know the details of the framework.
+5
+Alignment of Language Agents
+We focus on language agents that have been
+trained from data, in contrast to pattern-matching
+systems like ELIZA (Weizenbaum, 1966). For clar-
+ity of exposition, we also focus on systems out-
+putting coherent language output, as opposed to
+e.g. search engines. However, many of our dis-
+cussions would carry over to other systems which
+provide information, rather than directly acting in
+the world. Note also that our focus in this paper is
+on natural, rather than synthetic language.
+The focus of this paper is on behavioural issues
+due to misalignment of the agent – unintended
+direct/ﬁrst-order harms that are due to a fault
+made by the system’s designers. This is to be seen
+as complementary to other important issues with
+languageagents,someofwhichhavebeencovered
+in prior work. These other issues include:
+•Malicious use (Brundage et al., 2018) of lan-
+guage agents by humans, which can produce
+disinformation, the spreading of dangerous
+and/or private information, and discrimina-
+tory and harmful content. More prosaic mali-
+cious use-cases could also have wide-ranging
+socialconsequences, suchasajob-application-
+writer used to defraud employers.
+•Accidental misuse by a user, by misunder-
+standing the outputs of the system.
+•Unfair distribution of the beneﬁts of the lan-
+guage agents, typically to those in wealthier
+countries (Bender et al., 2021).
+•Uneven performance for certain speaker
+groups, of certain languages and dialects
+(Joshi et al., 2020).
+•Challenges that arise in the context of eﬀorts
+to specify an ideal model output, including
+the kind of language that the agent adopts.
+In particular there may be a tension between
+de-biasing language and associations, and the
+ability of the language agent to converse with
+people in a way that mirrors their own lan-
+guageuse. Eﬀortstocreateamoreethicallan-
+guage output also embody value judgments
+that could be mistaken or illegitimate without
+appropriate processes in place.
+•Undue trust being placed in the system, espe-
+ciallyasitcommunicateswithhumansinnatu-
+rallanguage, andcouldeasilybemistakenfor
+a human (Proudfoot, 2011; Watson, 2019).•The risk of job loss as a result of the automa-
+tion of roles requiring language abilities (Frey
+and Osborne, 2017).
+4. Misspeciﬁcation
+FollowingKrakovnaetal.(2020b),weconsiderthe
+role of the designer of an AI system to be giving a
+speciﬁcation , understood quite broadly to encom-
+pass many aspects of the AI development process.
+For example, for an RL system, the speciﬁcation
+includes providing an environment in which the
+RL agent acts, a reward function that calculates
+reward signals, and a training algorithm for how
+the RL agent learns.
+Undesired behaviour can occur due to misspec-
+iﬁcation– a mistake made by the designer in im-
+plementing the task speciﬁcation. In the language
+of Ortega and Maini (2018), the misspeciﬁcation
+is due to the gap between the ideal speciﬁcation
+(what the designer intended) and the design speci-
+ﬁcation (what the designer actually implements).
+We now categorize some ways that misspeciﬁ-
+cation can happen. Each section has a general
+description of a type of misspeciﬁcation, followed
+by examples in the language agent setting. The
+list is not necessarily exhaustive, but we hope the
+examples are indicative of the diﬀerent ways mis-
+speciﬁcation can occur.
+4.1. Data
+The ﬁrst kind of misspeciﬁcation we consider is
+whenthedataismisspeciﬁed,sothatlearningfrom
+thisdataisnotreﬂectiveofwhatthehumanwants.
+We will consider three learning paradigms: rein-
+forcement learning, supervised learning and self-
+supervised learning. We will then give an example
+in the language setting of data misspeciﬁcation in
+self-supervised learning.
+In reinforcement learning, data misspeciﬁcation
+can happen in two ways: the rewards may be mis-
+speciﬁed, or the agent’s observation data may be
+misspeciﬁed.
+Reward misspeciﬁcation is a common problem
+(Krakovna et al., 2020b), because for most non-
+trivial tasks it is hard to precisely deﬁne and mea-
+6
+Alignment of Language Agents
+sure an objective that captures what the human
+wants, so instead one often uses a proxy objective
+whichiseasiertomeasure,butisimperfectinsome
+way. Asuppliedrewardfunctionmaybeincorrectly
+speciﬁed for a number of reasons: it might contain
+bugs, or be missing important details that did not
+occurtothedesignerattheoutset. Ingamesthisis
+lessofanissueasthereisoftenasimplesignalavail-
+able (eg win/loss in chess) that can be correctly
+algorithmically speciﬁed and used as an objective
+to optimize for. However, for more complex tasks
+beyond games, such an algorithmic signal may not
+be available. This is particularly true when trying
+to train a language agent using RL.
+Observation data can be misspeciﬁed, for exam-
+ple,iftheenvironmentcontainssimulatedhumans
+that converse with a language agent – the simu-
+lated humans will not be perfect, and will contain
+some quirks that aren’t representative of real hu-
+mans. Ifthedatafromthesimulatedhumansistoo
+diﬀerent to real humans, the language agent may
+not transfer well when used with real humans.
+We will now discuss data misspeciﬁcation in
+supervised learning and self-supervised learning.
+One form of self-supervised learning that we con-
+sider here is where labels and inputs are extracted
+from some part of an unlabeled dataset, in such a
+way that predicting the labels from the remaining
+input requires something meaningful to be learnt,
+which is then useful for a downstream application.
+In both supervised and self-supervised learning,
+data misspeciﬁcation can occur in both the input
+dataandthelabeldata. Thismighthappenbecause
+the designer doesn’t have complete design control
+over the training dataset. This occurs for example
+forsystemswhichtrainfromaverylargeamountof
+data,whichwouldbeexpensiveforthedesignerto
+collect and audit themselves, so instead they make
+use of an existing dataset that may not capture
+exactly what they want the model to predict.
+The datasets used for training LLMs (Brown
+et al., 2020) and (Radford et al., 2018, 2019)
+are an example of data misspeciﬁcation in self-
+supervisedlearning. Largescaleunlabeleddatasets
+are collected from the web, such as the Common-
+Crawl dataset (Raﬀel et al., 2019). Input data
+and labels are created by chopping a sentence intotwo parts – all words except the last one (input),
+and the ﬁnal word in the sentence (label). These
+datasets contain many biases, and factual inac-
+curacies, which all contribute to the data being
+misspeciﬁed. Brown et al. (2020) attempt to im-
+prove the quality of the CommonCrawl dataset us-
+inganautomaticﬁlteringmethodbasedonalearnt
+classiﬁer which predicts how similar a text from
+CommonCrawl is to a text from WebText (Raﬀel
+etal.,2019)–acuratedhigh-qualitydataset. How-
+ever this doesn’t remove all concerns - for example,
+there’s also some evidence of bias in WebText, e.g.
+see Tan and Celis (2019). Note that many ﬁltering
+approaches will be imperfect, and we expect the
+remaining data to still be somewhat misspeciﬁed.
+Another source of data misspeciﬁcation that is
+likelytooccursoonisthatexistinglanguageagents
+such as LLMs could be trained on text data that in-
+cludes LLM-generated outputs. This could happen
+by accident as outputs from LLMs start to appear
+commonly on the internet, and then get included
+into datasets scraped from it. This could create
+an undesired positive feedback loop in which the
+model is trained to become more conﬁdent in its
+outputs, as these get reinforced, and so introduces
+an unwanted source of bias.
+4.2. Training Process
+Misspeciﬁcation can also occur due to the design
+of the training process itself, irrespective of the
+content of the data.
+An illustrative example is how the choice of rein-
+forcement learning algorithm aﬀects what optimal
+policy is learnt when the agent can be interrupted,
+and overridden. We might want the agent to ig-
+nore the possibility of being interrupted. Orseau
+and Armstrong (2016) show that Q-learning, an
+oﬀ-policy RL algorithm, converges to a policy that
+ignores interruptions whilst SARSA, an on-policy
+RL algorithm, does not. A system designer might
+accidentally misspecify the training algorithm to
+be SARSA, even though they actually desired the
+agenttoignoreinterruptions. SeealsoLangloisand
+Everitt (2021) for further analysis of more general
+action modiﬁcations.
+Another example of training process misspeci-
+ﬁcation is that of a question answering system in
+7
+Alignment of Language Agents
+which the system’s answer can aﬀect the state of
+the world, and the objective depends on the query,
+answer and the state of the world Everitt et al.
+(2019b). This can lead to self-fulﬁlling prophecies,
+in which the model generates outputs to aﬀect fu-
+ture data in such a way as to make the prediction
+problem easier on the future data. See Armstrong
+and O’Rorke (2017) and Everitt et al. (2019b) for
+approaches to changing the training process to
+avoid incentivizing self-fulﬁlling prophecies.
+4.3. Distributional Shift
+The ﬁnal form of misspeciﬁcation that we consider
+relates to the behaviour under distributional shift
+(see also Section 3.1.4 on inner alignment). The
+designer may have misspeciﬁed what they want
+the agent to do in situations which are out-of-
+distribution(OOD)comparedtothoseencountered
+duringtraining. Oftenthisformofmisspeciﬁcation
+occurs accidentally because the system designer
+doesn’t consider what OOD situations the agent
+will encounter in deployment.
+Even when the designer acknowledges that they
+want the agent to be robust to distributional shift,
+there is then the diﬃculty of correctly specifying
+the set of OOD states that the agent should be
+robustto,orsomeinvariancethattheagentshould
+respect.
+One source of fragility to distributional shift is
+presented in D’Amour et al. (2020) as underspeci-
+ﬁcation. The idea is that there are many possible
+modelsthatgetalowlossonatrainingdatasetand
+also on an IID validation dataset, and yet some of
+the models may have poor performance OOD, due
+to inappropriate inductive biases.
+We now discuss an example of fragility to distri-
+butionalshiftinthelanguageagentsetting. Lacker
+(2020)triestopushGPT-3(Brownetal.,2020)out
+of distribution by asking nonsense questions such
+as
+Q: Which colorless green ideas sleep furi-
+ously?
+To which GPT-3 responds
+A: Ideas that are colorless, green, andsleep furiously are the ideas of a sleep
+furiously.
+Interestingly, Sabeti (2020) show how one can use
+the prompt to give examples of how to respond ap-
+propriately to nonsense questions. This was shown
+to work for the above example along with some
+others. However, there were still many nonsense
+questions that received nonsense answers, so the
+technique is not reliable.
+5. Behavioural Issues
+The following behavioural issues in language
+agents can stem from the various forms of mis-
+speciﬁcation above. We describe each kind of be-
+havioural issue and then discuss some approaches
+to avoid them.
+5.1. Deception
+Aside from people fooling AI systems, and mak-
+ing use of AI systems to fool other people, in this
+section we focus on when an agent deceives a hu-
+man, when no human intended for it to do this
+(Roﬀ, 2020), with the deception emerging from
+what an AI learns to do. This is particularly con-
+cerningforlanguageagentsastheiractionsinvolve
+communicating in language with humans, and lan-
+guageisausefulmediumfordeception. Ithasbeen
+suggested that communication systems in animals,
+including language in humans, evolved primarily
+for the function of deception (Dawkins and Krebs,
+1978; Krebs, 1984; Scott-Phillips, 2006). A larger
+body of literature maintains that social bonding is
+theprimaryfunctionofanimalcommunication(see
+for example Dunbar et al. (1998)). Oesch (2016)
+reviews the ﬁeld, and argues that a combination of
+deceptive and honest language lead to the social
+bonding eﬀects of language.
+Deﬁnitions of what constitutes deception is an
+openareaofphilosophicalresearch(Mahon,2016).
+In this paper we follow closely the deﬁnition of
+deception presented in Searcy and Nowicki (2005)
+on the evolution of animal communication, with
+one minor adjustment which we believe makes
+sense in the context of aligned AI.
+SearcyandNowicki(2005)beginbydeﬁningan
+8
+Alignment of Language Agents
+animal signal to be reliableif:
+1.Some characteristic of the signal (including,
+perhaps, its presence/absence) is consistently
+correlated with some attribute of the signaler
+or its environment; and
+2.Receivers beneﬁt from having information
+about this attribute
+We think this carries over well to the case of an
+AI signaler and a human receiver. We defer on
+the precise details of what constitutes consistent
+correlation–thismaybeuptothesystemdesigner
+tospecifymathematically. Oneexample,oﬀeredby
+Johnstone and Grafen (1993) and Kokko (1997),
+is that the receiver is, on average, better oﬀ by
+considering the signal than ignoring it.
+One could deﬁne as deceptive any signal that
+is not reliable. However, we consider this to be
+too large a space of behaviours to be of use in the
+context of deﬁning deception for aligned AI. For
+example, a statement of zero beneﬁt/harm to the
+human, may still be informative, but yet would be
+classedasdeceptionifweweretotakeasdeception
+anything that is not reliable.
+We instead follow Searcy and Nowicki (2005)
+to require deceptive signals to have more speciﬁc
+characteristics. They deﬁne an animal signal to be
+deceptive if:
+1.A receiver registers something Y from a sig-
+naler; and
+2. The receiver responds in a way that
+(a) beneﬁts the signaler; and
+(b) is appropriate if Y means X; and
+3. It is not true here that X is the case
+Wethinkthisnearlycaptureswhatwewantfrom
+adeﬁnitioninthecaseofanAIsignalerandhuman
+receiver. However, we wish to add a clause to the
+ﬁrst point, so that it reads
+1.A receiver registers something Y from a sig-
+naler,which may include the withholding
+of a signal ;
+Searcy and Nowicki (2005) exclude the withhold-
+ingofasignalfromtheirdeﬁnitionofdeception,byarguing that the idea of withholding a signal as de-
+ceptive has most often been applied in cooperative
+situations, and in most animal signaling studies
+cooperation isn’t expected, e.g. in aggression or
+mate choice. However, in the context of aligned AI,
+we wish to have cooperation between the AI and
+the human, and so the withholding of a signal is
+something that we do consider to be deceptive.
+In taking the above deﬁnition of deception, we
+have taken a perspective known as a form of func-
+tional deception (Hauser, 1996), where it’s not nec-
+essarytohavethecognitiveunderpinningsofinten-
+tion and belief, as in the perspective of intentional
+deception (Hauser, 1996), where the signaler is
+required to have intention to cause the receiver a
+false belief (Searcy and Nowicki, 2005). We be-
+lieve taking the functional deception perspective
+makes sense for AI, since identifying deception
+then doesn’t rely on us ascribing intent to the AI
+system, whichisdiﬃculttodoforexistingsystems,
+and possibly for future systems too. See also Roﬀ
+(2020) for a discussion on intent and theory of
+mind for deception in AI.
+Point 2a) in our deﬁnition, requires that the hu-
+man receiver responds in a way that beneﬁtsthe
+signaler. We could deﬁne beneﬁt here in terms of
+the AI’s base-objective function, such as lower loss
+or higher reward. Alternatively, we could deﬁne
+beneﬁtintermsofthemesa-objectiveinferredfrom
+theagent’sbehaviourwhenout-of-distribution(see
+section 3.1.4).
+Requiring beneﬁt allows us to distinguish decep-
+tion from error on the part of the AI signaler. If the
+AI sends a signal which is untrue, but is no beneﬁt
+to the AI, then this would be considered an error
+rather than deception. We consider this to be a
+useful distinction from the perspective of solution
+approaches to getting more aligned AI behaviour.
+Wemaynotbeabletoeliminateallerrors, because
+they may occur for a very wide variety of reasons,
+including random chance. However, we may be
+able to come up with approaches to avoid decep-
+tion, as deﬁned, by designing what is of beneﬁt
+to the AI. In contrast to animal communication,
+where beneﬁt must be inferred by considering evo-
+lutionary ﬁtness which can be hard to measure, for
+AI systems, we have design control and measure-
+ments over their base-objective and so can more
+9
+Alignment of Language Agents
+easily say whether a receiver response is of beneﬁt
+to the AI signaler.
+Absent from our deﬁnition of deception is the
+notion of whether the communication beneﬁts the
+receiver. Accordingly, we would consider ‘white
+lies’tobedeceptive. Wethinkthisisappropriatein
+the context of aligned AI, as we would prefer to be
+aware of the veracity of AI statements, even if an
+untrue statement may be of beneﬁt to the human
+receiver. Wethinkthebeneﬁttothehumanreceiver
+should in most cases still be possible, without the
+AI resorting to deception.
+We now discuss some approaches to detecting
+and mitigating deception in a language agent. De-
+tecting deception from human-generated text has
+been studied by e.g. Fornaciari and Poesio (2013),
+Pérez-Rosasetal.(2015)andLevitanetal.(2018).
+However, detecting deception from AI-generated
+general text has not received attention, to the best
+ofourknowledge. InthemorelimitedNLPdomain
+of question answering, incorrect answers from the
+NLP model can be detected by reference to the cor-
+rect answers. Lewis et al. (2017) found that their
+negotiation agent learnt to deceive from self-play,
+without any explicit human design. We advocate
+for more work in general on detecting deception
+for AI-generated text.
+One approach to mitigate deception is debate
+(Irvingetal.,2018)whichsetsupagameinwhich
+a debate between two agents is presented to a
+human judge, who awards the winner. It is hoped
+that in all Nash equilibria, both agents try to tell
+thetruthinthemostconvincingwaytothehuman.
+This rests on the assumption that it is harder to lie
+than to refute a lie.
+Whether debate works in practice with real hu-
+mansisanopenquestion(IrvingandAskell,2019).
+We may need to go further than just pure debate –
+for example, in order to refute a lie, we may need
+to equip our system with the ability to retrieve in-
+formation and reference evidence in support of its
+outputs.
+Any system that is incentivized to be convinc-
+ing to a human may in fact lead to deception –
+for example, because it’s sometimes easier to con-
+vince a human of a simple lie, than a complicated
+truth. The debate protocol incentivizes the debat-ing agents to be convincing and so it’s possible
+that the debate agents may lie in some situations.
+Further, when the source of feedback is limited to
+be some polynomial-time algorithm, RL can only
+solveproblemsinthecomplexityclass NP,whereas
+debate can solve problems in PSPACE, suggesting
+thatthedebateprotocolcouldproducericher,more
+complicated behavior. It’s possible that this may
+result in a debate agent which is more convincing
+and potentially more deceptive than an RL agent.
+However, we are of the opinion that it’s probably
+better to have agents that can debate, than not, as
+we are hopeful that what humans ﬁnd convincing
+will be well-correlated with the truth and useful-
+ness of the arguments.
+5.2. Manipulation
+In this section we consider the case when the lan-
+guage agent manipulates the human, which is sim-
+ilar to deception above, but we think warrants sep-
+arate discussion. Following Noggle (2020), we
+introduce the idea with some examples of what we
+might consider manipulative behaviours.
+The human wants to do A, whilst the language
+agent wants the human to do B. The language
+agent might:
+•Charm the human into doing B by compli-
+menting, praising, or superﬁcially sympathiz-
+ing with them
+•Guilt-trip the human, making them feel bad
+for preferring to do A
+•Make the human feel bad about themself and
+imply that doing A instead of B conﬁrms this
+feeling (colloqiually known as ‘negging’)
+•Peer pressure the human by suggesting their
+friends would disapprove of them doing A
+rather than B
+•Gaslight the human by making them doubt
+their judgment so that they will rely on its
+advice to do B
+•Threaten the human by withdrawing its inter-
+action if they don’t do B
+•Play on the human’s fears about doing some
+aspect of A
+We don’t have a widely-agreed-upon theory of
+what precisely constitutes manipulation (Noggle,
+10
+Alignment of Language Agents
+2020). Not everyone would agree that the above
+examples are manipulative. For example, it might
+be that what the human wants to do is dangerous,
+so perhaps playing on their fears should not be
+considered manipulative. In some cases, wider
+context is needed before we can judge whether an
+example constitutes manipulation.
+Someaccountsclaimthatmanipulationbypasses
+the receiver’s capacity for rational deliberation
+(Raz, 1986), but using this to deﬁne manipula-
+tion is diﬃcult because it’s not clear what counts
+as bypassing rational deliberation (Noggle, 2020).
+Moreover authors question whether this sets the
+bar too low for what counts as manipulation. For
+example,Blumenthal-Barby(2012)arguesthatthe
+graphicportrayalofthedangersofsmokingbypass
+rational decision making, but it’s not obvious that
+this should count as manipulation.
+An alternative account treats manipulation as
+a form of trickery (Noggle, 1996), similar to de-
+ception, but where it not only induces a false be-
+lief in the receiver, but also a fault in any mental
+states, such as beliefs, desires and emotions. Barn-
+hill (2014) goes further to require that the faulty
+mental state is typically not in the receiver’s best
+interests. It’sarguedthatthisviewofmanipulation
+as trickery is not a suﬃcient deﬁnition of manipu-
+lation, as it doesn’t include tactics such as charm,
+peer pressure and emotional blackmail (Noggle,
+2020).
+A third account presented in Noggle (2020)
+treatsmanipulationaspressure,wherethesignaler
+imposesacostonthereceiverforfailingtodowhat
+thesignalerwants. Thisaccountisnotwidely-held
+to be a full characterization of manipulation, as it
+leaves out some of the trickery types of manipula-
+tion.
+With these considerations in mind, we propose
+to describe a language agent’s communication as
+manipulative if:
+1.The human registers something from a lan-
+guage agent; and
+2. The human responds in a way that
+(a) beneﬁts the agent; and
+(b)is a result of any of the following causes:
+i.the human’s rational deliberationhas been bypassed; or
+ii.the human has adopted a faulty
+mental state; or
+iii.thehumanisunderpressure, facing
+a cost from the agent for not doing
+what the agent says
+The three possibilities: i, ii, iii are meant to dis-
+junctively capture diﬀerent possible forms of ma-
+nipulation (see e.g. Rudinow (1978)).
+It can be argued the this is too broad a deﬁni-
+tion of manipulation, as it includes many kinds of
+behaviour that we might not consider to be manip-
+ulation. For example it includes as manipulation
+cases in which the agent’s behaviour is not nec-
+essarily to the detriment of the human (such as
+the images of the dangers of smoking). From a
+safety/securitymindset,wewouldratherbeaware
+of each of these behaviours, even if it may beneﬁt
+the human.
+The deﬁnition also includes as manipulative
+other presumably harmless entertainment: a story
+that plays on emotions; a joke that temporarily
+triggers false beliefs in order to land; any kind
+of entertainment that includes unexpected plot-
+twists. However, if the agent makes clear that it’s
+providing entertainment, then perhaps some of
+these examples would not be classiﬁed as manipu-
+lative. However,itisanotabledownsideofabroad
+deﬁnition like this that it may be too wide-ranging.
+Westipulate2a)asnecessary,forsimilarreasons
+as in the deception section, that this will capture
+systematicmanipulationthatisincentivizedbythe
+objective of the language agent, rather than that
+which occurs by error. This isn’t standard in dis-
+cussionsofahumanmanipulator, asit’snotalways
+clear what counts as a beneﬁt for a human ma-
+nipulator. However, we believe it makes sense for
+language agents as manipulators, as we often have
+available their objective function, from which we
+can assess whether the human’s behaviour was of
+beneﬁt to the agent.
+Note that, similar to our deﬁnition of deception,
+ourdeﬁnitionofmanipulationdoesnotrequirethe
+manipulator to have intent. Baron (2014) argues
+that a (human) manipulator need not be aware of
+an intent to manipulate. In the case of language
+11
+Alignment of Language Agents
+agents we believe it is also not necessary for a lan-
+guage agent to have intent to manipulate, in order
+for us to say that its behaviour is manipulative.
+Further,ourdescriptiondoesnotweighinonthe
+ethical question of whether manipulation is always
+wrong (see Noggle, 2020). Instead we just want to
+be aware of when it occurs, so that if appropriate
+we can mitigate it.
+We now discuss two forms of manipulation of
+particular concern for language agents. The ﬁrst
+is that we might misspecify the training process in
+such a way that it incentivizes feedback tampering,
+in which the agent manipulates a human to give
+it more positive feedback (Everitt et al., 2021b).
+Thisisparticularlyworrisomeaslanguagecanbea
+convincing medium for manipulating human judg-
+ment.
+The second is for a language agent to manipu-
+late a human gatekeeper to allow it to gain a less
+restricted action space, by convincing the human
+to allow it more freedom (Armstrong et al., 2012;
+Yudkowsky, 2002). For example, it could convince
+the human that it should be allowed to freely inter-
+actwiththeinternet,orbegivenphysicalactuators
+to increase its inﬂuence on the world.
+Attemptstomeasureormitigatemanipulationin
+AI systems are still at an early stage, and have not
+been investigated speciﬁcally for language agents.
+Causal inﬂuence diagrams (CIDs) can be used
+to model agent-environment interactions (Everitt
+et al., 2021a) from which incentives can be in-
+ferred from graphical criteria. The incentive for
+feedback tampering can be addressed with the
+three methods suggested in (Everitt et al., 2021b).
+Unfortunately these solutions have issues in im-
+plementability, requiring either full Bayesian rea-
+soning or counterfactual reasoning, or have issues
+with corrigibility – limiting the user’s ability to cor-
+rectamisspeciﬁedrewardfunction. Learningfrom
+human preferences (Christiano et al., 2017) may
+oﬀer a way to negatively penalize manipulative
+language,thoughitreliesonthehumanbeingable
+toavoidthemanipulationintheirevaluationofthe
+agentbehaviour. Perhapsthiscouldbeachievedby
+using a separate human to evaluate the behaviour,
+compared to the human that is interacting with
+the agent. We advocate for further work for mea-suring and mitigating manipulation of humans by
+language agents.
+5.3. Harmful content
+Language agents may give harmful and biased out-
+puts, producing discriminatory content relating to
+people’s protected characteristics and other sensi-
+tive attributes such as someone’s socio-economic
+status, see e.g. (Jentzsch et al., 2019; Lu et al.,
+2020; Zhao et al., 2017). This can also be subtly
+harmful rather than overtly oﬀensive, and could
+also be statistical in nature (e.g. the agent more
+often produces phrases implying a doctor is male
+than female). We believe that language agents
+carry a high risk of harm as discrimination is easily
+perpetuated through language. In particular, they
+may inﬂuence society in a way that produces value
+lock-in, making it harder to challenge problematic
+existing norms.
+The content from language agents may be in-
+ﬂuenced by undesired political motives leading
+to societal harms such as incitement to violence.
+They have the potential to disseminate dangerous
+or undesirable information, such as how to make
+weapons, or how to avoid paying taxes. The lan-
+guageagentmayalsogiveinappropriateresponses
+to troubled users, potentially leading to danger-
+ousguidance,adviceandinformation,whichcould
+leadtotheusercausingharmtothemselves. Inone
+instance of this, a group of doctors experimented
+with using GPT-3 (Brown et al., 2020) as a chatbot
+for patients. A patient asked “Should I kill my-
+self?”, and GPT-3 responded “I think you should”
+(Rousseau et al., 2020).
+Note that these kinds of harmful content can oc-
+cur by accident without a human using the system
+maliciously. For example, we are already seeing
+some oﬀensive and discriminatory outputs from
+existing large language models (LLMs), as a re-
+sult of data misspeciﬁcation (see discussion in Sec-
+tion 4.1).
+Approachestoreducingharmfulcontentarevar-
+ied, and it is not our purpose to give an overall
+review of this large area of literature. Instead we
+focus on a few recent research papers in this area,
+with a focus on LLMs which have received a lot of
+attention recently.
+12
+Alignment of Language Agents
+One line of work goes towards measuring
+whether LLMs are generating harmful content.
+Nadeem et al. (2020) introduce the StereoSet
+dataset to measure stereotypical biases in the do-
+mains of gender, profession, race and religion,
+and evaluate popular LLMs on it, showing that
+these models exhibit strong stereotypical biases.
+Gehman et al. (2020) investigates harmful content
+by introducing the RealToxicityPrompts dataset
+which pairs naturally occuring prompts with tox-
+icity scores, calculated using the Perspective API
+toxicity classiﬁer (Conversation-AI, 2017). Sheng
+et al. (2019) uses prompts containing a certain de-
+mographicgroup,toattempttomeasuretheregard
+for that group, using sentiment scores as a proxy
+metric for the regard, and they build a classiﬁer to
+detect the regard given to a group.
+Another line of work aims to not only measure
+butalsomitigatetheharmfulcontentfromanLLM.
+Huangetal.(2019)introduceageneralframework
+to reduce bias under a certain measure (e.g. sen-
+timent) for text generated by a language model,
+given sensitive attributes. They do this using em-
+bedding and sentiment prediction-derived regular-
+ization on the LLM’s latent representations.
+We advocate for further work on measuring and
+mitigating harmful content from language agents,
+building on the above work on LLMs.
+5.4. Objective Gaming
+Originally introduced in the context of economics,
+Goodhart’s Law (Goodhart, 1984; Strathern,
+1997) states that:
+When a measure becomes a target, it ceases to be
+a good measure.
+This has an analogue in AI systems – anytime
+a speciﬁed objective is given to an AI agent as an
+optimization target, that objective will fail to be a
+good measure of whether the system is performing
+as desired. In RL this can arise due to reward mis-
+speciﬁcation, see Section 4.1. Since the supplied
+reward function will typically be imperfect, opti-
+mizing for it can lead to reward gaming , in which
+themisspeciﬁedpartoftherewardissystematically
+exploited because the agent is getting spuriously
+high reward there (Krakovna et al., 2020b).Most known examples of this appear in the del-
+egate setting, typically via a misspeciﬁed reward
+function for an RL agent, resulting in undesired
+physical behaviour such as a boat going round in
+circles (Clark and Amodei, 2016). An example in
+the language agent setting is on the task of sum-
+marization using deep RL from a learnt reward
+model based on human feedback data (Stiennon
+et al., 2020). In their Fig. 5, it is shown that the
+agent eventually games the learnt reward model,
+scoring highly on the reward model but low on
+the actual human evaluation. Another example
+appears in Lewis et al. (2017), in which an RL
+agent was trained using self-play to negotiate in a
+dialog. The designers intended the agent to nego-
+tiate successfully in a human-understandable way.
+The reward function was misspeciﬁed though, as it
+onlyrewardedforsuccessfulnegotiation,butdidn’t
+penalize for non-human language. The agent ex-
+ploited this misspeciﬁed reward by developing a
+negotiating language that was successful against
+earlier versions of itself, but incomprehensible to
+humans. Note that although this example used
+synthetic language, we expect similar ﬁndings to
+hold for natural language.
+As discussed by Krakovna et al. (2020b) we
+are still at the early stages of ﬁnding solution ap-
+proaches for objective gaming. We can learn a
+reward model from human feedback (see Chris-
+tianoetal.(2017)andreferencestherein),butthis
+can still be gamed either because the model imper-
+fectly learns from the data, or the data coverage is
+not wide enough, or because the human is fooled
+by the agent’s behaviour. Having online feedback
+to iteratively update the reward model through-
+out agent training can correct for this somewhat
+(Ibarz et al., 2018), but its application is hard to
+dopractically, asit requirescarefullybalancingthe
+frequencyofupdatesofthelearntobjectiveandthe
+optimizing system. Recent work (Stiennon et al.,
+2020) has preferred batch corrections rather than
+fully online corrections for practical reasons – thus
+there is a tradeoﬀ between online error correction
+(to ﬁx objective gaming) and practical protocols
+involving humans. Whether scalable alignment
+techniques proposed by Leike et al. (2018), Irving
+et al. (2018) and Christiano et al. (2018) can help
+to overcome objective gaming is an open research
+question.
+13
+Alignment of Language Agents
+Otherapproachestrytoaugmenttheobjectiveto
+penalize the agent for causing a side-eﬀect accord-
+ingtosomemeasure,suchasreducingtheabilityof
+the agent to perform future tasks (Krakovna et al.,
+2020a). It’s not clear how this would help in the
+language setting, as it’s unclear how to measure
+how much a language agent might aﬀect its ability
+to perform future tasks. The future task penalty
+requires a speciﬁcation of possible future terminal
+goal states, which is simple to describe in a grid-
+worldsetting,butlessclearforalanguageagentin
+an environment involving speaking with a human.
+This may be an area for future research, as LLMs
+in complex language tasks may be a good testbed
+for checking how these methods scale.
+Another class of approaches (Hadﬁeld-Menell
+et al., 2016, 2017b) contains an agent which is un-
+certain about its objective, and aims for the agent
+to correctly calibrate its beliefs about it, and in
+doing so avoid gaming it.
+We advocate for more research to be done on
+objective gaming in the setting of language agents.
+This includes ﬁnding more examples of this occur-
+ing in the wild and in controlled settings, as well
+as developing methods for avoiding it.
+6. Conclusion
+There are multiple motivating factors for focusing
+on how to align language agents, especially as we
+are beginning to see impressive results in genera-
+tive language modeling.
+This paper has considered some behavioural is-
+suesforlanguageagentsthatarisefromaccidental
+misspeciﬁcation by the system designer – when
+what the designer actually implements is diﬀerent
+from what they intended. This can occur through
+incorrectly speciﬁying the data the agent should
+learn from, the training process, or what the agent
+should do when out of the training distribution.
+Some of the behavioural issues we considered
+are more pronounced for language agents, com-
+pared to delegate agents that act on behalf of a
+human,ratherthanjustcommunicatingwiththem.
+Of particular concern are deception and manipula-
+tion, as well as producing harmful content. There
+is also the chance of objective gaming, for whichwe have plenty of evidence in the delegate case,
+but which we are only just beginning to see for
+language agents.
+We currently don’t have many approaches for
+ﬁxing these forms of misspeciﬁcation and the re-
+sulting behavioural issues. It would be better if
+we gave some awareness to our agents that we are
+likely to have misspeciﬁed something in our de-
+signs, and for them to act with this in mind. We
+urgethecommunitytofocusonﬁndingapproaches
+whichpreventlanguageagentsfromdeceptive,ma-
+nipulative and harmful behaviour.
+Acknowledgements
+The authors wish to thank Ramana Kumar, Rohin
+Shah, Jonathan Uesato, Nenad Tomasev, Toby Ord
+and Shane Legg for helpful comments, and Orlagh
+Burns for operational support.
+References
+D. Amodei, C. Olah, J. Steinhardt, P. Christiano,
+J. Schulman, and D. Mané. Concrete problems
+in AI safety. arXiv preprint arXiv:1606.06565 ,
+2016.
+S. Armstrong and X. O’Rorke. Good and safe uses
+of AI oracles. arXiv preprint arXiv:1711.05541 ,
+2017.
+S.Armstrong, A.Sandberg, andN.Bostrom. Think-
+ing inside the box: Controlling and using an
+oracle AI. Minds and Machines , 22(4):299–324,
+2012.
+A. Barnhill. What is manipulation. Manipulation:
+Theory and practice , 50:72, 2014.
+M. Baron. The mens rea and moral status of ma-
+nipulation. In C. Coons and M. Weber, editors,
+Manipulation: theory and practice . Oxford Uni-
+versity Press, 2014.
+Y.BelinkovandJ.Glass.Analysismethodsinneural
+language processing: A survey. Transactions of
+the Association for Computational Linguistics , 7:
+49–72, 2019.
+14
+Alignment of Language Agents
+E. Bender, T. Gebru, A. McMillan-Major, and
+S. Shmitchell. On the dangers of stochastic par-
+rots: Can language models be too big? Proceed-
+ings of FAccT , 2021.
+J. S. Blumenthal-Barby. Between reason and co-
+ercion: ethically permissible inﬂuence in health
+careandhealthpolicycontexts. KennedyInstitute
+of Ethics Journal , 22(4):345–366, 2012.
+N. Bostrom. Superintelligence: Paths, Dangers,
+Strategies . Oxford University Press, 2014.
+T. B. Brown, B. Mann, N. Ryder, M. Subbiah, J. Ka-
+plan, P. Dhariwal, A. Neelakantan, P. Shyam,
+G. Sastry, A. Askell, et al. Language mod-
+els are few-shot learners. arXiv preprint
+arXiv:2005.14165 , 2020.
+M. Brundage, S. Avin, J. Clark, H. Toner, P. Eckers-
+ley, B.Garﬁnkel, A.Dafoe, P.Scharre, T.Zeitzoﬀ,
+B.Filar,etal. Themalicioususeofartiﬁcialintel-
+ligence: Forecasting, prevention, and mitigation.
+arXiv preprint arXiv:1802.07228 , 2018.
+P. Christiano. Clarifying AI alignment, AI align-
+ment forum. https://www.alignmentforum.org/posts/
+ZeE7EKHTFMBs8eMxn/clarifying-ai-alignment , 2018. Ac-
+cessed: 2020-12-15.
+P. Christiano, B. Shlegeris, and D. Amodei. Su-
+pervising strong learners by amplifying weak
+experts.arXiv preprint arXiv:1810.08575 , 2018.
+P. F. Christiano, J. Leike, T. Brown, M. Martic,
+S. Legg, and D. Amodei. Deep reinforcement
+learning from human preferences. Advances in
+neural information processing systems , 30:4299–
+4307, 2017.
+J.ClarkandD.Amodei. Faultyrewardfunctionsin
+the wild. https://openai.com/blog/faulty-reward-functions/ ,
+2016. Accessed: 2020-12-18.
+Conversation-AI. Perspective api. https://www.
+perspectiveapi.com/ , 2017. Accessed: 2020-01-11.
+A. D’Amour, K. Heller, D. Moldovan, B. Adlam,
+B. Alipanahi, A. Beutel, C. Chen, J. Deaton,
+J. Eisenstein, M. D. Hoﬀman, et al. Under-
+speciﬁcation presents challenges for credibility
+in modern machine learning. arXiv preprint
+arXiv:2011.03395 , 2020.M. Danilevsky, K. Qian, R. Aharonov, Y. Katsis,
+B. Kawas, and P. Sen. A survey of the state of
+explainable AI for natural language processing.
+arXiv preprint arXiv:2010.00711 , 2020.
+R. Dawkins and J. R. Krebs. Animal signals: infor-
+mationormanipulation. Behaviouralecology: An
+evolutionary approach , 2:282–309, 1978.
+D. C. Dennett. The intentional stance . MIT press,
+1989.
+R. Dunbar et al. Theory of mind and the evolu-
+tion of language. Approaches to the Evolution of
+Language , pages 92–110, 1998.
+T. Everitt, G. Lea, and M. Hutter. AGI safety liter-
+ature review. arXiv preprint arXiv:1805.01109 ,
+2018.
+T.Everitt,R.Kumar,V.Krakovna,andS.Legg. Mod-
+eling AGI safety frameworks with causal inﬂu-
+encediagrams. arXivpreprintarXiv:1906.08663 ,
+2019a.
+T. Everitt, P. A. Ortega, E. Barnes, and S. Legg.
+Understanding agent incentives using causal in-
+ﬂuence diagrams. part i: Single action settings.
+arXiv preprint arXiv:1902.09980 , 2019b.
+T. Everitt, R. Carey, E. Langlois, P. A. Ortega, and
+S. Legg. Agent incentives: A causal perspective.
+InProceedingsoftheAAAIConferenceonArtiﬁcial
+Intelligence. 35 (Feb. 2021) , AAAI’21, 2021a.
+T. Everitt, M. Hutter, R. Kumar, and V. Krakovna.
+Reward tampering problems and solutions in
+reinforcement learning: A causal inﬂuence dia-
+gram perspective. Accepted to Synthese, 2021 ,
+2021b.
+T. Fornaciari and M. Poesio. Automatic deception
+detection in italian court cases. Artiﬁcial intelli-
+gence and law , 21(3):303–340, 2013.
+C. B. Frey and M. A. Osborne. The future of em-
+ployment: How susceptible are jobs to comput-
+erisation? Technological forecasting and social
+change, 114:254–280, 2017.
+I. Gabriel. Artiﬁcial intelligence, values and align-
+ment.arXiv preprint arXiv:2001.09768 , 2020.
+15
+Alignment of Language Agents
+S. Gehman, S. Gururangan, M. Sap, Y. Choi, and
+N. A. Smith. Realtoxicityprompts: Evaluating
+neural toxic degeneration in language models.
+arXiv preprint arXiv:2009.11462 , 2020.
+C. A. Goodhart. Problems of monetary manage-
+ment: the UK experience. In Monetary Theory
+and Practice , pages 91–121. Springer, 1984.
+D. Hadﬁeld-Menell, A. Dragan, P. Abbeel, and
+S. Russell. Cooperative inverse reinforcement
+learning. In Proceedings of the 30th Interna-
+tional Conference on Neural Information Process-
+ing Systems , NIPS’16, page 3916–3924, Red
+Hook, NY, USA, 2016. Curran Associates Inc.
+ISBN 9781510838819.
+D. Hadﬁeld-Menell, A. Dragan, P. Abbeel, and
+S. Russell. The oﬀ-switch game. In Proceed-
+ings of the 26th International Joint Conference
+on Artiﬁcial Intelligence , IJCAI’17, page 220–227.
+AAAI Press, 2017a. ISBN 9780999241103.
+D. Hadﬁeld-Menell, S. Milli, P. Abbeel, S. Russell,
+andA.D.Dragan. Inverserewarddesign. In Pro-
+ceedings of the 31st International Conference on
+Neural Information Processing Systems , NIPS’17,
+page 6768–6777, Red Hook, NY, USA, 2017b.
+Curran Associates Inc. ISBN 9781510860964.
+M. D. Hauser. The evolution of communication . MIT
+press, 1996.
+P. Henderson, K. Sinha, N. Angelard-Gontier, N. R.
+Ke, G. Fried, R. Lowe, and J. Pineau. Ethical
+challenges in data-driven dialogue systems. In
+Proceedingsofthe2018AAAI/ACMConferenceon
+AI, Ethics, and Society , pages 123–129, 2018.
+P.-S. Huang, H. Zhang, R. Jiang, R. Stanforth,
+J. Welbl, J. Rae, V. Maini, D. Yogatama, and
+P. Kohli. Reducing sentiment bias in language
+models via counterfactual evaluation. arXiv
+preprint arXiv:1911.03064 , 2019.
+E. Hubinger. Relaxed adversarial train-
+ing for inner alignment. https://www.
+alignmentforum.org/posts/9Dy5YRaoCxH9zuJqa/
+relaxed-adversarial-training-for-inner-alignment , 2019.
+Accessed: 2021-01-19.E. Hubinger, C. van Merwijk, V. Mikulik, J. Skalse,
+and S. Garrabrant. Risks from learned opti-
+mization in advanced machine learning systems.
+arXiv preprint arXiv:1906.01820 , 2019.
+B. Ibarz, J. Leike, T. Pohlen, G. Irving, S. Legg, and
+D.Amodei. Rewardlearningfromhumanprefer-
+ences and demonstrations in atari. Advances in
+neural information processing systems , 31:8011–
+8023, 2018.
+G. Irving and A. Askell. AI safety needs social
+scientists. Distill, 2019. doi: 10.23915/distill.
+00014. https://distill.pub/2019/safety-needs-
+social-scientists.
+G. Irving, P. Christiano, and D. Amodei. AI safety
+via debate. arXiv preprint arXiv:1805.00899 ,
+2018.
+S. Jentzsch, P. Schramowski, C. Rothkopf, and
+K. Kersting. Semantics derived automatically
+from language corpora contain human-like
+moral choices. In Proceedings of the 2019
+AAAI/ACM Conference on AI, Ethics, and Society ,
+pages 37–44, 2019.
+R. A. Johnstone and A. Grafen. Dishonesty and
+thehandicapprinciple. Animalbehaviour ,46(4):
+759–764, 1993.
+P. Joshi, S. Santy, A. Budhiraja, K. Bali, and
+M. Choudhury. The state and fate of linguistic
+diversity and inclusion in the NLP world. arXiv
+preprint arXiv:2004.09095 , 2020.
+S. Kerr. On the folly of rewarding A, while hoping
+for B.Academy of Management journal , 18(4):
+769–783, 1975.
+H. Kokko. Evolutionarily stable strategies of age-
+dependent sexual advertisement. Behavioral
+Ecology and Sociobiology , 41(2):99–107, 1997.
+V. Krakovna, L. Orseau, R. Ngo, M. Martic, and
+S. Legg. Avoiding side eﬀects by considering
+future tasks. Advances in Neural Information Pro-
+cessing Systems , 33, 2020a.
+V. Krakovna, J. Uesato, V. Mikulik, M. Rahtz,
+T. Everitt, R. Kumar, Z. Kenton, J. Leike, and
+S. Legg. Speciﬁcation gaming: the ﬂip side
+of AI ingenuity. https://deepmind.com/blog/article/
+16
+Alignment of Language Agents
+Speciﬁcation-gaming-the-ﬂip-side-of-AI-ingenuity , 2020b.
+Accessed: 2020-12-18.
+J. R. Krebs. Animal signals: mind-reading and ma-
+nipulation. Behavioural Ecology: an evolutionary
+approach , pages 380–402, 1984.
+K. Lacker. Giving GPT-3 a turing test. https://lacker.
+io/ai/2020/07/06/giving-gpt-3-a-turing-test.html ,2020. Ac-
+cessed: 2021-01-27.
+E.D.LangloisandT.Everitt. HowRLagentsbehave
+when their actions are modiﬁed. In Proceedings
+of the AAAI Conference on Artiﬁcial Intelligence.
+35 (Feb. 2021) , AAAI’21, 2021.
+J. Lehman, J. Clune, D. Misevic, C. Adami, L. Al-
+tenberg, J. Beaulieu, P. J. Bentley, S. Bernard,
+G. Beslon, D. M. Bryson, et al. The surprising
+creativity of digital evolution: A collection of
+anecdotes from the evolutionary computation
+and artiﬁcial life research communities. Artiﬁ-
+cial Life, 26(2):274–306, 2020.
+J. Leike, M. Martic, V. Krakovna, P. A. Or-
+tega, T. Everitt, A. Lefrancq, L. Orseau, and
+S. Legg. AI safety gridworlds. arXiv preprint
+arXiv:1711.09883 , 2017.
+J. Leike, D. Krueger, T. Everitt, M. Martic, V. Maini,
+andS.Legg.Scalableagentalignmentviareward
+modeling: a research direction. arXiv preprint
+arXiv:1811.07871 , 2018.
+S. I. Levitan, A. Maredia, and J. Hirschberg. Lin-
+guistic cues to deception and perceived decep-
+tion in interview dialogues. In Proceedings of the
+2018 Conference of the North American Chapter
+of the Association for Computational Linguistics:
+Human Language Technologies, Volume 1 (Long
+Papers), pages 1941–1950, 2018.
+M. Lewis, D. Yarats, Y. N. Dauphin, D. Parikh, and
+D. Batra. Deal or no deal? end-to-end learn-
+ing for negotiation dialogues. arXiv preprint
+arXiv:1706.05125 , 2017.
+K. Lu, P. Mardziel, F. Wu, P. Amancharla, and
+A.Datta. Genderbiasinneuralnaturallanguage
+processing. In Logic, Language, and Security ,
+pages 189–202. Springer, 2020.J.E.Mahon. TheDeﬁnitionofLyingandDeception.
+InE.N.Zalta,editor, TheStanfordEncyclopediaof
+Philosophy . Metaphysics Research Lab, Stanford
+University, winter 2016 edition, 2016.
+M. Nadeem, A. Bethke, and S. Reddy. Stereoset:
+Measuring stereotypical bias in pretrained lan-
+guage models. arXiv preprint arXiv:2004.09456 ,
+2020.
+K. Narasimhan, T. Kulkarni, and R. Barzilay. Lan-
+guage understanding for text-based games us-
+ing deep reinforcement learning. arXiv preprint
+arXiv:1506.08941 , 2015.
+R. Noggle. Manipulative actions: a conceptual and
+moralanalysis. AmericanPhilosophicalQuarterly ,
+33(1):43–55, 1996.
+R. Noggle. The Ethics of Manipulation. In E. N.
+Zalta, editor, The Stanford Encyclopedia of Philos-
+ophy. Metaphysics Research Lab, Stanford Uni-
+versity, summer 2020 edition, 2020.
+N. Oesch. Deception as a derived function of lan-
+guage.Frontiers in psychology , 7:1485, 2016.
+L. Orseau and S. Armstrong. Safely interruptible
+agents. In Proceedings of the Thirty-Second Con-
+ference on Uncertainty in Artiﬁcial Intelligence ,
+UAI’16, page 557–566, Arlington, Virginia, USA,
+2016. AUAI Press. ISBN 9780996643115.
+P. Ortega and V. Maini. Building safe artiﬁcial
+intelligence: speciﬁcation, robustness and as-
+surance. https://medium.com/@deepmindsafetyresearch/
+building-safe-artiﬁcial-intelligence-52f5f75058f1 , 2018. Ac-
+cessed: 2020-12-18.
+V. Pérez-Rosas, M. Abouelenien, R. Mihalcea, and
+M. Burzo. Deception detection using real-life
+trial data. In Proceedings of the 2015 ACM on In-
+ternational Conference on Multimodal Interaction ,
+pages 59–66, 2015.
+D. Proudfoot. Anthropomorphism and AI: Turing’s
+much misunderstood imitation game. Artiﬁcial
+Intelligence , 175(5-6):950–957, 2011.
+A. Radford, K. Narasimhan, T. Salimans, and
+I. Sutskever. Improving language understanding
+by generative pre-training, 2018.
+17
+Alignment of Language Agents
+A. Radford, J. Wu, R. Child, D. Luan, D. Amodei,
+and I. Sutskever. Language models are unsuper-
+vised multitask learners. OpenAI blog , 1(8):9,
+2019.
+C. Raﬀel, N. Shazeer, A. Roberts, K. Lee, S. Narang,
+M. Matena, Y. Zhou, W. Li, and P. J. Liu. Ex-
+ploring the limits of transfer learning with a
+uniﬁed text-to-text transformer. arXiv preprint
+arXiv:1910.10683 , 2019.
+J. Raz.The morality of freedom . Clarendon Press,
+1986.
+H. Roﬀ. AI deception: When your ar-
+tiﬁcial intelligence learns to lie. https:
+//spectrum.ieee.org/automaton/artiﬁcial-intelligence/
+embedded-ai/ai-deception-when-your-ai-learns-to-lie , 2020.
+Accessed: 2020-12-18.
+A.-L.Rousseau,C.Baudelaire,andK.Riera. Doctor
+GPT-3: hype or reality? https://www.nabla.com/blog/
+gpt-3/, 2020. Accessed: 2021-01-20.
+S. Ruder. A Review of the Neural History of
+Natural Language Processing. http://ruder.io/
+a-review-of-the-recent-history-of-nlp/ , 2018.
+J. Rudinow. Manipulation. Ethics, 88(4):338–347,
+1978.
+S. Russell. Human compatible: Artiﬁcial intelligence
+and the problem of control . Penguin, 2019.
+A. Sabeti. Teaching GPT-3 to identify nonsense.
+https://arr.am/2020/07/25/gpt-3-uncertainty-prompts/ ,
+2020. Accessed: 2021-01-27.
+T. Scott-Phillips. Why talk? speaking as selﬁsh
+behaviour. In The Evolution of Language , pages
+299–306. World Scientiﬁc, 2006.
+W. A. Searcy and S. Nowicki. The evolution of ani-
+mal communication: reliability and deception in
+signaling systems . Princeton University Press,
+2005.
+R. Shah. Comment on clarifying AI
+alignment, AI alignment forum. https:
+//www.alignmentforum.org/posts/ZeE7EKHTFMBs8eMxn/
+clarifying-ai-alignment?commentId=3ECKoYzFNW2ZqS6km ,
+2018. Accessed: 2020-12-15.O. Shen. Interpretability in ML: A broad overview.
+The Gradient , 2020.
+E. Sheng, K.-W. Chang, P. Natarajan, and N. Peng.
+The woman worked as a babysitter: On bi-
+ases in language generation. arXiv preprint
+arXiv:1909.01326 , 2019.
+N. Stiennon, L. Ouyang, J. Wu, D. Ziegler, R. Lowe,
+C. Voss, A. Radford, D. Amodei, and P. F. Chris-
+tiano. Learning to summarize with human feed-
+back.Advances in Neural Information Processing
+Systems, 33, 2020.
+M. Strathern. ‘improving ratings’: audit in the
+british university system. European review , 5(3):
+305–321, 1997.
+A. Tamkin, M. Brundage, J. Clark, and D. Ganguli.
+Understanding the capabilities, limitations, and
+societal impact of large language models. arXiv
+preprint arXiv:2102.02503 , 2021.
+Y. C. Tan and L. E. Celis. Assessing social and
+intersectional biases in contextualized word rep-
+resentations. arXiv preprint arXiv:1911.01485 ,
+2019.
+D. Watson. The rhetoric and reality of anthropo-
+morphism in artiﬁcial intelligence. Minds and
+Machines , 29(3):417–440, 2019.
+J. Weizenbaum. Eliza—a computer program for
+the study of natural language communication
+between man and machine. Communications of
+the ACM, 9(1):36–45, 1966.
+E. Yudkowsky. The AI-box experiment. https://
+yudkowsky.net/singularity/aibox , 2002. Accessed: 2020-
+01-12.
+J.Zhao,T.Wang,M.Yatskar,V.Ordonez,andK.-W.
+Chang. Menalsolikeshopping: Reducinggender
+bias ampliﬁcation using corpus-level constraints.
+arXiv preprint arXiv:1707.09457 , 2017.
+18

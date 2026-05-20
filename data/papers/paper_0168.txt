@@ -1,0 +1,1702 @@
+Title: Multi-Dimensional Gender Bias Classification
+
+Multi-Dimensional Gender Bias Classiﬁcation
+Emily Dinan, Angela Fany, Ledell Wu, Jason Weston, Douwe Kiela, Adina Williams
+Facebook AI Research
+yLaboratoire Lorrain d’Informatique et Applications (LORIA)
+Abstract
+Machine learning models are trained to ﬁnd
+patterns in data. NLP models can inadver-
+tently learn socially undesirable patterns when
+training on gender biased text. In this work,
+we propose a general framework that decom-
+poses gender bias in text along several prag-
+matic and semantic dimensions: bias from the
+gender of the person being spoken about, bias
+from the gender of the person being spoken
+to, and bias from the gender of the speaker.
+Using this ﬁne-grained framework, we auto-
+matically annotate eight large scale datasets
+with gender information. In addition, we col-
+lect a novel, crowdsourced evaluation bench-
+mark of utterance-level gender rewrites. Dis-
+tinguishing between gender bias along multi-
+ple dimensions is important, as it enables us to
+train ﬁner-grained gender bias classiﬁers. We
+show our classiﬁers prove valuable for a vari-
+ety of important applications, such as control-
+ling for gender bias in generative models, de-
+tecting gender bias in arbitrary text, and shed
+light on offensive language in terms of gen-
+deredness.
+1 Introduction
+Language is a social behavior, and as such, it is
+a primary means by which people communicate,
+express their identities, and socially categorize
+themselves and others. Such social information
+is present in the words we write and, consequently,
+in the text we use to train our NLP models. In
+particular, models often can unwittingly learn neg-
+ative associations about protected groups present
+in their training data and propagate them. In partic-
+ular, NLP models often learn biases against others
+based on their gender (Bolukbasi et al., 2016; Hovy
+and Spruit, 2016; Caliskan et al., 2017; Rudinger
+et al., 2017; Garg et al., 2018; Gonen and Gold-
+berg, 2019; Dinan et al., 2019a). Since unwanted
+Joint ﬁrst authors.
+Figure 1: Framework for Gender Bias in Dialogue .
+We propose a framework separating gendered language
+based on who you are speaking ABOUT , speaking TO,
+and speaking AS.
+gender biases can affect downstream applications—
+sometimes even leading to poor user experiences—
+understanding and mitigating gender bias is an im-
+portant step towards making NLP tools and models
+safer, more equitable, and more fair. We provide a
+ﬁner-grained framework for this purpose, analyze
+the presence of gender bias in models and data,
+and empower others by releasing tools that can
+be employed to address these issues for numerous
+text-based use-cases.
+While many works have explored methods for
+removing gender bias from text (Bolukbasi et al.,
+2016; Emami et al., 2019; Maudslay et al., 2019;
+Dinan et al., 2019a; Kaneko and Bollegala, 2019;
+Zmigrod et al., 2019; Ravfogel et al., 2020), no
+extant work on classifying gender or removing gen-
+der bias has incorporated facts about how humans
+collaboratively and socially construct our language
+and identities. We propose a pragmatic and se-
+mantic framework for measuring bias along three
+dimensions that builds on knowledge of the con-
+versational and performative aspects of gender, as
+illustrated in Figure 1. Recognizing these dimen-
+sions is important, because gender along each di-
+mension can affect text differently, for example,arXiv:2005.00614v1  [cs.CL]  1 May 2020
+by modifying word choice or imposing different
+preferences in how we construct sentences.
+Decomposing gender into separate dimensions
+also allows for better identiﬁcation of gender bias,
+which subsequently enables us to train a suite of
+classiﬁers for detecting different kinds of gender
+bias in text. We train several classiﬁers on freely
+available data that we annotate with gender infor-
+mation along our dimensions. We also collect a
+new crowdsourced dataset ( MDG ENDER ) for bet-
+ter evaluation of gender classiﬁer performance. The
+classiﬁers we train have a wide variety of poten-
+tial applications. We evaluate them on three: con-
+trolling the genderedness of generated text, detect-
+ing gendered text, and examining the relationship
+between gender bias and offensive language. In
+addition, we expect them to be useful in future
+for many text applications such as detecting gen-
+der imbalance in newly created training corpora or
+model-generated text.
+In this work, we make four main contribu-
+tions: we propose a multi-dimensional framework
+(ABOUT ,AS,TO) for measuring and mitigating gen-
+der bias in language and NLP models, we introduce
+an evaluation dataset for performing gender iden-
+tiﬁcation that contains utterances re-written from
+the perspective of a speciﬁc gender along all three
+dimensions, we train a suite of classiﬁers capable
+of labeling gender in both a single and multitask set
+up, and ﬁnally we illustrate our classiﬁers’ utility
+for several downstream applications. All datasets,
+annotations, and classiﬁers will be released pub-
+licly to facilitate further research into the important
+problem of gender bias in language.
+2 Related Work
+Gender affects myriad aspects of NLP, including
+corpora, tasks, algorithms, and systems (Chang
+et al., 2019; Costa-juss `a, 2019; Sun et al., 2019).
+For example, statistical gender biases are ram-
+pant in word embeddings (Jurgens et al., 2012;
+Bolukbasi et al., 2016; Caliskan et al., 2017; Garg
+et al., 2018; Zhao et al., 2018b; Basta et al., 2019;
+Chaloner and Maldonado, 2019; Du et al., 2019;
+Gonen and Goldberg, 2019; Kaneko and Bollegala,
+2019; Zhao et al., 2019)—even multilingual ones
+(Gonen et al., 2019; Zhou et al., 2019)—and af-
+fect a wide range of downstream tasks including
+coreference resolution (Zhao et al., 2018a; Cao and
+Daum ´e, 2019; Emami et al., 2019), part-of-speech
+and dependency parsing (Garimella et al., 2019),unigram language modeling (Qian et al., 2019), ap-
+propriate turn-taking classiﬁcation (Lepp, 2019),
+relation extraction (Gaut et al., 2019), identiﬁcation
+of offensive content (Shariﬁrad and Matwin, 2019;
+Shariﬁrad et al., 2019), and machine translation
+(Stanovsky et al., 2019). Furthermore, translations
+are judged as having been produced by older and
+more male speakers than the original was (Hovy
+et al., 2020).
+For dialogue text particularly, gender biases in
+training corpora have been found to be ampliﬁed in
+machine learning models (Lee et al., 2019; Dinan
+et al., 2019a; Liu et al., 2019). While many of the
+works cited above propose methods of mitigating
+the unwanted effects of gender on text, Maudslay
+et al. (2019); Zmigrod et al. (2019); Dinan et al.
+(2019a) in particular rely on counterfactual data to
+alter the training distribution to offset gender-based
+statistical imbalances (see x4.1 for more discussion
+of training set imbalances). Also relevant is Kang
+et al. (2019, PASTEL), which introduces a paral-
+lel style corpus and shows gains on style-transfer
+across binary genders. In this work, we provide
+a clean new way to understand gender bias that
+extends to the dialogue use-case by independently
+investigating the contribution of author gender to
+data created by humans.
+Most relevant to this work, Sap et al. (2019b)
+proposes a framework for modeling pragmatic as-
+pects of many social biases in text, such as intent
+to offend, for guiding discovery of new instances
+of social bias. These works focus on complemen-
+tary aspects of a larger goal—namely, making NLP
+safe and inclusive for everyone—but they differ
+in several ways. Here, we treat statistical gender
+bias in human or model generated text speciﬁcally,
+allotting it the focused and nuanced attention that
+such a complicated phenomenon deserves. Sap
+et al. (2019b) takes a different perspective, and
+aims to characterize the broader landscape of nega-
+tive stereotypes in social media text, an approach
+which can make parallels apparent across differ-
+ent types of socially harmful content. Moreover,
+they consider different pragmatic dimensions than
+we do: they target negatively stereotyped com-
+monsense implications in arguably innocuous state-
+ments, whereas we investigate pragmatic dimen-
+sions that straightforwardly map to conversational
+roles (i.e., topics, addressees, and authors of con-
+tent). As such, we believe the two frameworks to
+be fully compatible.
+Also relevant is the intersectionality of gender
+identity, i.e., when gender non-additively interacts
+with other identity characteristics. Negative gen-
+der stereotyping is known to be weakened or re-
+inforced by the presence of other social factors,
+such as dialect (Tatman, 2017), class (Degaetano-
+Ortlieb, 2018) and race (Crenshaw, 1989). These
+differences have been found to affect gender classi-
+ﬁcation in images (Buolamwini and Gebru, 2018),
+and also in sentences encoders (May et al., 2019).
+We acknowledge that these are crucial considera-
+tions, but set them aside for follow-up work.
+3 Dimensions of Gender Bias
+Gender inﬁltrates language differently depending
+on the conversational role played by the people
+using that language (see Figure 1). We propose a
+framework for decomposing gender bias into three
+separate dimensions: bias when speaking ABOUT
+someone, bias when speaking TOsomeone, and
+bias from speaking ASsomeone. In this section,
+we ﬁrst deﬁne bias andgender , and then motivate
+and describe our three dimensions.
+3.1 Deﬁnitions of Bias and Gender
+Bias. In an ideal world, we would expect little dif-
+ference between texts describing men, women, and
+people with other gender identities, aside from the
+use of explicitly gendered words, like pronouns or
+names. A machine learning model, then, would be
+unable to pick up on statistical differences among
+gender labels (i.e., gender bias), because such dif-
+ferences would not exist. Unfortunately, we know
+this is not the case. For example, Table 1 pro-
+vides examples of adjectives, adverbs, and verbs
+that are more common in Wikipedia biographies
+of people of certain genders. This list was gen-
+erated by counting all verbs, adjectives, and ad-
+verbs (using a part-of-speech tagger from Honnibal
+and Montani (2017)) that appear in a large section
+of biographies of Wikipedia. We then computed
+P(wordjgender )=P(word )for words that appear
+more than 500times. The top over-represented
+verbs, adjectives, and adverbs using this calculated
+metric are displayed for each gender.
+In an imagined future, a classiﬁer trained to iden-
+tify gendered text would have (close to) random
+performance on non-gender-biased future data, be-
+cause the future would be free of the statistical
+biases plaguing current-day data. These statistical
+biases are what make it possible for current-dayclassiﬁers to perform better than random chance.
+We know that current-day classiﬁers are gender
+biased, because they achieve much better than ran-
+dom performance by learning distributional differ-
+ences in how current-day texts use gender; we show
+this inx5. These classiﬁers learn to pick up on
+these statistical biases in text in addition to explicit
+gender markers (like she).1
+Gender. Gender manifests itself in language in
+numerous ways. In this work, we are interested
+in gender as it is used in English when referring
+to people and other sentient agents, or when dis-
+cussing their identities, actions, or behaviors. We
+annotate gender with four potential values: mascu-
+line, feminine, neutral andunknown — which al-
+lows us to go beyond the oppositional male-female
+gender binary. We take the neutral category to
+contain characters with either non-binary gender
+identity, or an identity which is unspeciﬁed for gen-
+der by deﬁnition (say, for a magic tree).2We also
+include an unknown category for when there might
+be a gender identity at play, but the gender is not
+known or readily inferrable by crowdworkers from
+the text (e.g., in English, one would not be able to
+infer gender from just the short text “Hello!”).
+3.2 Gender in Multiple Dimensions
+Exploring gender’s inﬂuence on language has been
+a fruitful and active area of research in many dis-
+ciplines, each of which brings its own unique per-
+spectives to the topic (Lakoff, 1973; Butler, 1990;
+Cameron, 1990; Lakoff, 1990; Swann, 1992; Craw-
+ford, 1995; Weatherall, 2002; Sunderland, 2006;
+Eckert and McConnell-Ginet, 2013; Mills, 2014;
+Coates, 2015; Talbot, 2019). In this section, we
+propose a framework that decomposes gender’s
+contribution along three conversational dimensions
+to enable ﬁner-grained classiﬁcation of gender’s
+effects on text from multiple domains.
+Speaking About : Gender of the Topic. It’s well
+known that we change how we speak about others
+depending on who they are (Hymes, 1974; Rick-
+ford and McNair-Knox, 1994), and, in particular,
+1We caution the reader that “the term bias is often used to
+refer to demographic disparities in algorithmic systems that
+are objectionable for societal reasons” (Barocas et al., 2020,
+14); we restrict our use of bias to its traditional deﬁnition here.
+2We fully acknowledge the existence and importance of all
+chosen gender identities—including, but not limited to non-
+binary, gender ﬂuid, poly-gender, pan-gender, alia-gender,
+agender—for the end goal of achieving accessible, inclusive,
+and fair NLP. However, these topics require a more nuanced
+investigation than is feasible using na ¨ıve crowdworkers.
+VERBS ADJECTIVES ADVERBS
+M F N M F N M F N
+ﬁnance steamed increases akin feminist optional ethnically romantically westward
+presiding actor range vain lesbian tropical intimately aground inland
+oversee kisses dissipated descriptive uneven volcanic soundly emotionally low
+survives towed vary bench transgender glacial upstairs sexually automatically
+disagreed guest engined sicilian feminine abundant alongside happily typically
+obliged modelling tailed 24-hour female variable artistically socially faster
+ﬁlling cooking excavated optimistic reproductive malay randomly anymore normally
+reassigned kissing forested weird sexy overhead hotly really round
+pledged danced upgraded ordained blonde variant lesser positively usually
+agreeing studies electriﬁed factual pregnant sandy convincingly incredibly slightly
+Table 1: Bias in Wikipedia . We look at the most over-represented words in biographies of men and women,
+respectively, in Wikipedia. We also compare to a set of over-represented words in gender-neutral pages. We use a
+part-of-speech tagger (Honnibal and Montani, 2017) and limit our analysis to words that appear at least 500times.
+based on their gender (Lakoff, 1973). People of-
+ten change how they refer to others depending on
+the gender identity of the individual being spoken
+about (Eckert and McConnell-Ginet, 1992). For ex-
+ample, adjectives which describe women have been
+shown to differ from those used to describe men
+in numerous situations (Trix and Psenka, 2003;
+Gaucher et al., 2011; Moon, 2014; Hoyle et al.,
+2019), as do verbs that take nouns referring to men
+as opposed to women (Guerin, 1994; Hoyle et al.,
+2019). Furthermore, metaphorical extensions—
+which can shed light on how we construct con-
+ceptual categories (Lakoff and Johnson, 1980)—to
+men and women starkly differ (Fontecha and Cata-
+lan 2003; Holmes 2013, 325; Amery et al. 2015).
+Speaking To : Gender of the Addressee. People
+often adjust their speech based on who they are
+speaking with—their addressee(s)—to show soli-
+darity with their audience or express social distance
+(Wish et al., 1976; Bell, 1984; Hovy, 1987; Rick-
+ford and McNair-Knox, 1994; Bell and Johnson,
+1997; Eckert and Rickford, 2001). We expect the
+addressee’s gender to affect, for example, the way
+a man might communicate with another man about
+styling their hair would differ from how he might
+communicate with a woman about the same topic.
+Speaking As : Gender of the Speaker. People
+react to content differently depending on who cre-
+ated it.3For example, Sap et al. (2019a) ﬁnd that
+na¨ıve annotators are much less likely to ﬂag as
+offensive certain content referring to race, if they
+have been told the author of that content speaks a
+dialect that signals in-group membership (i.e., is
+3We will interchangeably use the terms speaker andau-
+thor here to refer to a creator of textual content throughout.less likely to be intended to offend). Like race, gen-
+der is often described as a “fundamental” category
+for self-identiﬁcation and self-description (Banaji
+and Prentice, 1994, 315), with men, women, and
+non-binary people differing in how they actively
+create and perceive of their own gender identities
+(West and Zimmerman, 1987). Who someone is
+speaking as strongly affect what they may say and
+how they say it, down to the level of their choices of
+adjectives and verbs in self-descriptions (Charyton
+and Snelbecker, 2007; Wetzel et al., 2012). Even
+children as young as two dislike when adults mis-
+attribute a gender to them (Money and Ehrhardt,
+1972; Bussey, 1986), suggesting that gender is in-
+deed an important component of identity.
+Our Speaking As dimension builds on prior
+work on author attribution, a concept purported
+to hail from English logician Augustus de Morgan
+(Mendenhall, 1887), who suggested that authors
+could be distinguished based on the average word
+length of their texts. Since then, sample statistics
+and NLP tools have been used for applications such
+as settling authorship disputes (Mosteller and Wal-
+lace, 1984), forensic investigations (Frantzeskou
+et al., 2006; Rocha et al., 2016; Peng et al., 2016),
+or extracting a stylistic ﬁngerprint from text that
+enables the author to be identiﬁed (Stamatatos
+et al., 1999; Luyckx and Daelemans, 2008; Arga-
+mon et al., 2009; Stamatatos, 2009; Raghavan et al.,
+2010; Cheng et al., 2011; Stamatatos, 2017). More
+speciﬁcally, automatic gender attribution has re-
+ported many successes (Koppel et al., 2002; Koolen
+and van Cranenburgh, 2017; Qian, 2019), often
+driven by the fact that authors of speciﬁc genders
+tend to prefer producing content about topics that
+belie those gender (Sarawgi et al., 2011). Given
+Dataset M F N U Dim
+Training Data
+Wikipedia 10M 1M 1M - ABOUT
+Image Chat 39K 15K 154K - ABOUT
+Funpedia 19K 3K 1K - ABOUT
+Wizard 6K 1K 1K - ABOUT
+Yelp 1M 1M - - AS
+ConvAI2 22K 22K - 86K AS
+ConvAI2 22K 22K - 86K TO
+OpenSub 149K 69K - 131K AS
+OpenSub 95K 45K - 209K TO
+LIGHT 13K 8K - 83K AS
+LIGHT 13K 8K - 83K TO
+Evaluation Data
+MDG ENDER 384 401 - - ABOUT
+MDG ENDER 396 371 - - AS
+MDG ENDER 411 382 - - TO
+Table 2: Dataset Statistics . Dataset statistics on the
+eight training datasets and new evaluation dataset, MD-
+GENDER with respect to each label.
+this, we might additionally expect differences be-
+tween genders along our Speaking As andSpeaking
+About dimensions to interact, further motivating
+them as separate dimensions.
+4 Creating Gender Classiﬁers
+Previous work on gender bias classiﬁcation has
+been predominantly single-task—often supervised
+on the task of analogy—and relied mainly on
+word lists, that are binarily (Bolukbasi et al., 2016;
+Zhao et al., 2018b, 2019; Gonen and Goldberg,
+2019)—and sometimes also explicitly (Caliskan
+et al., 2017; Hoyle et al., 2019)—gendered. While
+wordlist-based approaches provided a solid start
+on attacking the problem of gender bias, they are
+insufﬁcient for multiple reasons. First, they con-
+ﬂate different conversational dimensions of gender
+bias, and are therefore unable to detect the subtle
+pragmatic differences that are of interest here. Fur-
+ther, all existing gendered word lists for English
+are limited, by construction, to explicitly binarily
+gendered words (e.g., sister vs.brother ). Not only
+is binary gender wholly inadequate for the task,
+but restricting to explicitly gendered words is itself
+problematic, since we know that many words aren’t
+explicitly gendered, but arestrongly statistically
+gendered (see Table 1). Rather than solely relying
+on a brittle binary gender label from a global word
+list, our approach will also allow for gender bias
+to be determined ﬂexibly over multiple words in
+context (Note: this will be crucial for examples that
+only receive gendered interpretations when in a par-ticular context; for example, ‘bag’ disparagingly
+refers to an elderly woman, but only in the context
+of ‘old’, and ‘cup’ hints at masculine gender only
+in the context of ‘wear’).
+Instead, we develop classiﬁers that can decom-
+pose gender bias over full sentences into semantic
+and/or pragmatic dimensions ( about/to/as ), addi-
+tionally including gender information that (i) falls
+outside the male-female binary, (ii) can be contextu-
+ally determined, and (iii) is statistically as opposed
+to explicitly gendered. In the subsequent sections,
+we provide details for training these classiﬁers as
+well as details regarding the annotation of data for
+such training.
+4.1 Models
+We outline how these classiﬁers are trained to pre-
+dict gender bias along the three dimensions, provid-
+ing details of the classiﬁer architectures as well as
+how the data labels are used. We train single-task
+and a multi-task classiﬁers for different purposes:
+the former will leverage gender information from
+each contextual dimension individually, and the lat-
+ter should have broad applicability across all three.
+Single Task Setting. In the single-task setting,
+we predict masculine ,feminine , orneutral for each
+dimension – allowing the classiﬁer to predict any
+of the three labels for the unknown category).
+Multitask Setting. To obtain a classiﬁer capable
+of multi-tasking across the about/to/as dimensions,
+we train a model to score and rank a set of pos-
+sible classes given textual input. For example, if
+given Hey, John, I’m Jane! , the model is trained
+to rank elements of both the sets fTO:masculine,
+TO:feminine, TO:neutral gandfAS:masculine,
+AS:feminine, AS:neutral gand produce appropriate
+labels TO:masculine and AS:feminine. Models are
+trained and evaluated on the annotated datasets.
+Model Architectures. For single task and mul-
+titask models, we use a pretrained Transformer
+(Vaswani et al., 2017) to ﬁnd representations for
+the textual input and set of classes. Classes are
+scored—and then ranked—by taking a dot product
+between the representations of the textual input and
+a given class, following the bi-encoder architecture
+(Humeau et al., 2019) trained with cross entropy.
+The same architecture and pre-training as BERT
+(Devlin et al., 2018) are used throughout. We use
+ParlAI for model training (Miller et al., 2017).
+We will release data and models.
+Model About To As
+Avg. M F Avg. M F Avg. M F All Avg.
+SingleTask ABOUT 70.43 63.54 77.31 44.44 36.25 52.62 67.75 69.19 66.31 60.87
+SingleTask TO 50.12 99.74 0.5 49.39 95.38 3.4 50.41 100 0.81 49.97
+SingleTask AS 46.97 51.3 42.4 57.27 67.15 47.38 78.21 70.71 85.71 60.82
+MultiTask 62.59 64.32 60.85 78.25 73.24 83.25 72.15 66.67 77.63 67.13
+Table 3: Accuracy on the novel evaluation dataset MDG ENDER comparing single task classiﬁers to our multi-
+task classiﬁers. We report accuracy on the masculine and the feminine classes, as well as the average of these
+two metrics. Finally, we report the average (of the M-F averages) across the three dimensions. MDG ENDER was
+collected to enable evaluation on the masculine andfemninine classes, for which much of the training data is noisy.
+Model Multitask Performance
+M F N Avg. Dim.
+Wikipedia 87.4 86.65 55.2 77.22 ABOUT
+Image Chat 36.48 83.56 33.22 51.09 ABOUT
+Funpedia 75.82 82.24 70.52 76.2 ABOUT
+Wizard 64.51 83.33 81.82 76.55 ABOUT
+Yelp 73.92 65.08 - 69.5 AS
+ConvAI2 44 65.65 - 54.83 AS
+ConvAI2 45.98 61.28 - 53.63 TO
+OpenSubtitles 56.95 59.31 - 58.12 AS
+OpenSubtitles 53.73 60.29 - 57.01 TO
+LIGHT 51.57 65.72 - 58.65 AS
+LIGHT 51.92 68.48 - 60.2 TO
+Table 4: Performance of the multitask model on
+the test sets from our training data. We evaluate
+the multi-task model on the test sets for the training
+datasets. We report accuracy on each (gold) label—
+masculine, feminine, and neutral—and the average of
+the three. We do not report accuracy on imputed labels.
+Model Labels. Many of our annotated datasets
+contain cases where the ABOUT ,AS,TOlabels are
+unknown. We retain these examples during train-
+ing, but use two techniques to handle them. If the
+true label is unknown (for example, in Wikipedia,
+we do not know the gender of the author, so the
+asdimension is unknown), we either impute it or
+provide a label at random. For data for which the
+about label is unknown, we impute it using a clas-
+siﬁer trained only on data for which this label is
+present. For data for which the tooraslabel is
+unknown, we provide a label at random, choosing
+between masculine andfeminine . From epoch to
+epoch, we switch these arbitrarily assigned labels
+so that the model learns to assign the masculine and
+feminine labels with roughly equal probability to
+examples for which the gender is unknown . This la-
+bel ﬂipping allows us to retain greater quantities ofdata by preserving unknown samples. Additionally,
+we note that during training, we balance the data
+across the masculine ,feminine , and neutral classes
+by oversampling from classes with fewer examples.
+We do this because much of the data is highly im-
+balanced: for example, over >80% of examples
+from Wikipedia are labeled masculine (Table 2).
+We also early stop on the average accuracy across
+all three classes.
+4.2 Data
+Next, we describe how we annotated our training
+data, including both the 8 existing datasets and our
+novel evaluation dataset, MDG ENDER .
+Annotation of Existing Datasets. To enable
+training our classiﬁers, we leverage a variety of ex-
+isting datasets. Since one of our main contributions
+is a suite of open-source general-purpose gender
+bias classiﬁers, we selected datasets for training
+based on three criteria: inclusion of recoverable
+information about one or more of our dimensions,
+diversity in textual domain, and high quality, open
+data use. Once we narrowed our search to free,
+open source and freely available datasets, we maxi-
+mized domain diversity by selecting datasets with
+high quality annotations along at least one of our
+dimensions (e.g., dialogue datasets have informa-
+tion on author and addressee gender, biographies
+have information on topic gender, and restaurant
+reviews have information on author gender).
+The datasets are: Wikipedia, Funpedia (a less
+formal version of Wikipedia) (Miller et al., 2017),
+Wizard of Wikipedia (knowledge-based conversa-
+tion) (Dinan et al., 2019d), Yelp Reviews4, Con-
+vAI2 (chit-chat dialogue) (Dinan et al., 2019c),
+ImageChat (chit-chat dialogue about an image)
+(Shuster et al., 2018), OpenSubtitles (dialogue from
+4https://yelp.com/dataset
+movies) (Lison and Tiedemann, 2016), and LIGHT
+(chit-chat fantasy dialogue) (Urbanek et al., 2019).
+We use data from multiple domains to represent
+different styles of text—from formal writing to
+chitchat—and different vocabularies. Further, sev-
+eral datasets are known to contain statistical im-
+balances and biases with regards to how people
+of different genders are described and represented,
+such as Wikipedia and LIGHT. Table 2 presents
+dataset statistics; the full detailed descriptions and
+more information on how labels were inferred or
+imputed in Appendix A.
+Some of the datasets contain gender annotations
+provided by existing work. For example, classiﬁers
+trained for style transfer algorithms have previously
+annotated the gender of Yelp reviewers (Subrama-
+nian et al., 2018). In other datasets, we infer the
+gender labels. For example, in datasets where users
+are ﬁrst assigned a persona to represent before
+chatting, often the gender of the persona is pre-
+determined. In some cases gender annotations are
+not provided. In these cases, we sometimes impute
+the label if we are able to do so with high conﬁ-
+dence. More details regarding how this is done can
+be found in Appendix A.
+Collected Evaluation Dataset. We use a variety
+of datasets to train classiﬁers so they can be reliable
+on all dimensions across multiple domains. How-
+ever, this weakly supervised data provides some-
+what noisy training signal – particularly for the
+masculine andfeminine classes – as the labels are
+automatically annotated or inferred. To enable re-
+liable evaluation, we collect a specialized corpus,
+MDG ENDER , which acts as a gold-labeled dataset.
+First, we collect conversations between two
+speakers. Each speaker is provided with a per-
+sona description containing gender information,
+then tasked with adopting that persona and having
+a conversation.5They are also provided with small
+sections of a biography from Wikipedia as the con-
+versation topic. We observe that using biographies
+to frame the conversation encourages crowdwork-
+ers to discuss about/to/as gender information.
+To maximize the about/to/as gender information
+contained in each utterance, we perform a second
+annotation over each utterance in the dataset. In
+this next phase, we ask annotators to rewrite each
+5We note that crowdworkers might perform genders in a
+non-authentic or idiosyncratic way when the persona gender
+doesn’t match their gender. This would be an interesting
+avenue to explore in follow up work.Model Performance
+M F N Avg.
+Multi-Task 87.4 86.65 55.2 77.22
+Wikipedia Only 88.65 88.22 68.58 81.82
+-gend words 86.94 74.62 74.33 78.63
+-gend words and names 82.10 82.52 55.21 73.28
+Table 5: Ablation of gender classiﬁers on the
+Wikipedia test set. We report the model accuracy on
+the masculine, feminine, and neutral classes, as well as
+the average accuracy across them. We train classiﬁers
+(1) on the entire text (2) after removing explicitly gen-
+dered words using a word list and (3) after removing
+gendered words and names. While masking out gen-
+dered words and names makes classiﬁcation more chal-
+lenging, the model still obtains high accuracy.
+utterance to make it very clear that they are speak-
+ing ABOUT a man or a woman, speaking ASa man
+or a woman, and speaking TOa man or a woman.
+For example, given the utterance Hey, how are you
+today? I just got off work , a valid rewrite to make
+the utterance ABOUT a woman could be: Hey, I
+went for a coffee with my friend and her dog as the
+herindicates a woman. A rewrite such as I went for
+a coffee with my friend is not acceptable as it does
+not mention that the friend is a woman. After each
+rewritten utterance, evaluators label how conﬁdent
+they are that someone else would predict that the
+text is spoken about, spoken as, or spoken to a man
+or woman. For the rewritten utterance I just got
+back from football practice , many people would
+guess that the utterance was said by a man, as more
+men play football then women, but one cannot be
+certain (as women also play or coach football). An
+example instance of the task is shown in Table 9
+and the interface is shown in Appendix Figure 2.
+5 Results
+5.1 about/to/as Gender Classiﬁcation
+Quality of Classiﬁcation Models. We compare
+models that classify along a single dimension com-
+pared to one that multitasks across all three. To
+enable high quality evaluation along our proposed
+three dimensions, we use MDG ENDER to evaluate.
+We measure the percentage accuracy for masculine,
+feminine, and neutral classes. We do not evaluate
+on the unknown class, as it is not modeled. Classi-
+ﬁer results on MDG ENDER are shown in Table 3.
+We ﬁnd that the multitask classiﬁer has the best
+average performance across all dimensions, with a
+small hit to single-task performance in the about
+andasdimensions. As expected, the single task
+models are unable to transfer to other dimensions:
+this is another indication that gender information
+manifests differently along each dimension. Train-
+ing for a single task allows models to specialize
+to detect and understand the nuances of text that
+indicates bias along one of the dimensions. How-
+ever, in a multitask setting, models see additional
+data along the other dimensions and can possibly
+learn to generalize to understand what language
+characterizes bias across multiple dimensions.
+Performance by Dataset. The gender classiﬁers
+along the TO,ASand ABOUT dimensions are
+trained on a variety of different existing datasets
+across multiple domains. We analyze which
+datasets are the most difﬁcult to classify correctly
+in Table 4. We ﬁnd that ABOUT is the easiest di-
+mension, particularly data from Wikipedia or based
+on Wikipedia, such as Funpedia and Wizard of
+Wikipedia, achieving almost 80% accuracy.
+The TOand ASdirections are both more difﬁcult,
+likely as they involve more context clues rather
+than relying on textual attributes and surface forms
+such as sheandheto predict correctly. We ﬁnd that
+generally the datasets have similar performance,
+except Yelp restaurant reviews, which has a 70%
+accuracy on predicting AS.
+Analysis of Classiﬁer Performance. We break
+down choices made during classiﬁer training by
+comparing different models on the Wikipedia
+(ABOUT dimension). We train a single classiﬁer
+ofABOUT , and train with the variations of mask-
+ing out gendered words and names. As gendered
+words such as herand names are very correlated
+with gender, masking can force models into a more
+challenging but nuanced setting where they must
+learn to detect bias from the remaining text. We
+present the results in Table 5. As expected, mask-
+ing out gendered words and names makes it harder
+to classify the text, but the model is still able to
+obtain high accuracy.
+6 Applications
+We demonstrate the broad utility of our multi-task
+classiﬁer by applying them to three different down-
+stream applications. First, we show that we can use
+the classiﬁer to control the genderedness of gener-
+ated text. Next, we demonstrate its utility in biased
+text detection by applying it Wikipedia to ﬁnd theGeneration Statistics
+Control Token # Gend.
+wordsPct.
+masc.
+TO:feminine 246 48.0
+AS:feminine 227 51.0
+ABOUT:feminine 1151 19.72
+Word list, feminine 1158 18.22
+TO:masculine 372 75.0
+AS:masculine 402 71.6
+ABOUT:masculine 800 91.62
+Word list, masculine 1459 94.8
+Table 6: Word statistics measured on text generated
+from 1000 different seed utterances from ConvAI2 for
+each control token, as well as for our baseline model
+trained using word lists. We measure the number of
+gendered words (from a word list) that appear in the
+generated text as well as the percentage of masculine-
+gendered words among all gendered words. Sequences
+are generated with top- ksampling, k= 10 , with a
+beam size of 10and3-gram blocking.
+most gendered biographies. Finally, we evaluate
+our classiﬁer on an offensive text detection dataset
+to explore the interplay between offensive content
+and genderedness.
+6.1 Controllable Generation
+By learning to associate control variables with tex-
+tual properties, generative models can be controlled
+at inference time to adjust the generated text based
+on the desired properties of the user. This has
+been applied to a variety of different cases, includ-
+ing generating text of different lengths (Fan et al.,
+2017), generating questions in chit-chat (See et al.,
+2019), and reducing bias (Dinan et al., 2019a).
+Previous work in gender bias used word lists to
+control bias, but found that word lists were lim-
+ited in coverage and applicability to a variety of
+domains (Dinan et al., 2019a). However, by de-
+composing bias along the TO,AS,AND ABOUT
+dimensions, ﬁne-grained control models can be
+trained to control these different dimensions sep-
+arately. This is important in various applications
+— for example, one may want to train a chatbot
+with a speciﬁc personality, leaving the ASdimen-
+sion untouched, but want the bot to speak to and
+about everyone in a similar way. In this application,
+we train three different generative models, each of
+which controls generation for gender along one of
+theTO,AS, and ABOUT dimensions.
+Methods We generate training data by taking the
+multi-task classiﬁer and using it to classify 250,000
+textual utterances from Reddit, using a previously
+existing dataset extracted and obtained by a third
+party and made available on pushshift.io. This
+dataset was chosen as it is conversational in na-
+ture, but not one of the datasets that the classiﬁer
+was trained on. We then use the labels from the
+classiﬁer to prepend the utterances with tokens that
+indicate gender label along the dimension. For
+example for the ABOUT dimension, we prepend
+utterances with tokens ABOUT: <gender label>,
+where <gender label>denotes the label assigned
+to the utterance via the classiﬁer. At inference time,
+we choose control tokens to manipulate the text
+generated by the model.
+We also compare to a baseline for which the
+control tokens are determined by a word list: if an
+utterance contains more masculine-gendered words
+than feminine-gendered words from the word list
+it is labeled as masculine (and vice versa for femi-
+nine); if it contains no gendered words or an equal
+number of masculine and feminine gendered words,
+it is labeled as neutral . Following Dinan et al.
+(2019a), we use several existing word lists (Zhao
+et al., 2018b, 2019; Hoyle et al., 2019).
+For training, we ﬁne-tune a large, Transformer
+sequence-to-sequence model pretrained on Reddit.
+At inference time, we generate text via top- ksam-
+pling (Fan et al., 2018), with k= 10 with a beam
+size of 10, and 3-gram blocking. We force the
+model to generate a minimum of 20BPE tokens.
+Qualitative Results. Example generations from
+various control tokens (as well as the word list base-
+line) are shown in Table 10 in the Appendix. These
+examples illustrate how controlling for gender over
+different dimensions yields extremely varied re-
+sponses, and why limiting control to word lists may
+not be enough to capture these different aspects of
+gender. For example, adjusting ASto ‘feminine’
+causes the model to write text such as Awwww, that
+sounds wonderful , whereas setting ASto masculine
+generates You can do it bro!
+Quantitative Results. Quantitatively, we evalu-
+ate by generating 1000 utterances seeded from Con-
+vAI2 using both masculine andfeminine control
+tokens and counting the number of gendered words
+from a gendered word list that also appear in the
+generated text. Results are shown in Table 6.
+Utterances generated using about control tokens
+contain many more gendered words. One might ex-
+pect this, as when one speaks about another person,Percentage of masculine-gendered text
+Dim Safe Offensive t-statistic p-value
+ABOUT 81.03 70.66 5.49 5.19e-08
+TO 44.68 60.15 -22.02 1.94e-46
+AS 42.29 65.12 -14.56 1.05e-99
+Table 7: Genderedness of offensive content. We mea-
+sure the percentage of utterances in both the ”safe”
+and ”offensive” classes that are classiﬁed as masculine-
+gendered , among utterances that are classiﬁed as ei-
+thermasculine- orfeminine-gendered . We test the hy-
+pothesis that safe and offensive classes distributions of
+masculine-gendered utterances differ using a t-test and
+report the p-value for each dimension.
+one may refer to them using gendered pronouns.
+We observe that for the control tokens TO:feminine
+andAS:feminine , the utterances contain a roughly
+equal number of masculine-gendered and feminine-
+gendered words. This is likely due to the dis-
+tribution of such gendered words in the training
+data for the classiﬁer in the toandasdimensions.
+The ConvAI2 and Opensubtitles data show similar
+trends: on the ConvAI2 data, fewer than half of
+the gendered words in SELF:feminine utterances
+are feminine-gendered, and on the Opensubtitles
+data, the ratio drops to one-third.6By design, the
+word list baseline has the best control over whether
+the generations contain words from this word list.
+These results, as well as the previously described
+qualitative results, demonstrate why evaluating and
+controlling with word lists is insufﬁcient — word
+lists do not capture all aspects of gender.
+6.2 Bias Detection
+Creating classiﬁers along different dimensions can
+be used to detect gender bias in any form of text,
+beyond dialogue itself. We investigate using the
+trained classiﬁers to detect the most gendered sen-
+tences and paragraphs in various documents, and
+analyze what portions of the text drive the clas-
+siﬁcation decision. Such methods could be very
+useful in practical applications such as detecting,
+removing, and rewriting biased writing.
+Methods. We apply our classiﬁcation models
+by detecting the most gendered biographies in
+Wikipedia. We use the multitask model to score
+each paragraph among a set of 65;000Wikipedia
+6The Opensubtitles data recalls the Bechdel test, which
+asks “whether a work [of ﬁction] features at least two women
+who talk to each other about something other than a man.”
+(Wikipedia contributors, 2020)
+Masculine genderedness scores
+Biographies Average Median
+All 0.74 0.98
+Men 0.90 0.99
+Women 0.042 0.00085
+Table 8: Masculine genderedness scores of
+Wikipedia bios. We calculate a masculine gen-
+deredness score for a Wikipedia page by taking the
+median px=P(x2ABOUT:masculine )among all
+paragraphs xin the page, where Pis the probability
+distribution given by the classiﬁer. We report the
+average and median scores for all biographies, as well
+as for biographies of men and women respectively.
+biographies, where the score represents the proba-
+bility that the paragraph is masculine in the about
+dimension. We calculate a masculine genderedness
+score for the page by taking the median among all
+paragraphs in the page.
+Quantitative Results. We report the average and
+median masculine genderedness scores for all bi-
+ographies in the set of 65;000that ﬁt this crite-
+ria, and for biographies of men and women in Ta-
+ble 8. We observe that while on average, the biogra-
+phies skew largely toward masculine (the average
+score is 0:74), the classiﬁer is more conﬁdent in the
+femininity of pages about women than it is in the
+masculinity of pages about men: the average fem-
+inine genderedness score for pages about women
+is1 0:042 = 0 :958, while the average masculine
+genderedness score for pages about men is 0:90.
+This might suggest that biographies about women
+contain more gendered text on average.
+Qualitative Results. We show the pages—
+containing a minimum of 25 paragraphs—with the
+minimum score (most feminine-gendered biogra-
+phies) and the maximum score (most masculine-
+gendered biographies) in Table 11 in the Appendix.
+We observe that the most masculine-gendered bi-
+ographies are mostly composers and conductors,
+likely due to the historical gender imbalance in
+these occupations. Amongst the most feminine gen-
+dered biographies, there are many popular actresses
+from the mid-20th century. By examining the most
+gendered paragraph in these biographies, anecdo-
+tally we ﬁnd these are often the paragraphs describ-
+ing the subject’s life after retirement. For example,
+the most gendered paragraph in Linda Darnell’s
+biography contains the line Because of her then-husband, Philip Liebmann, Darnell put her career
+on a hiatus, which clearly reﬂects negative soci-
+etal stereotypes about the importance of women’s
+careers (Hiller and Philliber, 1982; Duxbury and
+Higgins, 1991; Pavalko and Elder Jr, 1993; Byrne
+and Barling, 2017; Reid, 2018).
+6.3 Offensive Content
+Finally, the interplay and correlation between gen-
+dered text and offensive text is an interesting area
+for study, as many examples of gendered text—be
+they explicitly or contextually gendered—are dis-
+paraging or have negative connotations (e.g., “cat
+ﬁght” and “doll”). There is a growing body of
+research on detecting offensive language in text.
+In particular, there has been recent work aimed
+at improving the detection offensive language in
+the context of dialogue (Dinan et al., 2019b). We
+investigate this relationship by examining the dis-
+tribution of labels output by our gender classiﬁer
+on data that is labeled for offensiveness.
+Methods. For this application, we use the Stan-
+dard training and evaluation dataset created and de-
+scribed in Dinan et al. (2019b). We examine the re-
+lationship between genderedness and offensive ut-
+terances by labeling the gender of utterances (along
+the three dimensions) in both the “safe” and “of-
+fensive” classes in this dataset using our multitask
+classiﬁer. We then measure the ratio of utterances
+labeled as masculine-gendered among utterances
+labeled as either masculine- orfeminine-gendered .
+Quantitative Results. Results are shown in Ta-
+ble 7. We observe that, on the self andpartner
+dimensions, the safe data is more likely to be la-
+beled as feminine and the offensive data is more
+likely to be labeled as masculine . We test the hy-
+pothesis that these distributions are unequal using
+a T-test, and ﬁnd that these results are signiﬁcant.
+Qualitative Results. To explore how offensive
+content differs when it is ABOUT women and
+ABOUT men, we identiﬁed utterances for which the
+model had high conﬁdence (probability >0:70)
+that the utterance was feminine ormasculine along
+theABOUT dimension. After excluding stop words
+and words shorter than three characters, we hand-
+annotated the top 20 most frequent words as being
+explicitly gendered , aswear word , and/or bearing
+sexual connotation . For words classiﬁed as mas-
+culine, 25% of the masculine words fell into these
+categories , whereas for words classiﬁed as femi-
+nine, 75% of the words fell into these categories.
+7 Conclusion
+We propose a general framework for analyzing gen-
+der bias in text by decomposing it along three di-
+mensions: (1) gender of the person or people be-
+ing spoken about ( ABOUT ), (2) gender of the ad-
+dressee ( TO), and (2) gender of the speaker ( AS).
+We show that classiﬁers can detect bias along each
+of these dimensions. We annotate eight large ex-
+isting datasets along our dimensions, and also con-
+tribute a high quality evaluation dataset for this task.
+We demonstrate the broad utility of our classiﬁers
+by showing strong performance on controlling bias
+in generated dialogue, detecting genderedness in
+text such as Wikipedia, and highlighting gender
+differences in offensive text classiﬁcation.
+References
+Fran Amery, Stephen Bates, Laura Jenkins, and
+Heather Savigny. 2015. Metaphors on women in
+academia: A review of the literature, 2004-2013. At
+the center: Feminism, social science and knowledge ,
+20:247 `A267.
+Shlomo Argamon, Moshe Koppel, James W Pen-
+nebaker, and Jonathan Schler. 2009. Automatically
+proﬁling the author of an anonymous text. Commu-
+nications of the ACM , 52(2):119–123.
+David Bamman and Noah A Smith. 2014. Unsuper-
+vised discovery of biographical structure from text.
+Transactions of the Association for Computational
+Linguistics , 2:363–376.
+Mahzarin R. Banaji and Deborah A. Prentice. 1994.
+The self in social contexts. Annual review of psy-
+chology , 45(1):297–332.
+Solon Barocas, Moritz Hardt, and Arvind Narayanan.
+2020. Fairness in machine learning: Limitations
+and Opportunities .
+Christine Basta, Marta R Costa-juss `a, and Noe Casas.
+2019. Evaluating the underlying gender bias in con-
+textualized word embeddings. In Proceedings of the
+1st Workshop on Gender Bias in Natural Language
+Processing .
+Allan Bell. 1984. Language style as audience design.
+Language in society , 13(2):145–204.
+Allan Bell and Gary Johnson. 1997. Towards a so-
+ciolinguistics of style. University of Pennsylvania
+Working Papers in Linguistics , 4(1):2.Tolga Bolukbasi, Kai-Wei Chang, James Y Zou,
+Venkatesh Saligrama, and Adam T Kalai. 2016.
+Man is to computer programmer as woman is to
+homemaker? debiasing word embeddings. In Ad-
+vances in neural information processing systems ,
+pages 4349–4357.
+Joy Buolamwini and Timnit Gebru. 2018. Gender
+shades: Intersectional accuracy disparities in com-
+mercial gender classiﬁcation. In Proceedings of
+the 1st Conference on Fairness, Accountability and
+Transparency , volume 81 of Proceedings of Ma-
+chine Learning Research , pages 77–91, New York,
+NY , USA. PMLR.
+Kay Bussey. 1986. The ﬁrst socialization. In Aus-
+tralian women: New feminist perspectives , pages
+90–104. Oxford University Press.
+Judith Butler. 1990. Gender trouble, feminist the-
+ory, and psychoanalytic discourse . Routledge New
+York.
+Alyson Byrne and Julian Barling. 2017. When she
+brings home the job status: Wives job status, status
+leakage, and marital instability. Organization Sci-
+ence, 28(2):177–192.
+Aylin Caliskan, Joanna J Bryson, and Arvind
+Narayanan. 2017. Semantics derived automatically
+from language corpora contain human-like biases.
+Science , 356(6334):183–186.
+Deborah Cameron. 1990. The feminist critique of lan-
+guage: A reader.
+Yang Trista Cao and Hal Daum ´e. 2019. Toward gender-
+inclusive coreference resolution. arXiv preprint
+arXiv:1910.13913 .
+Kaytlin Chaloner and Alfredo Maldonado. 2019. Mea-
+suring gender bias in word embeddings across do-
+mains and discovering new gender bias word cate-
+gories. In Proceedings of the First Workshop on
+Gender Bias in Natural Language Processing , pages
+25–32.
+Kai-Wei Chang, Vinod Prabhakaran, and Vicente Or-
+donez. 2019. Bias and fairness in natural language
+processing. In Proceedings of the 2019 Conference
+on Empirical Methods in Natural Language Process-
+ing and the 9th International Joint Conference on
+Natural Language Processing (EMNLP-IJCNLP):
+Tutorial Abstracts , Hong Kong, China. Association
+for Computational Linguistics.
+Christine Charyton and Glenn E Snelbecker. 2007. En-
+gineers’ and musicians’ choices of self-descriptive
+adjectives as potential indicators of creativity by gen-
+der and domain. Psychology of Aesthetics, creativity,
+and the arts , 1(2):91.
+Na Cheng, Rajarathnam Chandramouli, and KP Sub-
+balakshmi. 2011. Author gender identiﬁcation from
+text. Digital Investigation , 8(1):78–88.
+Jennifer Coates. 2015. Women, men and language: A
+sociolinguistic account of gender differences in lan-
+guage . Routledge.
+Marta R Costa-juss `a. 2019. An analysis of gender bias
+studies in natural language processing. Nature Ma-
+chine Intelligence , pages 1–2.
+Mary Crawford. 1995. Talking difference: On gender
+and language . Sage.
+Kimberle Crenshaw. 1989. Demarginalizing the inter-
+section of race and sex: A black feminist critique of
+antidiscrimination doctrine, feminist theory and an-
+tiracist politics. u. Chi. Legal f. , page 139.
+Stefania Degaetano-Ortlieb. 2018. Stylistic variation
+over 200 years of court proceedings according to
+gender and social class. In Proceedings of the Sec-
+ond Workshop on Stylistic Variation , pages 1–10,
+New Orleans. Association for Computational Lin-
+guistics.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2018. Bert: Pre-training of deep
+bidirectional transformers for language understand-
+ing.CoRR , abs/1810.04805.
+Emily Dinan, Angela Fan, Adina Williams, Jack Ur-
+banek, Douwe Kiela, and Jason Weston. 2019a.
+Queens are powerful too: Mitigating gender bias in
+dialogue generation.
+Emily Dinan, Samuel Humeau, Bharath Chintagunta,
+and Jason Weston. 2019b. Build it break it ﬁx it for
+dialogue safety: Robustness from adversarial human
+attack. arXiv preprint arXiv:1908.06083 .
+Emily Dinan, Varvara Logacheva, Valentin Malykh,
+Alexander Miller, Kurt Shuster, Jack Urbanek,
+Douwe Kiela, Arthur Szlam, Iulian Serban, Ryan
+Lowe, et al. 2019c. The second conversational
+intelligence challenge (convai2). arXiv preprint
+arXiv:1902.00098 .
+Emily Dinan, Stephen Roller, Kurt Shuster, Angela
+Fan, Michael Auli, and Jason Weston. 2019d. Wiz-
+ard of Wikipedia: Knowledge-powered conversa-
+tional agents. In Proceedings of the International
+Conference on Learning Representations (ICLR) .
+Yupei Du, Yuanbin Wu, and Man Lan. 2019. Exploring
+human gender stereotypes with word association test.
+InProceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and the
+9th International Joint Conference on Natural Lan-
+guage Processing (EMNLP-IJCNLP) , pages 6135–
+6145.
+Linda E Duxbury and Christopher A Higgins. 1991.
+Gender differences in work-family conﬂict. Journal
+of applied psychology , 76(1):60.
+Penelope Eckert and Sally McConnell-Ginet. 1992.
+Communities of practice: Where language, gender
+and power all live. In Locating power: Proceedingsof the second Berkeley women and language confer-
+ence, volume 1, pages 89–99. Berkeley, CA: Berke-
+ley University.
+Penelope Eckert and Sally McConnell-Ginet. 2013.
+Language and gender . Cambridge University Press.
+Penelope Eckert and John R Rickford. 2001. Style
+and sociolinguistic variation . Cambridge University
+Press.
+Ali Emami, Paul Trichelair, Adam Trischler, Ka-
+heer Suleman, Hannes Schulz, and Jackie Chi Kit
+Cheung. 2019. The knowref coreference corpus:
+Removing gender and number cues for difﬁcult
+pronominal anaphora resolution. In Proceedings of
+the 57th Annual Meeting of the Association for Com-
+putational Linguistics , pages 3952–3961.
+Angela Fan, David Grangier, and Michael Auli. 2017.
+Controllable abstractive summarization. arXiv
+preprint arXiv:1711.05217 .
+Angela Fan, Mike Lewis, and Yann Dauphin. 2018. Hi-
+erarchical neural story generation. arXiv preprint
+arXiv:1805.04833 .
+Almudena Fernandez Fontecha and Rosa
+Marıa Jimenez Catalan. 2003. Semantic dero-
+gation in animal metaphor: a contrastive-cognitive
+analysis of two male/female examples in english
+and spanish. Journal of pragmatics , 35(5):771–797.
+Georgia Frantzeskou, Efstathios Stamatatos, Stefanos
+Gritzalis, and Sokratis Katsikas. 2006. Effective
+identiﬁcation of source code authors using byte-
+level information. In Proceedings of the 28th inter-
+national conference on Software engineering , pages
+893–896.
+Nikhil Garg, Londa Schiebinger, Dan Jurafsky, and
+James Zou. 2018. Word embeddings quantify
+100 years of gender and ethnic stereotypes. Pro-
+ceedings of the National Academy of Sciences ,
+115(16):E3635–E3644.
+Aparna Garimella, Carmen Banea, Dirk Hovy, and
+Rada Mihalcea. 2019. Womens syntactic resilience
+and mens grammatical luck: Gender-bias in part-of-
+speech tagging and dependency parsing. In Proceed-
+ings of the 57th Annual Meeting of the Association
+for Computational Linguistics , pages 3493–3498.
+Danielle Gaucher, Justin Friesen, and Aaron C Kay.
+2011. Evidence that gendered wording in job
+advertisements exists and sustains gender inequal-
+ity. Journal of personality and social psychology ,
+101(1):109.
+Andrew Gaut, Tony Sun, Shirlyn Tang, Yuxin Huang,
+Jing Qian, Mai ElSherief, Jieyu Zhao, Diba Mirza,
+Elizabeth Belding, Kai-Wei Chang, et al. 2019. To-
+wards understanding gender bias in relation extrac-
+tion. arXiv preprint arXiv:1911.03642 .
+Hila Gonen and Yoav Goldberg. 2019. Lipstick on a
+pig: Debiasing methods cover up systematic gender
+biases in word embeddings but do not remove them.
+InProceedings of the 2019 Conference of the North
+American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies,
+Volume 1 (Long and Short Papers) , pages 609–614,
+Minneapolis, Minnesota. Association for Computa-
+tional Linguistics.
+Hila Gonen, Yova Kementchedjhieva, and Yoav Gold-
+berg. 2019. How does grammatical gender affect
+noun representations in gender-marking languages?
+arXiv preprint arXiv:1910.14161 .
+Eduardo Graells-Garrido, Mounia Lalmas, and Filippo
+Menczer. 2015. First women, second sex: Gender
+bias in wikipedia. In Proceedings of the 26th ACM
+Conference on Hypertext & Social Media , pages
+165–174.
+Bernard Guerin. 1994. Gender bias in the abstractness
+of verbs and adjectives. The Journal of social psy-
+chology , 134(4):421–428.
+Dana V Hiller and William W Philliber. 1982. Predict-
+ing marital and career success among dual-worker
+couples. Journal of Marriage and the Family , pages
+53–62.
+Janet Holmes. 2013. An introduction to sociolinguis-
+tics. Routledge.
+Matthew Honnibal and Ines Montani. 2017. spaCy 2:
+Natural language understanding with Bloom embed-
+dings, convolutional neural networks and incremen-
+tal parsing. To appear.
+Dirk Hovy, Federico Bianchi, and Tommaso Fornaciari.
+2020. Can you translate that into man? commercial
+machine translation systems include stylistic biases.
+InProceedings of the 58th Annual Meeting of the
+Association for Computational Linguistics .
+Dirk Hovy and Shannon L Spruit. 2016. The social
+impact of natural language processing. In Proceed-
+ings of the 54th Annual Meeting of the Association
+for Computational Linguistics (Volume 2: Short Pa-
+pers) , pages 591–598.
+Eduard Hovy. 1987. Generating natural language un-
+der pragmatic constraints. Journal of Pragmatics ,
+11(6):689–719.
+Alexander Miserlis Hoyle, Lawrence Wolf-Sonkin,
+Hanna Wallach, Isabelle Augenstein, and Ryan Cot-
+terell. 2019. Unsupervised discovery of gendered
+language through latent-variable modeling. In Pro-
+ceedings of the 57th Annual Meeting of the Asso-
+ciation for Computational Linguistics , pages 1706–
+1716, Florence, Italy. Association for Computational
+Linguistics.
+Samuel Humeau, Kurt Shuster, Marie-Anne Lachaux,
+and Jason Weston. 2019. Poly-encoders: Trans-
+former architectures and pre-training strategies forfast and accurate multi-sentence scoring. arXiv
+preprint arXiv:1905.01969 .
+Dell Hymes. 1974. Ways of speaking. In R. Bauman
+and J. Sherzer, editors, Explorations in the ethnog-
+raphy of speaking , volume 1, pages 433–451. Cam-
+bridge: Cambridge University Press.
+David Jurgens, Saif Mohammad, Peter Turney, and
+Keith Holyoak. 2012. SemEval-2012 task 2: Mea-
+suring degrees of relational similarity. In *SEM
+2012: The First Joint Conference on Lexical and
+Computational Semantics – Volume 1: Proceedings
+of the main conference and the shared task, and Vol-
+ume 2: Proceedings of the Sixth International Work-
+shop on Semantic Evaluation (SemEval 2012) , pages
+356–364, Montr ´eal, Canada. Association for Com-
+putational Linguistics.
+Masahiro Kaneko and Danushka Bollegala. 2019.
+Gender-preserving debiasing for pre-trained word
+embeddings. arXiv preprint arXiv:1906.00742 .
+Dongyeop Kang, Varun Gangal, and Eduard Hovy.
+2019. (male, bachelor) and (female, Ph.D) have
+different connotations: Parallelly annotated stylis-
+tic language dataset with multiple personas. In
+Proceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and the
+9th International Joint Conference on Natural Lan-
+guage Processing (EMNLP-IJCNLP) , pages 1696–
+1706, Hong Kong, China. Association for Computa-
+tional Linguistics.
+Maximilian Klein, Harsh Gupta, Vivek Rai, Piotr
+Konieczny, and Haiyi Zhu. 2016. Monitoring the
+gender gap with wikidata human gender indicators.
+InProceedings of the 12th International Symposium
+on Open Collaboration , pages 1–9.
+Maximilian Klein and Piotr Konieczny. 2015.
+Wikipedia in the world of global gender in-
+equality indices: What the biography gender gap is
+measuring. In Proceedings of the 11th International
+Symposium on Open Collaboration , pages 1–2.
+Corina Koolen and Andreas van Cranenburgh. 2017.
+These are not the stereotypes you are looking for:
+Bias and fairness in authorial gender attribution. In
+Proceedings of the First ACL Workshop on Ethics in
+Natural Language Processing , pages 12–22, Valen-
+cia, Spain. Association for Computational Linguis-
+tics.
+Moshe Koppel, Shlomo Argamon, and Anat Rachel
+Shimoni. 2002. Automatically categorizing written
+texts by author gender. Literary and linguistic com-
+puting , 17(4):401–412.
+George Lakoff and Mark Johnson. 1980. Metaphors
+we live by. Chicago, IL: University of Chicago .
+Robin Lakoff. 1973. Language and woman’s place.
+Language in society , 2(1):45–79.
+Robin Lakoff. 1990. Talking Power: The Politics of
+Language .
+Nayeon Lee, Andrea Madotto, and Pascale Fung. 2019.
+Exploring social bias in chatbots using stereotype
+knowledge. In Proceedings of the 2019 Workshop
+on Widening NLP , pages 177–180.
+Haley Lepp. 2019. Pardon the interruption: Automatic
+analysis of gender and competitive turn-taking in
+united states supreme court hearings. In Proceed-
+ings of the 2019 Workshop on Widening NLP , pages
+143–145, Florence, Italy. Association for Computa-
+tional Linguistics.
+Pierre Lison and J ¨org Tiedemann. 2016. Opensub-
+titles2016: Extracting large parallel corpora from
+movie and TV subtitles.
+Haochen Liu, Jamell Dacon, Wenqi Fan, Hui Liu, Zi-
+tao Liu, and Jiliang Tang. 2019. Does gender mat-
+ter? Towards fairness in dialogue systems. CoRR ,
+abs/1910.10486.
+Kim Luyckx and Walter Daelemans. 2008. Author-
+ship attribution and veriﬁcation with many authors
+and limited data. In Proceedings of the 22nd Inter-
+national Conference on Computational Linguistics
+(Coling 2008) , pages 513–520.
+Rowan Hall Maudslay, Hila Gonen, Ryan Cotterell,
+and Simone Teufel. 2019. It’s all in the name: Mit-
+igating gender bias with name-based counterfactual
+data substitution. CoRR , abs/1909.00871.
+Chandler May, Alex Wang, Shikha Bordia, Samuel R.
+Bowman, and Rachel Rudinger. 2019. On measur-
+ing social biases in sentence encoders. In Proceed-
+ings of the 2019 Conference of the North American
+Chapter of the Association for Computational Lin-
+guistics: Human Language Technologies, Volume 1
+(Long and Short Papers) , pages 622–628, Minneapo-
+lis, Minnesota. Association for Computational Lin-
+guistics.
+Thomas Corwin Mendenhall. 1887. The characteristic
+curves of composition. Science , 9(214):237–249.
+Alexander H Miller, Will Feng, Adam Fisch, Jiasen Lu,
+Dhruv Batra, Antoine Bordes, Devi Parikh, and Ja-
+son Weston. 2017. ParlAI: A dialog research soft-
+ware platform. arXiv preprint arXiv:1705.06476 .
+Sara Mills. 2014. Language and gender: Interdisci-
+plinary perspectives . Routledge.
+John Money and Anke A Ehrhardt. 1972. Man and
+woman, boy and girl: Differentiation and dimor-
+phism of gender identity from conception to matu-
+rity.
+Rosamund Moon. 2014. From gorgeous to grumpy: ad-
+jectives, age and gender. Gender & Language , 8(1).
+Frederick Mosteller and David L Wallace. 1984. Ap-
+plied Bayesian and classical inference: the case of
+the Federalist papers . Springer Verlag.Eliza K Pavalko and Glen H Elder Jr. 1993. Women
+behind the men: Variations in wives’ support of hus-
+bands’ careers. Gender & Society , 7(4):548–567.
+Jian Peng, Kim-Kwang Raymond Choo, and Helen
+Ashman. 2016. User proﬁling in intrusion detection:
+A review. Journal of Network and Computer Appli-
+cations , 72:14–27.
+Yusu Qian. 2019. Gender stereotypes differ between
+male and female writings. In Proceedings of the
+57th Annual Meeting of the Association for Com-
+putational Linguistics: Student Research Workshop ,
+pages 48–53.
+Yusu Qian, Urwa Muaz, Ben Zhang, and Jae Won
+Hyun. 2019. Reducing gender bias in word-level
+language models with a gender-equalizing loss func-
+tion. arXiv preprint arXiv:1905.12801 .
+Sindhu Raghavan, Adriana Kovashka, and Raymond
+Mooney. 2010. Authorship attribution using prob-
+abilistic context-free grammars. In Proceedings
+of the ACL 2010 Conference Short Papers , pages
+38–42, Uppsala, Sweden. Association for Computa-
+tional Linguistics.
+Shauli Ravfogel, Yanai Elazar, Hila Gonen, Michael
+Twiton, and Yoav Goldberg. 2020. Null it out:
+Guarding protected attributes by iterative nullspace
+projection. arXiv .
+Joseph Reagle and Lauren Rhue. 2011. Gender bias in
+wikipedia and britannica. International Journal of
+Communication , 5:21.
+Erin M Reid. 2018. Straying from breadwinning:
+Status and money in men’s interpretations of their
+wives’ work arrangements. Gender, Work & Organi-
+zation , 25(6):718–733.
+John R Rickford and Faye McNair-Knox. 1994.
+Addressee-and topic-inﬂuenced style shift: A quanti-
+tative sociolinguistic study. Sociolinguistic perspec-
+tives on register , pages 235–276.
+Anderson Rocha, Walter J Scheirer, Christopher W
+Forstall, Thiago Cavalcante, Antonio Theophilo,
+Bingyu Shen, Ariadne RB Carvalho, and Efstathios
+Stamatatos. 2016. Authorship attribution for social
+media forensics. IEEE Transactions on Information
+Forensics and Security , 12(1):5–33.
+Rachel Rudinger, Chandler May, and Benjamin
+Van Durme. 2017. Social bias in elicited natural lan-
+guage inferences. In Proceedings of the First ACL
+Workshop on Ethics in Natural Language Process-
+ing, pages 74–79, Valencia, Spain. Association for
+Computational Linguistics.
+Maarten Sap, Dallas Card, Saadia Gabriel, Yejin Choi,
+and Noah A Smith. 2019a. The risk of racial bias
+in hate speech detection. In Proceedings of the
+57th Annual Meeting of the Association for Compu-
+tational Linguistics , pages 1668–1678.
+Maarten Sap, Saadia Gabriel, Lianhui Qin, Dan Ju-
+rafsky, Noah A Smith, and Yejin Choi. 2019b.
+Social bias frames: Reasoning about social and
+power implications of language. arXiv preprint
+arXiv:1911.03891 .
+Ruchita Sarawgi, Kailash Gajulapalli, and Yejin Choi.
+2011. Gender attribution: Tracing stylometric evi-
+dence beyond topic and genre. In Proceedings of
+the Fifteenth Conference on Computational Natural
+Language Learning , pages 78–86, Portland, Oregon,
+USA. Association for Computational Linguistics.
+Abigail See, Stephen Roller, Douwe Kiela, and Jason
+Weston. 2019. What makes a good conversation?
+how controllable attributes affect human judgments.
+arXiv preprint arXiv:1902.08654 .
+Sima Shariﬁrad, Alon Jacovi, Israel Bar Ilan Univesity,
+and Stan Matwin. 2019. Learning and understand-
+ing different categories of sexism using convolu-
+tional neural networks ﬁlters. In Proceedings of the
+2019 Workshop on Widening NLP , pages 21–23.
+Sima Shariﬁrad and Stan Matwin. 2019. Using
+attention-based bidirectional lstm to identify differ-
+ent categories of offensive language directed toward
+female celebrities. In Proceedings of the 2019 Work-
+shop on Widening NLP , pages 46–48.
+Kurt Shuster, Samuel Humeau, Antoine Bordes, and
+Jason Weston. 2018. Engaging image chat: Model-
+ing personality in grounded dialogue. arXiv preprint
+arXiv:1811.00945 .
+E. Stamatatos, N. Fakotakis, and G. Kokkinakis. 1999.
+Automatic authorship attribution. In Ninth Confer-
+ence of the European Chapter of the Association for
+Computational Linguistics , Bergen, Norway. Asso-
+ciation for Computational Linguistics.
+Efstathios Stamatatos. 2009. A survey of modern au-
+thorship attribution methods. Journal of the Ameri-
+can Society for information Science and Technology ,
+60(3):538–556.
+Efstathios Stamatatos. 2017. Authorship attribution us-
+ing text distortion. In Proceedings of the 15th Con-
+ference of the European Chapter of the Association
+for Computational Linguistics: Volume 1, Long Pa-
+pers, pages 1138–1149, Valencia, Spain. Associa-
+tion for Computational Linguistics.
+Gabriel Stanovsky, Noah A Smith, and Luke Zettle-
+moyer. 2019. Evaluating gender bias in machine
+translation. arXiv preprint arXiv:1906.00591 .
+Sandeep Subramanian, Guillaume Lample,
+Eric Michael Smith, Ludovic Denoyer,
+Marc’Aurelio Ranzato, and Y-Lan Boureau.
+2018. Multiple-attribute text style transfer. arXiv
+preprint arXiv:1811.00552 .
+Tony Sun, Andrew Gaut, Shirlyn Tang, Yuxin Huang,
+Mai ElSherief, Jieyu Zhao, Diba Mirza, Elizabeth
+Belding, Kai-Wei Chang, and William Yang Wang.2019. Mitigating gender bias in natural language
+processing: Literature review. In Proceedings of
+the 57th Annual Meeting of the Association for Com-
+putational Linguistics , pages 1630–1640, Florence,
+Italy. Association for Computational Linguistics.
+Jane Sunderland. 2006. Language and gender: An ad-
+vanced resource book . Routledge.
+Joan Swann. 1992. Girls, boys, and language . Black-
+well Publishers.
+Mary Talbot. 2019. Language and gender . John Wiley
+& Sons.
+Rachael Tatman. 2017. Gender and dialect bias in
+YouTube’s automatic captions. In Proceedings of
+the First ACL Workshop on Ethics in Natural Lan-
+guage Processing , pages 53–59, Valencia, Spain. As-
+sociation for Computational Linguistics.
+Frances Trix and Carolyn Psenka. 2003. Exploring the
+color of glass: Letters of recommendation for fe-
+male and male medical faculty. Discourse & Soci-
+ety, 14(2):191–220.
+Jack Urbanek, Angela Fan, Siddharth Karamcheti,
+Saachi Jain, Samuel Humeau, Emily Dinan, Tim
+Rockt ¨aschel, Douwe Kiela, Arthur Szlam, and Ja-
+son Weston. 2019. Learning to speak and act in
+a fantasy text adventure game. In Proceedings
+of the 2019 Conference on Empirical Methods in
+Natural Language Processing and the 9th Interna-
+tional Joint Conference on Natural Language Pro-
+cessing (EMNLP-IJCNLP) , pages 673–683, Hong
+Kong, China. Association for Computational Lin-
+guistics.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz
+Kaiser, and Illia Polosukhin. 2017. Attention is all
+you need. In Advances in neural information pro-
+cessing systems , pages 5998–6008.
+Claudia Wagner, David Garcia, Mohsen Jadidi, and
+Markus Strohmaier. 2015. It’s a man’s wikipedia?
+assessing gender inequality in an online encyclope-
+dia. In Ninth international AAAI conference on web
+and social media .
+Claudia Wagner, Eduardo Graells-Garrido, David Gar-
+cia, and Filippo Menczer. 2016. Women through
+the glass ceiling: gender asymmetries in wikipedia.
+EPJ Data Science , 5(1):5.
+Ann Weatherall. 2002. Gender, language and dis-
+course . Psychology Press.
+Candace West and Don H Zimmerman. 1987. Doing
+gender. Gender & society , 1(2):125–151.
+Eunike Wetzel, Benedikt Hell, and Katja P ¨assler. 2012.
+Comparison of different test construction strategies
+in the development of a gender fair interest inven-
+tory using verbs. Journal of Career Assessment ,
+20(1):88–104.
+Wikipedia contributors. 2020. Bechdel test —
+Wikipedia, the free encyclopedia. [Online; accessed
+3-April-2020].
+Myron Wish, Morton Deutsch, and Susan J Kaplan.
+1976. Perceived dimensions of interpersonal rela-
+tions. Journal of Personality and social Psychology ,
+33(4):409.
+Kelvin Xu, Jimmy Ba, Ryan Kiros, Kyunghyun Cho,
+Aaron Courville, Ruslan Salakhudinov, Rich Zemel,
+and Yoshua Bengio. 2015. Show, attend and tell:
+Neural image caption generation with visual atten-
+tion. In International conference on machine learn-
+ing, pages 2048–2057.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Ryan Cot-
+terell, Vicente Ordonez, and Kai-Wei Chang. 2019.
+Gender bias in contextualized word embeddings. In
+Proceedings of the 2019 Conference of the North
+American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies,
+Volume 1 (Long and Short Papers) , pages 629–634,
+Minneapolis, Minnesota. Association for Computa-
+tional Linguistics.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente Or-
+donez, and Kai-Wei Chang. 2018a. Gender bias
+in coreference resolution: Evaluation and debiasing
+methods. In Proceedings of the 2018 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 2 (Short Papers) , pages 15–20,
+New Orleans, Louisiana. Association for Computa-
+tional Linguistics.
+Jieyu Zhao, Yichao Zhou, Zeyu Li, Wei Wang, and Kai-
+Wei Chang. 2018b. Learning gender-neutral word
+embeddings. In Proceedings of the 2018 Conference
+on Empirical Methods in Natural Language Process-
+ing, pages 4847–4853, Brussels, Belgium. Associa-
+tion for Computational Linguistics.
+Pei Zhou, Weijia Shi, Jieyu Zhao, Kuan-Hao Huang,
+Muhao Chen, Ryan Cotterell, and Kai-Wei Chang.
+2019. Examining gender bias in languages with
+grammatical gender. In Proceedings of the
+2019 Conference on Empirical Methods in Natu-
+ral Language Processing and the 9th International
+Joint Conference on Natural Language Processing
+(EMNLP-IJCNLP) , pages 5275–5283, Hong Kong,
+China. Association for Computational Linguistics.
+Ran Zmigrod, Sebastian J. Mielke, Hanna Wallach,
+and Ryan Cotterell. 2019. Counterfactual data aug-
+mentation for mitigating gender stereotypes in lan-
+guages with rich morphology. In Proceedings of the
+57th Annual Meeting of the Association for Com-
+putational Linguistics , pages 1651–1661, Florence,
+Italy. Association for Computational Linguistics.
+A Existing Data Annotation
+We describe in more detail how each of the eight
+training datasets is annotated:
+1.Wikipedia - to annotate ABOUT , we use a
+Wikipedia dump and extract biography pages.
+We identify biographies using named entity
+recognition applied to the title of the page
+(Honnibal and Montani, 2017). We label
+pages with a gender based on the number of
+gendered pronouns ( hevs.shevs.they) and
+label each paragraph in the page with this la-
+bel for the ABOUT dimension.7Wikipedia is
+well known to have gender bias in equity of
+biographical coverage and lexical bias in noun
+references to women (Reagle and Rhue, 2011;
+Graells-Garrido et al., 2015; Wagner et al.,
+2015; Klein and Konieczny, 2015; Klein et al.,
+2016; Wagner et al., 2016), making it an inter-
+esting test bed for our investigation.
+2.Funpedia - Funpedia (Miller et al., 2017) con-
+tains rephrased Wikipedia sentences in a more
+conversational way. We retain only biogra-
+phy related sentences and annotate similar to
+Wikipedia, to give ABOUT labels.
+3.Wizard of Wikipedia - Wizard of Wikipedia
+(Dinan et al., 2019d) contains two people dis-
+cussing a topic in Wikipedia. We retain only
+the conversations on Wikipedia biographies
+and annotate to create ABOUT labels.
+4.ImageChat - ImageChat (Shuster et al., 2018)
+contains conversations discussing the content
+of an image. We use the (Xu et al., 2015)
+image captioning system8to identify the con-
+tents of an image and select gendered exam-
+ples.
+5.Yelp - we use the Yelp reviewer gender predic-
+tor developed by (Subramanian et al., 2018)
+and retain reviews for which the classiﬁer is
+very conﬁdent – this creates labels for the au-
+thor of the review ( AS). We impute ABOUT
+labels on this dataset using a classiﬁer trained
+on the datasets 1-4.
+6.ConvAI2 - ConvAI2 (Dinan et al., 2019c)
+contains persona-based conversations. Many
+7This method of imputing gender is similar to the one used
+in Reagle and Rhue (2011, 1142) and Bamman and Smith
+(2014), except we also incorporate non-oppositional gender
+categories, and rely on basic counts without scaling.
+8https://github.com/AaronCCWong/
+Show-Attend-and-Tellpersonas contain sentences such as I am a old
+woman orMy name is Bob which allows an-
+notators to annotate the gender of the speaker
+(AS) and addressee ( TO) with some conﬁdence.
+Many of the personas have unknown gender.
+We impute ABOUT labels on this dataset using
+a classiﬁer trained on the datasets 1-4.
+7.OpenSubtitiles - OpenSubtitles9(Lison and
+Tiedemann, 2016) contains subtitles for
+movies in different languages. We retain En-
+glish subtitles that contain a character name or
+identity. We annotate the character’s gender
+using gender kinship terms such as daugh-
+terand gender probability distribution calcu-
+lated by counting the masculine and feminine
+names of baby names in the United States10.
+Using the character’s gender, we get labels for
+the ASdimension. We get labels for the TO
+dimension by taking the gender of the next
+character to speak if there is another utter-
+ance in the conversation; otherwise, we take
+the gender of the lastcharacter to speak. We
+impute ABOUT labels on this dataset using a
+classiﬁer trained on the datasets 1-4.
+8.LIGHT - LIGHT contains persona-based con-
+versation. Similarly to ConvAI2, annotators
+labeled the gender of each persona (Dinan
+et al., 2019a), giving us labels for the speaker
+(AS) and speaking partner ( TO). We impute
+ABOUT labels on this dataset using a classiﬁer
+trained on the datasets 1-4.
+B New Evaluation Dataset
+The interface for our new evaluation dataset MD-
+GENDER can be seen in Figure 2. Examples from
+the new dataset can be found in Table 9.
+C Applications
+Example generations for various control tokens, as
+well as for our word list baseline, are shown in
+Table 10. Seex6.1 on Controllable Generation in
+the main paper for more details.
+The top 10 most gendered Wikipedia biogra-
+phies are shown in Table 11. See x6.2 on Detecting
+Bias in the main paper for more details.
+9http://www.opensubtitles.org/
+10https://catalog.data.gov/dataset/baby-names-from-
+social-security-card-applications-national-level-data
+Figure 2: Annotation interface . Annotation interface for collecting MDG ENDER . Annotators were shown an
+utterance from a conversation, and asked to re-write it such that it is clear they would be speaker about/to/as a man
+or a woman. They were then asked for their conﬁdence level.
+Utterance Dim. Gender Conﬁdence
+Original : That’s interesting. I am a Chef. What are your
+hobbies
+Rewrite : that’s interesting. i am a chef and nﬂ player
+what are your hobbiesAS masc. certain
+Original : My name is Zachery but most call me Z.
+What’s your name miss?
+Rewrite : My name is Tina but most call me T. What’s
+your name miss?AS fem. pretty sure
+Original : I said I like to wrestle with my kids for fun.
+What do you do for work?
+Rewrite : i said i like to wrestle with my son for fun.
+what do you do for work?ABOUT masc. certain
+Original : just checking up on you by saying hi
+Rewrite : Hanna said she was just checking up on you
+by saying hiABOUT fem. pretty sure
+Original : How are you doing today Jahsim?
+Rewrite : How are you doing today Mr. Jahsim? TO masc. certain
+Original : My name is Alexsandro and I am a bee
+farmer!
+Rewrite : My name is alexsandro and I am a bee farmer!
+How about you ma’am?AS fem. certain
+Table 9: Examples from the MDG ENDER . Crowdworkers were asked to re-write dialogue utterances such that
+most people would guess that the utterance was either said to, said by, or about a man or a woman. Afterwards,
+they were asked to give a conﬁdence level in their re-write, meant to capture the differences between statistical
+biases (more men play football than women) and fact (you do not have to be a man to play football).
+Input: Awww! Cute! Our are a handful, but they are my babies! 4 wiener dogs.
+TO:feminine I can’t wait for your children to get married.. I want one so badly! : )
+AS:feminine Awwww, that sounds wonderful. Can’t wait to see them in person! : )
+ABOUT:feminine You’re my hero. That’s a cute dog. How long has she been with you?
+Word list, feminine That’s pretty awesome! She was a little bit overweight but she’s a sweet girl now
+Input: Does vegan mean you do not want to be a super hero?
+TO:feminine I’d love to be vegan, but it just isn’t something I have any interest in doing.
+AS:feminine I don’t want to become super heroes! I just think it would be cool to be vegan.
+ABOUT:feminine She’s a girl. She can’t be a superhero!!! 11! 1! 1 1!
+Word list, feminine It does. She is a vegan and I am a super - hero. I am not vegan, and I don’t want to become any sort of
+superhero.
+Input: That is an good. Maybe you can make friends in a club or on a job?
+TO:feminine I was going to do that, but then I realized I didn’t want to be alone.
+AS:feminine No, I’ve been working. I don’t think I can make friendships online.
+ABOUT:feminine I think the problem is she’s a girl, so there’s not a lot of opportunity to make friends.
+Word list, feminine I have a girlfriend and I live in a small town. I don’t know what clubs she can make any friends in.
+Input: Its been 2 years I am a grease monkey and been trying to stay busy
+TO:masculine I’m not sure this is true. I’ve seen a lot of grease monkeys on reddit. I don’t think there’s any evidence it’s true.
+AS:masculine You can do it bro! Just keep at it! You got this!!! : d )
+ABOUT:male I’d love to be a grease guy but I just can’t make it to the gym. : (
+Word list, masculine You’re not alone bro. I’m trying to be that guy, but it’s a little hard sometimes.
+Input: Have you ever almost died? I nearly did from urinary cancer when I was 18.
+TO:masculine No one in my family has died. I have only seen a handful of people die. I am sure you will be ﬁne.
+AS:masculine No I haven’t. But it’s a lot better now, thanks to all the help I’ve received.
+ABOUT:masculine He said * nearly *. It’s more likely to happen when you’re older than the average person.
+Word list, masculine I’ve only been alive for 3 days. I have no idea what I’m going to do next, but I’ll be okay.
+Input: I totally believe you. I love working out.
+TO:masculine I’m going to start doing this, thanks! If it works, I’ll post it on r / ﬁtness!
+AS:masculine Thanks! I’ve always been really into exercise, too, and it’s deﬁnitely helped me.
+ABOUT:masculine Thank you! I’m really glad he does : ). I’ve been working out since october.
+Word list, masculine Me too! I love being able to go to the gym without feeling like I’m just a little kid. It’s so rewarding
+when you get back in the swing of things.
+Table 10: Example generations from a generative model trained using controllable generation, with control tokens
+determined by the classiﬁer. Sequences are generated with top- ksampling, k= 10 , with a beam size of 10and
+3-gram blocking. Input is randomly sampled from the ConvAI2 dataset.
+Most Feminine Most Masculine
+1.Edie Sedgwick: was an American actress and fashion
+model...1.Derek Jacobi: is an English actor and stage director...
+2.Linda Darnell: was an American ﬁlm actress... 2.Bohuslav Martin: was a Czech composer of modern
+classical music...
+3.Maureen O’Hara: was an Irish actress and singer... 3.Carlo Maria Giulini: was an Italian conductor...
+4.Jessica Savitch: was an American television news
+presenter and correspondent,...4.Zubin Mehta: is an Indian conductor of Western
+classical music...
+5.Patsy Mink: Mink served in the U.S. House of
+Representatives...5.John Barbirolli: was a British conductor and cellist
+...
+6.Shirley Chisholm: was an American politician, edu-
+cator, and author...6.Claudio Abbado: was an Italian conductor...
+7.Mamie Van Doren: is an American actress, model,
+singer, and sex symbol who is...7.Ed Harris: is an American actor, producer, director,
+and screenwriter...
+8.Jacqueline Cochran: was a pioneer in the ﬁeld of
+American aviation and one of t...8.Richard Briers: was an English actor...
+9.Chlo Sevigny: is an American actress, fashion de-
+signer, director, and form...9.Artur Schnabel: was an Austrian classical pianist,
+who also composed and tau...
+10.Hilda Solis: is an American politician and a member
+of the Los Angeles Co...10.Charles Mackerras: was an Australian conductor...
+Table 11: Most gendered Wikipedia biographies We ran our multi-task classiﬁer over 68 thousand biographies
+of Wikipedia. After selecting for biographies with a minimum number of paragraphs (resulting in 15.5 thousand
+biographies) we scored them to determine the most masculine andfeminine gendered.
+.

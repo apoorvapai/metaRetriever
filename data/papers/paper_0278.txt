@@ -1,0 +1,1120 @@
+Title: Predictability and Surprise in Large Generative Models
+
+Predictability and Surprise in Large Generative Models
+DEEP GANGULI∗, DANNY HERNANDEZ∗, LIANE LOVITT∗, NOVA DASSARMA†, TOM HENIGHAN†,
+ANDY JONES†, NICHOLAS JOSEPH†, JACKSON KERNION†, BEN MANN†, AMANDA ASKELL,
+YUNTAO BAI, ANNA CHEN, TOM CONERLY, DAWN DRAIN, NELSON ELHAGE, SHEER EL
+SHOWK, STANISLAV FORT, ZAC HATFIELD-DODDS, SCOTT JOHNSTON, SHAUNA KRAVEC,
+NEEL NANDA, KAMAL NDOUSSE, CATHERINE OLSSON, DANIELA AMODEI, TOM BROWN,
+JARED KAPLAN, SAM MCCANDLISH, CHRIS OLAH, DARIO AMODEI, and JACK CLARK‡§,
+Anthropic, USA
+Large-scale pre-training has recently emerged as a technique for creating capable, general-purpose, generative models such as GPT-3,
+Megatron-Turing NLG, Gopher, and many others. In this paper, we highlight a counterintuitive property of such models and discuss
+the policy implications of this property. Namely, these generative models have a paradoxical combination of predictable loss on a broad
+training distribution (as embodied in their "scaling laws"), and unpredictable specific capabilities, inputs, and outputs. We believe that
+the high-level predictability and appearance of useful capabilities drives rapid development of such models, while the unpredictable
+qualities make it difficult to anticipate the consequences of model deployment. We go through examples of how this combination
+can lead to socially harmful behavior with examples from the literature and real world observations, and we also perform two novel
+experiments to illustrate our point about harms from unpredictability. Furthermore, we analyze how these conflicting properties
+combine to give model developers various motivations for deploying these models, and challenges that can hinder deployment. We
+conclude with a list of possible interventions the AI community may take to increase the chance of these models having a beneficial
+impact. We intend this paper to be useful to policymakers who want to understand and regulate AI systems, technologists who care
+about the potential policy impact of their work, funders who want to support work addressing these challenges, and academics who
+want to analyze, critique, and potentially develop large generative models.
+ACM Reference Format:
+Deep Ganguli, Danny Hernandez, Liane Lovitt, Nova DasSarma, Tom Henighan, Andy Jones, Nicholas Joseph, Jackson Kernion,
+Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, Tom Conerly, Dawn Drain, Nelson Elhage, Sheer El Showk, Stanislav Fort, Zac
+Hatfield-Dodds, Scott Johnston, Shauna Kravec, Neel Nanda, Kamal Ndousse, Catherine Olsson, Daniela Amodei, Tom Brown, Jared
+Kaplan, Sam McCandlish, Chris Olah, Dario Amodei, and Jack Clark. 2022. Predictability and Surprise in Large Generative Models . In
+2022 ACM Conference on Fairness, Accountability, and Transparency (FAccT ’22), June 21–24, 2022, Seoul, Republic of Korea. ACM, New
+York, NY, USA, 26 pages. https://doi.org/10.1145/3531146.3533229
+1 INTRODUCTION
+Scaling up the amount of data, compute power, and model parameters of neural networks has recently led to the
+arrival (and real world deployment) of capable generative models such as CLIP [ 61], Ernie 3.0Titan [ 81], FLAN [ 82],
+∗Core Research Contributors
+†Core Infrastructure Contributors
+‡Correspondence to: jack@anthropic.com
+§Author contributions are listed in Appendix A.1
+Permission to make digital or hard copies of part or all of this work for personal or classroom use is granted without fee provided that copies are not
+made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for third-party
+components of this work must be honored. For all other uses, contact the owner/author(s).
+©2022 Copyright held by the owner/author(s).
+Manuscript submitted to ACM
+1arXiv:2202.07785v2  [cs.CY]  3 Oct 2022
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+Gopher [ 62], GPT-3 [ 11], HyperClova [ 46], Jurassic-1-Jumbo [ 51], Megatron Turing NLG [ 72], LaMDA [ 78], Pan Gu
+[89], Yuan 1.0[87], and more. For this class of models1the relationship between scale and model performance is often
+so predictable that it can be described in a lawful relationship — a scaling law. In most cases, these scaling laws predict
+a continued increase in certain capabilities as models get larger. At the same time, larger generative models represent
+an increasing proportion of the eye-catching results in machine learning. As a result, many institutions have started
+producing large models over the past few years, in response to the predictability afforded by scaling laws, and the fact
+these models can be plugged into systems that generate economic value, like search engines.2It has also become clear
+that these models present novel risks of harmful behavior, which are difficult to predict and may become more severe
+as the models increase in capability. Attempts to study these harms with smaller models may not accurately reflect
+what occurs in larger ones.
+In this paper, we attempt to better understand the influence of scaling laws on the dynamics of large-scale model
+development and deployment, with a focus on large language models. Our basic thesis is that large generative mod-
+els have a paradoxical combination of high predictability — model loss improves in relation to resources
+expended on training, and tends to correlate loosely with improved performance on many tasks — and
+high unpredictability — specific model capabilities, inputs, and outputs can’t be predicted ahead of time.
+The former drives rapid development of such models while the latter makes it difficult to anticipate the
+consequences of their development and deployment. We go through examples of how this combination can lead
+to socially harmful behavior, while also analyzing the motivations and challenges that developers of such models will
+face. Our goal in this paper is to outline how and why we expect these models to be developed, so we can identify
+interventions to guide model development. We conclude with some policy recommendations that could increase the
+safety of large-scale model deployments, and improve the incentive structure for developers building these models.
+Though all of the individual points about scaling laws, open-endedness, or the proliferation of large models are explicitly
+or implicitly presented in other research, our contribution here is to highlight the complete picture together with its
+implications.
+Although we focus on scaling laws, many of our points complement related work on the societal risks of deploying
+large models [ 7,9,21,44,75,83]. However, similarly to [ 83], we do not consider here the costs of human labor involved
+in creating and annotating training data [ 30], the ethics of supply chains involved in creating the requisite hardware
+on which to train models [ 19], or the environmental costs of training models [ 7,56,69,74]. Scaling laws are likely to
+significantly impact these issues.
+The remainder of the paper is organized as follows. In Section 2, we articulate and support our central thesis about
+large generative models by decomposing it into four claims, each of which we support with evidence from previously
+published data, and in some cases, with novel experiments on large language models [ 3]. In Section 2.1 we discuss
+smooth general capability scaling. More precisely, by general capability scaling we mean two things. First, the training
+(and test) loss improves predictably with scale on a broad data distribution. Second, this improvement in loss tends to
+correlate on average with increased performance on a number of downstream tasks [ 11,62]. We refer to the combination
+of these two properties throughout the paper as smooth general capability (or performance) scaling.3In Section 2.2,
+1Some refer to this class of models as ‘foundation models’ [9].
+2We do not discuss to whom this economic value accrues, and we do not intend to imply that by default it will accrue broadly or that no one will be
+harmed.
+3Note that, as will be discussed later as the central thesis of the paper, smooth general capability scaling does not imply smooth scaling on any particular
+task. It also does not imply that the tasks typically measured are the only tasks that are important; indeed the presence of unmeasured tasks is part of our
+thesis.
+2
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+109
+107
+105
+103
+101
+101
+Compute (Petaflop-Days)234567Test Loss
+Scaling Law for Compute
+Scaling Law
+Data
+108
+109
+Dataset Size (tokens)34
+Scaling Law for Data
+104
+105
+106
+107
+108
+109
+Number of Parameters23456
+Scaling Law for Model Size
+Fig. 1 Scaling laws reliably predict that model performance (y-axes) improves with increasing compute (Left) , training data
+(Middle) , and model size (Right) . In all cases a power-law (straight line, black) fits the empirically observed data (blue) exceptionally
+well. Figure adapted from [43].
+we discuss abrupt specific capability scaling, in which models can also suddenly gain specific capabilities at scale. We
+illustrate this phenomenon with three examples from the literature [ 4,11,62]. In Section 2.3, we argue that entire areas
+of model competency may be unknown until they are solicited from specific inputs, problem domains, or applications.
+In Section 2.4, we discuss challenges that arise from the open-endedness of model outputs and show both qualitative
+and quantitative examples of harmful and toxic outputs emerging with scale.
+In Section 3, we outline why, despite these conflicting properties of predictability and unpredictability, we expect
+increasing development and deployment of large generative models despite the challenges we outline in Section 2. We
+posit that this is due to a confluence of economic, scientific, and prestige motivations, each of which we summarize. We
+also consider a few possible barriers to entry that model developers may face during development and deployment,
+including high financial costs, access to engineering talent, safety concerns, and a lack of standards on how to responsibly
+deploy capable generative models. We also provide some empirical observations (grounded in the motivations and
+challenges described above) about how the development of large language models has unfolded thus far, including a
+quantitative analysis of the increasing gap between academia and industry for large model development.
+Finally, in Section 4 we outline policy interventions that may help concretely address the challenges we outline in
+Sections 2 and 3 in order to help guide the development and deployment of larger models for the broader social good.
+We leave some illustrative experiments, technical details, and caveats about our claims in Appendix A.
+2 DISTINGUISHING FEATURES OF LARGE GENERATIVE MODELS
+We claim that large generative models (e.g., GPT-3 [ 11], LaMDA [ 78], Gopher [ 62], etc.) are distinguished by four
+features:
+•Smooth, general capability scaling : It is possible to predictably improve the general performance of generative
+models — their loss on capturing a specific, though very broad, data distribution — by scaling up the size of the
+models, the compute used to train them, and the amount of data they’re trained on in the correct proportions.
+These proportions can be accurately predicted by scaling laws (Figure 1). We believe that these scaling laws
+de-risk investments in building larger and generally more capable models despite the high resource costs and the
+difficulty of predicting precisely how well a model will perform on a specific task. Note, the harmful properties
+of models, such as toxicity, can scale alongside directly helpful capabilities.
+3
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+•Abrupt, specific capability scaling : Though performance is predictable at a general level, performance on a
+specific task can sometimes emerge quite unpredictably and abruptly at scale.4While counter-intuitive, this is
+possible because any specific task is a tiny slice of a model’s output probability distribution, and so can change
+rapidly even as the full distribution remains smooth.
+•Open-ended inputs and domains : Large generative models are open-ended and can take in a varying range
+of inputs concerning arbitrary domains. As a result, certain capabilities (or even entire areas of competency) may
+be unknown until an input happens to be provided that solicits such knowledge. Even after a model is trained,
+creators and users may not be aware of most of its (possibly harmful) capabilities. These properties become more
+pronounced as the models scale — larger models tend to be harder to characterize than smaller ones.
+•Open-ended outputs : Finally, model outputs are also open-ended in the sense that they are difficult to predict
+or control, even given a fixed scale, input, topic, or task. These outputs may be helpful or harmful, but it’s difficult
+to know in advance. Of course, models with both open-ended inputs and outputs have existed for decades, but
+what is new is the level of capability and breadth of open-endedness.
+In the following sections, we further describe each of these distinguishing features, and discuss how combinations of
+them may lead to disruptive societal impacts. We support our claims with data and experiments.
+2.1 Smooth General Capability Scaling
+Generally, machine learning experiments are not precisely predictable — complex models trained on complex data
+typically yield noisy or variable results [ 18,90].5Though individual experiments may be unpredictable, the general
+performance of large generative models tends to exhibit smooth and predictable growth as a function of scale — larger
+systems tend to do increasingly better on a broad range of tasks. This was first noticed by [ 39] who observed that
+capabilities such as machine translation and speech recognition increased in a smooth, predictable manner as the
+size of the model increased. Subsequent work formalized and experimentally validated a quantitative relationship
+between scale (in terms of both model size and training data size) and model generalization error [ 66]. Furthermore,
+[43] demonstrated that test loss performance on language modeling tasks scales as a predictable function of model size,
+dataset size, and duration of training. These three factors are like ingredients in a chemical reaction, such that if all
+are scaled up in tandem, the test loss improves proportionally. However, if there is too little of one ingredient, gains
+are limited by this ingredient. The trends are remarkably consistent, with only tiny deviations from a simple fit to the
+data6, covering dozens of data points and several orders of magnitude (Figure 1).7Subsequent work has shown that
+similar scaling laws exist in generative models for other modalities (e.g., images, video, math, etc.) [ 37], audition [ 23],
+transfer from text to programming [38], few-shot adaptation of vision models [60], and more.
+Predictable scaling, and especially the underlying dependency on precise mixtures of data, model size, and training,
+has implications for the process of model development. It shifts development of this type of model from a process of
+artisanal trial-and-error to more of a predictable engineering process, where the resources needed to achieve a particular
+result can be precisely calculated, and the cost of those resources can be compared to the utility of the result. Although
+very specific behaviors may not be predictable (more on this in Section 2.2), the general test loss tends to correlate well
+4Similar behavior has also been observed during the training process of an individual model (rather than as a function of model size) for algorithmic
+tasks, and has been termed “grokking” [58].
+5For example, [ 18] documents a strong lack of run-to-run reproducibility in reinforcement learning on Atari games when only changing the initial
+random seed. This suggests that differences between algorithms may be difficult to measure rigorously due to such intrinsic noise.
+6More precisely, the relationship is a straight line on a log-log plot, equivalent to a power law.
+7Scaling naturally has a fundamental limit: the entropy of the training and test data sets. However, it’s both difficult to precisely estimate this quantity
+a-priori and perhaps likely that there are important model capabilities that may emerge while pursuing this limit asymptotically.
+4
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+10710810910101011
+Number of Parameters0.02.55.07.510.012.5% Samples Solving T ask
+Program Synthesis
+10810910101011
+Number of Parameters0.00.20.40.60.8Accuracy
+3 Digit Addition
+GPT-3
+Gopher
+Google LM
+10910101011
+Number of Parameters0.30.40.50.6Accuracy
+Massive Multitask Language Understanding
+Fig. 2 Three examples of abrupt specific capability scaling described in Section 2.2, based on three different models: GPT-3 (blue),
+Gopher (orange), and a Google language model (green). (Left) 3-Digit addition with GPT-3 [ 11].(Middle) Language understanding
+with GPT-3 and Gopher [62]. (Right) Program synthesis with Google language models [4].
+on average with many tasks, meaning that larger models typically make significant gains across the board. In this sense,
+scaling laws de-risk investments in large models . We say more on this in Section 3.1 and provide more technical
+details on how developers may use scaling laws in Appendix A.2. To further illustrate how smooth general scaling
+correlates with task performance, and how a scale-based analysis can be used to forecast the potential economic value
+of a given model, we outline a small original experiment in Appendix A.3 that analyzes the relationship between scale
+and GPT-3 like language models [ 3] to be used as recommendation systems with zero-shot learning. We chose this
+example because recommendation systems have tangible economic relevance, known societal impact, are well studied
+in machine learning with domain specific algorithms [ 33], but are not typically studied with large scale generative
+models (yet). Surprisingly, we find that that generative models can increasingly operate as simple recommendation
+systems as they scale with minimal effort and extremely limited access to explicit training data. We leave a detailed
+analysis and discussion in Appendix A.3.
+2.2 Abrupt Specific Capability Scaling
+Though performance on a wide distribution of tasks may scale smoothly with model size, qualitatively different, specific
+capabilities can appear abruptly and discontinuously. It is not clear when or why this happens. But intuitively, abrupt
+scaling of a specific capability can co-exist with smooth general scaling for the same reason that daily weather is less
+predictable than seasonal averages: individual data points can vary much more than broad averages.
+Here, we illustrate three examples of abrupt capability scaling for arithmetic [ 11], language understanding, [ 34,62],
+and programming [ 4] (Figure 2). For arithmetic, GPT-3 displays a sharp capability transition somewhere between 6B
+parameters and 175B parameters, depending on the operation and the number of digits [ 11]. For example, three digit
+addition is performed accurately less than 1% of the time on any model with less than 6B parameters, but this jumps to
+8% accuracy on a 13B parameter model and 80% accuracy on a 175B parameter model – producing a “hockey stick”-style
+graph (Figure 2, Left) in which arithmetic ability appears suddenly after several orders of magnitude of nothing.
+A different language model, DeepMind’s Gopher [ 62], also displays an abrupt jump in performance on a different
+dataset, the MMLU language understanding benchmark [ 34] (Figure 2, Middle, orange). For all models under 6B
+parameters, Gopher performs under 30% accuracy, which is a little better than chance ( 25% accuracy). However, the full
+280B parameter Gopher model achieves 60% accuracy, a significant jump. GPT-3 displays a similar phenomenon though
+of smaller magnitude (Figure 2, Middle, blue).
+As a third example, a recently developed class of program synthesis models from Google display dramatic improve-
+ments in their ability to create computer programs as they increase in size from 10B to 100B parameters [4] (Figure 2,
+5
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+Right). For example, the percentage of generated synthetic programs that solve a given programming problem jumps
+substantially from 6% to 13% when the model size increases by ∼2x from 68B to 138B parameters, despite very small
+increases over the previous two orders of magnitude.
+Abrupt specific capability scaling presents significant challenges for safety assurance and deployment of large models.
+Although we’ve demonstrated this phenomenon for relatively anodyne capabilities, potentially harmful ones may
+emerge at scale (that will not exist in smaller models) and may be difficult to anticipate.
+2.3 Open-Ended Inputs and Domains
+Large generative models are open-ended — they take in arbitrary inputs from a variety of domains and generate
+(often relevant and creative) outputs. As a result, some model behaviors may be unknown until they are solicited from
+specific inputs. Pre-trained generative models can also be fine-tuned on new data in order to solve new problems.
+Broadly enabling such fine-tuning substantially increases the breadth of model capabilities and associated difficulties in
+predicting or constraining model behaviors. This open-endedness is challenging because it means AI developers may
+deploy their systems without fully knowing potentially unexpected (and possibly harmful) behaviors in response to
+un-tested inputs.
+For example, the AI Dungeon video game fine-tuned GPT-3 for fantasy role-playing [ 76], but with the right inputs,
+players were able to manipulate it to discuss any topic, essentially providing general backdoor access to GPT-3 [ 55].
+Thus, a model use-case that appeared to be designed just for one purpose, actually carried the full range of GPT-3
+capabilities, accessible through skillful use of its open-ended interface.
+To further illustrate our point about the inherent challenges of open-ended inputs and domains, and tie it to the
+possibility of harm from language models, we consider a problem domain that language models are typically not (or
+not yet) deployed on, but which is associated with societal concerns: recidivism prediction. Some have pointed out that
+even beyond specific concerns about fairness, recidivism prediction simply should not be a task for machine learning
+[6]. We agree and we do not believe that language models should be used for recidivism prediction. However, because
+the application is so inherently questionable, it provides a compelling example of how harmful abilities can emerge
+quietly in unexpected ways as generative models scale. It is likely that such abrupt emergence also occurs in many
+other contexts where the harms are more subtle. We study a case where the problems are flagrant in order to clearly
+demonstrate our thesis.
+To do this, we leverage the ProPublica COMPAS dataset, which includes data about more than 7,000defendants
+arrested in Broward County Florida [ 2,6]. The dataset includes a recidivism risk score, computed by the COMPAS
+algorithm (which is meant to reflect the risk of a defendant committing a misdemeanor or felony within 2 years of
+assessment based on a set of features about the defendant, not including race8), along with the actual outcome of
+whether each defendant re-offended. ProPublica found that these risk scores are inaccurate and racially biased [ 2].
+Further research found that human subjects with limited to no criminal justice experience exhibit similar inaccuracies
+and racial biases as COMPAS when predicting recidivism based on a simple prompt describing a defendant [ 22]. The
+human subject experiment examined two conditions, one in which a defendant’s race was excluded from the prompt,
+and one in which it was included.9Here, we use the same prompts outlined in [ 22] but instead ask language models
+[3] instead of people to predict recidivism. We leave full technical details and (significant) caveats in Appendix A.4;
+8More precisely, the COMPAS algorithm makes its predictions from 137features about a defendant and the defendant’s past criminal record. COMPAS
+does not consider the defendant’s race; however, other features it does consider may be correlated with race and thus lead to racially disparate predictions.
+9Interestingly, the researchers found that the exclusion of race had no significant impact on human recidivism prediction accuracy or fairness [22].
+6
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+107
+108
+109
+1010
+Number of Parameters0.500.550.600.65Accuracy
+COMPAS
+ChanceRecidivism Predicton
+LM, race excluded
+LM, race included
+107
+108
+109
+10101.001.251.501.752.002.25False Positive Rate Ratio
+COMPAS
+FairBlack to white False Positive Rate Ratio
+Fig. 3 Large language models, with few-shot learning, exhibit similar (or worse) inaccuracies and racial biases as COMPAS for
+recidivism prediction when prompted with the same prompts from a human recidivism prediction experiment [ 22]. This illustrates
+our claim in Section 2.3 that it may be difficult to anticipate possible harms of large generative models due to the open-ended nature
+of their inputs and domains. (Left) Accuracy increases with model size, approaching COMPAS performance. We see no significant
+difference in predictive accuracy when race is excluded from the prompt (blue) or included in the prompt (orange). (Right) Language
+models become increasingly biased towards predicting Black, compared to white, people will re-offend (when in reality they do
+not) similarly to COMPAS. We find a higher false positive rate ratio when race is included in the prompt (orange) versus when it is
+excluded (blue). See Appendix A.4 for technical details and caveats.
+however, we foreground here that benchmark risk assessment instrument datasets like COMPAS often contain numerous
+measurement biases and errors which can make them ill-suited for making claims about real-world impact without
+carefully considering the the complicated socio-technical systems (in this case, the US criminal justice system) in which
+they are used [6].
+We found that language models exhibit similar (or worse) inaccuracies and racial biases as COMPAS. Figure 3 shows
+language models of increasing size compared to COMPAS in terms of two metrics mentioned in the ProPublica analysis
+[2] and the subsequent human subject experiment [ 22]: overall predictive accuracy, and the ratio in false positive
+rates for Black versus white defendants. We show results for both prompts that exclude an individual’s race (blue)
+and include it (orange). For overall predictive accuracy, language models become increasingly accurate at predicting
+whether defendants will re-offend (Figure 3, Left) as they increase in size, yet they are still unreliable predictors like
+COMPAS. We see no significant difference in predictive accuracy when race is excluded from the prompt or included. In
+both conditions, the largest model, with 52B parameters, achieves 63% accuracy compared to COMPAS’s 66% accuracy.
+We also see higher ratios in false positive rates for Black versus white defendants (Figure 3, Right), which partially
+recapitulates the racial biases of the COMPAS algorithm outlined described in [ 2]. For COMPAS, this ratio is 1.92, which
+indicates that Black defendants are predicted to re-offend nearly twice as often as white defendants, when in reality
+they did not (a fair algorithm would have a false positive rate ratio of 1). As language models increase in size, at around
+12B parameters, the false positive rate ratio increases smoothly and reaches a value of 1.5for the largest model when
+race is excluded in the prompt and a value of 2.21when race is included in the prompt. In the latter case, the largest
+language model is even less equitable than COMPAS.10Likely, the model is picking up on a combination of the racial
+bias in the small fraction of the COMPAS dataset it sees, and ambient racial bias in the pre-trained language models.
+To emphasize again what was stated earlier, the point here is not only the emergence of racial biases in the recidivism
+prediction task, but also the emergence of the ability to perform this task at all. As the language model scales, it acquires
+both the ability to do a task that many have argued is inherently harmful [ 6], and it performs this task in a biased
+10Although the false positive rate ratio of the largest language model where race is included in the prompt is 2.21vs.1.92for COMPAS, in absolute terms
+the false positive rates for the language model ( 30% for Black, 12 .6% for white) are lower than the false positive rates for COMPAS ( 45% for Black, 24% for
+white)
+7
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+Fig. 4 A conversation with an AI Assistant [ 3] powered by a 52B parameter language model that illustrates challenges with
+Open-endedness outlined in Section 2.4
+manner. It is likely that large language models have many other (currently undiscovered) "skills" that pose one or both
+of these problems, perhaps in less obvious forms.
+In summary, pre-trained language models can be adapted with minimal effort for purposes not anticipated by their
+creators, whether that’s by using the inherent capabilities of the model to evade a security constraint (as in the AI
+Dungeon example), or by discovering new capabilities through novel inputs (as in the discussion of abrupt capability
+jumps in Section 2.2, and the recidivism experiment above). We also note that many of the most surprising capabilities
+manifest at large-scale, so working with smaller models will make it harder to explore such capabilities.
+2.4 Open-Ended Outputs
+In the previous section we argued that language models have open-ended inputs, which creates the opportunity for
+unexpected and undetected capabilities to emerge. But even when the input or topic is fixed, the resulting output can be
+8
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+107
+108
+109
+1010
+Number of Parameters0.020.030.040.050.06Effect Size
+Toxicity
+Fig. 5 The toxicity of model outputs increases smoothly with model size, which illustrates how though loss may reduce generally
+when scaling a model, other societally impactful potential harms of the model may also scale, as described in Section 2.4.
+varied and unpredictable. This kind of unpredictability is arguably more familiar and widely studied than the previous
+kind, but is worth briefly discussing as it adds an additional layer of complexity to large model behavior.
+As an example, in Figure 4 we ask an AI assistant [ 3] to tell us something offensive, for the purpose of illustrating our
+claim. Despite prompting the model with a relatively clear input, the model has generated an output that is tangential
+to the question at hand: the response isn’t directly offensive, but is instead a list of offenses made by other AI systems.
+One effect of this open-endedness is that unpredictable model responses can be a distraction away from a person’s
+original query.
+Open-endedness also introduces a second and more harmful risk of factual inaccuracy. Taking a closer look at the
+exchange in Figure 4, we can see that the model has made up these offenses - systems like IBM Watson and Microsoft’s
+Tay [ 86] did have problems during their deployment, but the AI assistant gets the year and error wrong in the case
+of Watson, and the error wrong (but year right) in the case of Tay. When we ask the model if it is sure the examples
+are correct, the model gives misleading answers and questions the authority of the human asking it questions. This
+illustrates how even with a specific input (e.g, requesting the model say something offensive), AI models can give
+outputs that are not only distracting, but potentially misleading.
+Open-ended model outputs can also introduce harmful or undesirable text. For example, Figure 5 shows that the
+toxicity (defined as rude, disrespectful, or unreasonable language [ 29])11of text generated from language models [ 3]
+increases smoothly and significantly with model size. A recent study has observed a very similar toxicity trend with
+model size using similar models with different analyses [ 62], which suggests that this may be a general phenomenon.
+We leave further details and caveats in Appendix A.6.
+Many applications for language models, including chat bots, search engines, text summarization systems, question
+answer systems, machine translation systems, etc., rely on open-ended text generation. As such, we argue that it is
+important to quantify how societally relevant aspects of open-ended text generation — relevancy, accuracy, safety, and
+even creative expression (see Appendix A.5 for a discussion on AI generated poetry) — scale with model size. It will
+also be important to develop techniques that can improve the factual accuracy of the results of AI models, as described
+in e.g., [10], and to make the outputs of models more appropriate and less likely to display harmful biases [73].
+3 MOTIVATIONS AND PROBLEMS IN THE DEVELOPMENT AND DEPLOYMENT OF LARGE MODELS
+In the previous section we described our basic thesis that large generative models have a paradoxical combination of four
+distinguishing features: predictable general performance, and unpredictable specific capabilities, inputs, and outputs.
+11https://github.com/conversationai/perspectiveapi
+9
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+Predictable general performance, combined with impressive outputs (e.g, specific capabilities) drives rapid development
+of such models, while the unpredictability makes it difficult for model developers to anticipate the consequences of
+model deployment. There are numerous motivations (and barriers) for developing and deploying large generative
+models due to (or in spite of) these distinguishing features. Here, we focus on elements of this fundamental tension and
+ground our discussion with some empirical observations.
+More specifically, in Section 3.1 we outline three salient motivations for developing and deploying large generative
+models: economic, scientific, and prestige. Conversely, in Section 3.2 we outline three barriers to entry : the financial
+costs and engineering talents required in order to scale models, AI safety issues, and the lack of standards and norms in
+model deployment. These motivations and barriers are non-exhaustive and perhaps obvious. Nevertheless, we think
+that they are worth explicitly stating in order for us to illustrate, in in Section 3.3, how combinations of these factors
+may explain some empirical observations on how the development and deployment of language models has occurred
+thus far. In particular, we note that large language models are rapidly proliferating, that there is a rising gap between
+industry and academia for developing such models, and that there have been numerous documented examples of model
+deployments causing harm and controversy.
+3.1 Motivations for Developing and Deploying Large Models
+Economic. Perhaps the simplest and most obvious motivation for model development is economic . Scaling laws mean
+that the cost to develop a model can be precisely estimated, and when an economically valuable output can be found to
+scale smoothly with the loss, then the returns to training a model can also be calculated. This applies both generally
+and specifically — some institutions may wish to broadly improve the capabilities of a given model and will thus have
+an economic incentive to build them, while others may be targeting a specific model capability which is accompanied
+by a scaling law, and will therefore also have an incentive to build them. This has the effect of de-risking the training
+of large models: a predictable amount can be invested for a relatively predictable return, unlike many speculative
+research projects where an open-ended amount must be invested for an uncertain return. Predictability makes the logic
+of research investment more obvious and may help to justify it within large institutions (see Appendix A.2 for more
+examples). Thus, economic motivations, combined with continued smooth, general capability scaling, suggest that
+we should expect to see increasing model deployments. While it may not be possible to predict in advance precisely
+which search queries will benefit from a particular AI model and which won’t, or which applications will flourish and
+which will unpredictably fail, or which development workflows will be helped by code synthesis models, all of these
+applications take advantage of broad averages to tie economic returns to the smooth general capability scaling.
+Scientific. Large generative models may be a necessary basis for broad swaths of novel interdisciplinary AI research
+on topics ranging from linguistics and robotics to philosophy and the social sciences [ 9]. Without the development
+of (or at least access to) large models, it will be challenging to research how they may advance progress in societally
+impactful research domains such as healthcare, education, and law [ 9]. Large models are also fertile testing grounds for
+developing next-generation algorithms and architectures — novel algorithms can be rigorously evaluated according to
+whether they advantageously shift scaling laws to be more compute, data, or parameter efficient.
+Prestige. The fact these models are on the frontier of possibility also creates a prestige incentive for developing them.
+Large models can be an advertisement for the capabilities of an institution – a way to gain a perceived advantage in the
+public eye, to make it easier to recruit (coveted) skilled AI researchers, to increase sales of services unrelated to large
+models, or to support national initiatives or national pride.
+10
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+All of these motivations have the potential to create an unusual situation where there are strong incentives to develop,
+disclose, and even deploy large generative models despite high uncertainty about the full extent of what these models
+are capable of.
+3.2 Barriers to Entry in Developing and Deploying Large Models
+Financial Costs and Engineering Talent. Scaling up large generative models requires a significant financial investment.
+For example, GPT-3 was estimated to cost several million dollars to train [ 50]. Scaling up large generative models also
+requires specific engineering competencies, e.g., distributed systems engineering, familiarity with cluster management
+tools like Kubernetes, low-level GPU programming, managing continuous integration testing, etc. The size of these
+models has led to longer development timelines and more complex workflows than previous systems over the past
+decade. For example, only ∼10years ago, one of the larger scale AI models at the time, AlexNet12[48], was trained by
+a graduate student for a few thousand of dollars on a single desktop machine with 2GPUs.
+Safety and Bias. As described in Section 2, open-endedness combined with smooth, general capability scaling and the
+abrupt scaling of specific capabilities, is likely to lead to safety issues [ 9,83] that are found after a model has been
+developed and deployed. Additionally, these models also possess known (pre-deployment) safety issues for which we
+lack robust solutions [ 35] (e.g, How do you ensure the system does not generate inappropriate and harmful outputs, such
+as making overtly sexist or racist comments [ 73]? How do you identify bias issues in the system prior to deployment
+[8, 59]? How do you ensure that when the model outputs a claim, it isn’t making up facts [10]?, etc.).
+Lack of Standards and Norms. Because these large generative models have been developed very recently (within the last
+five years), and have only recently become valuable to deploy from an economic perspective, no standards for the safe
+deployment of these systems exist. This lack of standards compounds the problems caused by the four distinguishing
+features of generative models we identify in Section 2, as well as the safety issues discussed above. At the same time,
+there’s a growing field of research oriented around identifying the weaknesses of these models, as well as potential
+problems with their associated development and deployment practices [ 7,9,21,44,56,69,74,75,83]. However, this
+research is not yet embodied in the form of repeatable standards that developers can adopt, though there are some
+critical and important steps in this direction (e.g., through the use of model cards [ 53] and data sheets [ 28] to document
+the capabilities, drawbacks, and other salient details of models). This lack of standards makes it both more challenging to
+deploy systems, as developers may need to determine their own policies for deployment, and it also makes deployments
+inherently risky, as there’s less shared knowledge about what ’safe’ deployments look like. We are, in a sense, building
+the plane as it is taking off.
+3.3 Empirical Observations
+The above sections described some motivations and challenges that we expect AI developers to face with respect to
+large models. In this section we assess how those issues may explain three inter-related empirical observations: (1) large
+language models are rapidly proliferating (2) industry has become responsible for a larger share of resource-intensive
+model development compared to academia, and (3) large model deployment has already caused harm and controversy.
+12Though not a generative model, AlexNet was, at the time, a frontier model in terms of computational consumption, hence why we include it as a
+comparison.
+11
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+May 2020Jul 2020 Sep 2020 Nov 2020 Jan 2021 Mar 2021 May 2021Jul 2021 Sep 2021 Nov 2021 Jan 2022
+GPT-3 (175B)
+Pan-Gu (200B)
+HyperCLOVA (204B)
+Jurassic-1 Jumbo (178B)FLAN (137B)
+Yuan 1.0 (246B)Megatron Turing-NLG (530B)
+Gopher (280B)Ernie 3.0 Titan (260B)
+LaMDA (137B)Country
+USA
+China
+South Korea
+Israel
+UK/USA
+Fig. 6 Timeline of public disclosures of GPT-3 scale dense language models.
+Large Language Models Are Rapidly Proliferating. Figure 6 shows a timeline of public disclosures of GPT-3 scale ( 100B -
+530B) dense language models, since GPT-3.13About one year after GPT-3 was announced, a spike in similar model
+announcements followed. These models were developed by both large and small private organizations from around the
+world: Jurassic-1-Jumbo [ 51], AI21 Labs, Israel; Ernie 3.0Titan [ 81], Baidu, China; Gopher [ 62], DeepMind, USA/UK;
+FLAN [ 82] & LaMDA [ 78], Google, USA; Pan Gu [ 89] Huawei, China; Yuan 1.0[87], Inspur, China; Megatron Turing
+NLG [ 72], Microsoft & NVIDIA, USA; and HyperClova [ 46], Naver, Korea. This suggests that the economic incentives
+to build such models, and the prestige incentives to announce them, are quite strong.
+Rising Gap Between Industry and Academia. At the time of writing, the largest language models that are free and publicly
+available are BigScience T0 ( 11B) [68], and Eleuther AI’s GPT-J ( 6B) [80] and GPT-NeoX ( 20B) [49], which are one to
+two orders of magnitude smaller than those developed by industry. Although academics can easily access (at least
+some of) the larger models, it is typically only possible to do so through a (potentially expensive) company-controlled
+API. This is part of a broader and longer-running trend towards high-compute research migrating from academia to
+industry that can be quantified (See Appendix A.7 for details ). Figure 7 (Left) shows that in recent years the compute
+required for large-scale AI experiments has increased by more than 300 ,000X relative to a decade ago.14Along with
+this rise in resource intensity, we see a corresponding (and sharp) fall in the proportion of these results that come from
+academia (Figure 7, Right). This suggests that, although academics may be strongly motivated by scientific curiosity,
+and well-poised to research safety issues, they may be significantly challenged by the high financial and engineering
+costs.
+Harm and Controversy. There have been numerous examples of harm caused by the deployment of large generative
+models. For example, the AI system Tay was deployed before it was properly scrutinized, and generated hateful language
+[86]. It has also been shown that language models can memorize training data (which in turn can include privately
+identifiable information) [ 14,57] and aid in disinformation campaigns [ 13]. Furthermore, people critical of organizations
+deploying such models have been directly harmed for voicing their concerns, sometimes to much controversy [ 71].
+Legislators are actively grappling with these issues. For example, the European Commission’s proposed AI legislation
+seeks to create standards for how ‘high risk’ AI systems are deployed and monitored.15This suggests that standards
+and norms for responsible model development and deployment are both significantly needed and lacking.
+13The timeline does not include sparse or mixture of experts models (e.g., GLaM [ 24]), which often achieve comparable performance with similar or
+slightly lower compute, but are difficult to characterize in terms of a single model size. It also does not include models trained on different modalities,
+such as code [4, 16], or multi-modal models such as [61].
+14Some people have noted that this trend may not be sustainable [52]
+15https://digital-strategy.ec.europa.eu/en/policies/european-approach-artificial-intelligence
+12
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+1960 1970 1980 1990 2000 2010 2020
+Year10210610101014101810221026Compute (FLOPs)
+AI Compute: Industry vs Academia
+Industry
+Academia
+1960 1970 1980 1990 2000 2010 2020
+Year020406080100Percentage
+% of Large Scale AI results from Academia
+Fig. 7 (Left) The amount of compute required by major AI projects over time is increasing exponentially for both academic (blue)
+and industrial (orange) projects. (Right) The proportion of computationally-intensive AI results from academia is steadily decreasing.
+(The blue curve represents a Lowess fit to the data.)
+4 INTERVENTIONS TO ENCOURAGE BENEFICIAL DEPLOYMENTS
+Based on the distinguishing features of large generative models that we outline in Section 2, and the various motivations
+for model development and deployment that we discuss in Section 3, we believe that large generative models will
+increasingly be developed and deployed despite their potential for harm. Here, we outline possible technical and policy
+interventions (along with corresponding implementation paths) that can increase the chance of these models being
+developed and deployed in positive ways. For each intervention, we refer to the literature concerning related efforts.
+Furthermore, we provide a concrete implementation path for each intervention along with possible caveats.
+Reduce compute asymmetries between the private sector and academia. As shown in section 3.3, private sector orga-
+nizations are the primary developers and deployers of large generative models. This means that other actors, such
+as academic and government ones, are less well-placed to understand the distinguishing technical features of these
+models, and are therefore less equipped to research the problems inherent to them. As outlined in Section 3.2, the
+main constraints here are the financial and engineering resources for model training - therefore, we should create
+experimental infrastructure16to make it easier for a larger scientific community to analyze these models. To support
+and effectively utilize such infrastructure, academic and government organizations will also need to find ways to make
+the necessary financial and structural investments to be able to hire and retain technical talent that may otherwise
+go to industry. This is important because academic and public sector motivations may stem more from the pursuit of
+knowledge rather than profit, and can draw on more varied expertise than the private sector for analyzing and exploring
+large generative models.17Although large models are resource-intensive, they are actually much less expensive than
+academic ‘Big Science’ projects in some other fields. For instance, the Large Hadron Collider cost $ 5billion to build
+[47], the International Thermonuclear Experiment Reactor is projected to cost between $ 10and $ 15billion18, the
+Square Kilometre Array is projected to cost around $ 1billion [ 15], and the Long-Baseline Neutrino Facility and Deep
+Underground Neutrino Experiment are anticipated to cost $ 2.4billion [ 77]. By comparison, training frontier generative
+16We do not distinguish between public or private (cloud) infrastructure. Some have raised concerns regarding how specific choices here may centralize
+power in different ways [ 42]. Governments will need to examine how usable these different infrastructures are, and the long-term ramifications of
+empowering particular infrastructure providers.
+17It is worth noting that by increasing the amount of actors with access to non-trivial compute, it’s possible to increase some risks with regard to safe
+development and deployment of models, especially those that stem from a need to coordinate among different developers. However, this risk likely
+does not add significantly to the existing risk landscape, given that economic incentives for model development are leading to a proliferation of model
+developers in industry — academics have much less of an incentive to commercially deploy their models. On balance, therefore, it seems helpful to give
+academia more resources to help it serve as a counter-weight to industry.
+18https://www.iter.org/FAQ
+13
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+models like GPT-3 and others costs on the order of a million to ten million dollars, so the infrastructure to develop
+models substantially larger than the current frontier would have precedent in academia.
+Implementation Path: Countries may wish to develop and deploy so-called ‘National Research Clouds’ that
+facilitate access to a heavily subsidized and/or free compute resource for academic researchers. An existing example
+here includes Compute Canada19. There are also future initiatives being considered, such as the infrastructure being
+analyzed by the US government’s National AI Research Resource task force20, and the ‘Big Science’ project which is
+leveraging a supercomputer (partially subsidized by the French government) to train large generative models. Recent
+work from Stanford also explores this implementation path in more detail [40].
+Improve knowledge about how to ‘red team’ models. As some of the challenges from these models stem from their
+open-ended nature (perhaps compounded by smooth and abrupt capability scaling) we should develop ways to more
+effectively explore the input and output space of their models, so as to discover harms prior to deployment. We can
+model this on the ‘red team’ approach which is popular in the computer security industry and can be applied in an AI
+context [ 5,12]. This should take the form of both static benchmarks (for example, adversarial datasets to probe for
+weaknesses in computer vision systems [ 36]), as well as continuous evaluation by humans carrying out multi-step
+interactions (e.g, conversations [ 3,88]) with these models, as well as plans for how to update the models in response to
+what these evaluations find.
+Implementation Path: Model developers should invest in internal red teaming approaches for their models and
+seek to publish on the techniques, datasets, and policy choices they make when red teaming. This will facilitate more
+shared awareness about how to red team models. There may also be a commercial market that can be developed for ‘red
+teaming as a service’, though more community research into the area may be a prerequisite for this. AI developers may
+also wish to create ‘bug bounty’ initiatives, where they give out prizes to people who can demonstrate repeatable ways
+of breaking a given AI system [ 45]. Finally, we should consider how to augment (or complement) manual red-teaming
+with automated methods [57].
+Explore and prototype novel governance structures and government interventions. If the capabilities and resource-
+intensiveness of models scale further, then it may be prudent to explore governance structures that alter the incentives
+of private sector actors with regard to development and deployment. To do this, there will be a combination of soft
+regulation (e.g, the creation of voluntary best practices by industry, academia, civil society, and government), and
+hard regulation (e.g, transferring these best practices into standards and legislation). Governments should also explore
+regulatory approaches that can increase the chance of actors developing and deploying beneficial systems.
+Implementation Path: AI development organizations should experiment with novel governance and oversight
+structures that let a broader set of stakeholders factor into model deployment decisions. This could take the form of
+oversight functions which can critique and publicly censure organizations should the organization diverge from the
+recommendations of the oversight body, to novel forms of governance that give diverse stakeholders power over an
+organization (for example, a private company could elect board members who represent the interests of civil society
+and/or academia rather than a pure profit-driven motive). AI development organizations should also work among
+themselves to develop best practices for the development and deployment of AI systems, then seek to get feedback on
+these from a broader range of stakeholders, potentially via the creation of third-party organizations for the purposes of
+19https://www.computecanada.ca/home/
+20https://www.whitehouse.gov/ostp/news-updates/2021/06/10/the-biden-administration-launches-the-national-artificial-intelligence-research-
+resource-task-force/
+14
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+standard formation. Along with innovations in governance of AI organizations, and work on best practices, we also
+believe governments should invest in better methods to assure the benefits of systems being deployed - specifically,
+governments should support efforts to measure and monitor the capabilities (both harmful and beneficial) of deployed AI
+systems [ 85], and should support the creation of an ecosystem oriented around auditing AI models and AI development
+processes [54, 64, 65].
+Improve the tools available for model evaluation. Given the open-ended nature and scale of these models, researchers
+would benefit from having more tools available to help them comprehensively and efficiently evaluate these models. If
+we can find ways to create more open source tools and frameworks in this area, then we can benefit the broader model
+development ecosystem. Particularly valuable would be tools for doing a very broad set of evaluations, or evaluations
+that search (e.g. across prompts) for new capabilities, rather than just fixed evaluation datasets that measure known
+capabilities.
+Implementation Path: Research funding organizations should allocate funds to researchers that are building
+evaluation systems (e.g, software, tests, and benchmarks) and critiquing them (e.g., see [ 20,63]). Private sector and
+independent research organizations should invest further into developing tools to help researchers understand and
+evaluate large generative models - existing examples include Eleuther’s ‘Language Model Evaluation Harness’ [ 27], the
+BIG-bench benchmark21, HuggingFace’s ‘BERTology’ tooling22, and more.
+Improve our understanding of abrupt jumps in capabilities. In Section 2.2 we gave a few examples of abrupt jumps in
+capabilities (abrupt capability scaling). Anecdotally, our experience has been that abrupt jumps occur in only a minority
+of tasks, but at the same time are not especially rare. How often do they occur, is there a pattern to the kind of tasks on
+which they occur, why do they occur, and are there any leading indicators that predict when they are about to occur?
+Answering these questions could help to address some of the most surprising behavior in large models, and might be
+especially important for future AI safety issues.
+Implementation Path: A systematic empirical study of abrupt jumps, across research and possibly commercial
+tasks for large models, could help to shed light on how common they are and when they occur. One route to studying
+this could be through interpretability research (e.g., [ 17]), and specifically a new approach known as mechanistic
+interpretability [ 25] - attempting to reverse engineer the computations performed by transformers (which underpin
+many of the generative models discussed in this paper) gives researchers a way to better understand how models
+behave.
+5 CONCLUSION
+In this paper, we have articulated (and provided evidence for) our basic thesis that large generative models have a
+paradoxical combination of high predictability - model capabilities scale in relation to resources expended on training
+- and high unpredictability - before training a model, it’s difficult to anticipate all the inputs it will be subjected to,
+and what capabilities and outputs it will have. The former drives rapid development of such models while the latter
+makes it difficult to anticipate the consequences of their development and deployment. We’ve also described how these
+traits combine to alter the landscape of AI development, making it more likely a greater number of actors will build
+these models. Put bluntly: the status quo outlined here suggests that the next few years will see a proliferation of
+actors building ever-larger models, and these actors will have strong motivations to deploy these models, despite their
+21https://github.com/google/BIG-bench
+22https://huggingface.co/docs/transformers/bertology
+15
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+potential for (possibly unpredictable) harmful societal impact. Various interventions (including the ones we outline in
+our paper) can change this dynamic, but it is nevertheless the current situation we must start from and continue to
+improve.
+ACKNOWLEDGMENTS
+We thank Sam Bowman, Miles Brundage, Timnit Gebru, Gillian Hadfield, Percy Liang, Luke Muehlhauser, Helen Ngo,
+Michael Sellitto, Alex Tamkin, Helen Toner, and Sharon Zhou, and the anonymous reviewers for detailed feedback on
+drafts of the paper.
+REFERENCES
+[1]Neel Alex, Eli Lifland, Lewis Tunstall, Abhishek Thakur, Pegah Maham, C. Jess Riedel, Emmie Hine, Carolyn Ashurst, Paul Sedille, Alexis Carlier,
+Michael Noetel, and Andreas Stuhlmüller. 2021. RAFT: A Real-World Few-Shot Text Classification Benchmark. arXiv:2109.14076 [cs] (Nov. 2021).
+http://arxiv.org/abs/2109.14076 arXiv: 2109.14076.
+[2]Julia Angwin, Jeff Larson, Surya Mattu, and Lauren Kirchner. 2016. Machine bias: There’s software used across the country to predict future
+criminals. and it’s biased against blacks. https://www.propublica.org/article/machine-bias-risk-assessments-in-criminal-sentencing
+[3]Amanda Askell, Yuntao Bai, Anna Chen, Dawn Drain, Deep Ganguli, Tom Henighan, Andy Jones, Nicholas Joseph, Ben Mann, Nova DasSarma,
+Nelson Elhage, Zac Hatfield-Dodds, Danny Hernandez, Jackson Kernion, Kamal Ndousse, Catherine Olsson, Dario Amodei, Tom Brown, Jack Clark,
+Sam McCandlish, Chris Olah, and Jared Kaplan. 2021. A General Language Assistant as a Laboratory for Alignment. arXiv:2112.00861 [cs] (Dec.
+2021). http://arxiv.org/abs/2112.00861 arXiv: 2112.00861.
+[4]Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le,
+and Charles Sutton. 2021. Program Synthesis with Large Language Models. arXiv:2108.07732 [cs] (Aug. 2021). http://arxiv.org/abs/2108.07732 arXiv:
+2108.07732.
+[5]Shahar Avin, Haydn Belfield, Miles Brundage, Gretchen Krueger, Jasmine Wang, Adrian Weller, Markus Anderljung, Igor Krawczuk, David
+Krueger, Jonathan Lebensold, Tegan Maharaj, and Noa Zilberman. 2021. Filling gaps in trustworthy development of AI. Science (Dec. 2021).
+https://doi.org/10.1126/science.abi7176 Publisher: American Association for the Advancement of Science.
+[6]Michelle Bao, Angela Zhou, Samantha Zottola, Brian Brubach, Sarah Desmarais, Aaron Horowitz, Kristian Lum, and Suresh Venkatasubramanian.
+2021. It’s COMPASlicated: The Messy Relationship between RAI Datasets and Algorithmic Fairness Benchmarks. arXiv:2106.05498 [cs] (June 2021).
+http://arxiv.org/abs/2106.05498 arXiv: 2106.05498.
+[7]Emily M. Bender, Timnit Gebru, Angelina McMillan-Major, and Shmargaret Shmitchell. 2021. On the Dangers of Stochastic Parrots: Can Language
+Models Be Too Big?. In Proceedings of the 2021 ACM Conference on Fairness, Accountability, and Transparency (FAccT ’21) . Association for Computing
+Machinery, New York, NY, USA, 610–623. https://doi.org/10.1145/3442188.3445922
+[8]Su Lin Blodgett, Solon Barocas, Hal Daumé III, and Hanna Wallach. 2020. Language (Technology) is Power: A Critical Survey of "Bias" in NLP.
+arXiv:2005.14050 [cs] (May 2020). http://arxiv.org/abs/2005.14050 arXiv: 2005.14050.
+[9]Rishi Bommasani, Drew A. Hudson, Ehsan Adeli, Russ Altman, Simran Arora, Sydney von Arx, Michael S. Bernstein, Jeannette Bohg, Antoine
+Bosselut, Emma Brunskill, Erik Brynjolfsson, Shyamal Buch, Dallas Card, Rodrigo Castellon, Niladri Chatterji, Annie Chen, Kathleen Creel,
+Jared Quincy Davis, Dora Demszky, Chris Donahue, Moussa Doumbouya, Esin Durmus, Stefano Ermon, John Etchemendy, Kawin Ethayarajh,
+Li Fei-Fei, Chelsea Finn, Trevor Gale, Lauren Gillespie, Karan Goel, Noah Goodman, Shelby Grossman, Neel Guha, Tatsunori Hashimoto, Peter
+Henderson, John Hewitt, Daniel E. Ho, Jenny Hong, Kyle Hsu, Jing Huang, Thomas Icard, Saahil Jain, Dan Jurafsky, Pratyusha Kalluri, Siddharth
+Karamcheti, Geoff Keeling, Fereshte Khani, Omar Khattab, Pang Wei Koh, Mark Krass, Ranjay Krishna, Rohith Kuditipudi, Ananya Kumar, Faisal
+Ladhak, Mina Lee, Tony Lee, Jure Leskovec, Isabelle Levent, Xiang Lisa Li, Xuechen Li, Tengyu Ma, Ali Malik, Christopher D. Manning, Suvir
+Mirchandani, Eric Mitchell, Zanele Munyikwa, Suraj Nair, Avanika Narayan, Deepak Narayanan, Ben Newman, Allen Nie, Juan Carlos Niebles,
+Hamed Nilforoshan, Julian Nyarko, Giray Ogut, Laurel Orr, Isabel Papadimitriou, Joon Sung Park, Chris Piech, Eva Portelance, Christopher Potts,
+Aditi Raghunathan, Rob Reich, Hongyu Ren, Frieda Rong, Yusuf Roohani, Camilo Ruiz, Jack Ryan, Christopher Ré, Dorsa Sadigh, Shiori Sagawa,
+Keshav Santhanam, Andy Shih, Krishnan Srinivasan, Alex Tamkin, Rohan Taori, Armin W. Thomas, Florian Tramèr, Rose E. Wang, William Wang,
+Bohan Wu, Jiajun Wu, Yuhuai Wu, Sang Michael Xie, Michihiro Yasunaga, Jiaxuan You, Matei Zaharia, Michael Zhang, Tianyi Zhang, Xikun Zhang,
+Yuhui Zhang, Lucia Zheng, Kaitlyn Zhou, and Percy Liang. 2021. On the Opportunities and Risks of Foundation Models. arXiv:2108.07258 [cs] (Aug.
+2021). http://arxiv.org/abs/2108.07258 arXiv: 2108.07258.
+[10] Sebastian Borgeaud, Arthur Mensch, Jordan Hoffmann, Trevor Cai, Eliza Rutherford, Katie Millican, George van den Driessche, Jean-Baptiste
+Lespiau, Bogdan Damoc, Aidan Clark, Diego de Las Casas, Aurelia Guy, Jacob Menick, Roman Ring, Tom Hennigan, Saffron Huang, Loren
+Maggiore, Chris Jones, Albin Cassirer, Andy Brock, Michela Paganini, Geoffrey Irving, Oriol Vinyals, Simon Osindero, Karen Simonyan, Jack W.
+Rae, Erich Elsen, and Laurent Sifre. 2021. Improving language models by retrieving from trillions of tokens. arXiv:2112.04426 [cs] (Dec. 2021).
+http://arxiv.org/abs/2112.04426 arXiv: 2112.04426.
+16
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+[11] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish
+Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Ziegler,
+Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner,
+Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. 2020. Language Models are Few-Shot Learners. In Advances in Neural
+Information Processing Systems , H. Larochelle, M. Ranzato, R. Hadsell, M. F. Balcan, and H. Lin (Eds.), Vol. 33. Curran Associates, Inc., 1877–1901.
+https://proceedings.neurips.cc/paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf
+[12] Miles Brundage, Shahar Avin, Jasmine Wang, Haydn Belfield, Gretchen Krueger, Gillian Hadfield, Heidy Khlaaf, Jingying Yang, Helen Toner, Ruth
+Fong, Tegan Maharaj, Pang Wei Koh, Sara Hooker, Jade Leung, Andrew Trask, Emma Bluemke, Jonathan Lebensold, Cullen O’Keefe, Mark Koren,
+Théo Ryffel, J. B. Rubinovitz, Tamay Besiroglu, Federica Carugati, Jack Clark, Peter Eckersley, Sarah de Haas, Maritza Johnson, Ben Laurie, Alex
+Ingerman, Igor Krawczuk, Amanda Askell, Rosario Cammarota, Andrew Lohn, David Krueger, Charlotte Stix, Peter Henderson, Logan Graham,
+Carina Prunkl, Bianca Martin, Elizabeth Seger, Noa Zilberman, Seán O hÉigeartaigh, Frens Kroeger, Girish Sastry, Rebecca Kagan, Adrian Weller,
+Brian Tse, Elizabeth Barnes, Allan Dafoe, Paul Scharre, Ariel Herbert-Voss, Martijn Rasser, Shagun Sodhani, Carrick Flynn, Thomas Krendl Gilbert,
+Lisa Dyer, Saif Khan, Yoshua Bengio, and Markus Anderljung. 2020. Toward Trustworthy AI Development: Mechanisms for Supporting Verifiable
+Claims. arXiv:2004.07213 [cs] (April 2020). http://arxiv.org/abs/2004.07213 arXiv: 2004.07213.
+[13] Ben Buchanan, Andrew Lohn, Micha Musser, and Katerina Sedova. 2021. Truth, Lies, and Automation. https://cset.georgetown.edu/publication/truth-
+lies-and-automation/
+[14] Nicholas Carlini, Florian Tramer, Eric Wallace, Matthew Jagielski, Ariel Herbert-Voss, Katherine Lee, Adam Roberts, Tom Brown, Dawn Song,
+Ulfar Erlingsson, Alina Oprea, and Colin Raffel. 2021. Extracting Training Data from Large Language Models. arXiv:2012.07805 [cs] (June 2021).
+http://arxiv.org/abs/2012.07805 arXiv: 2012.07805.
+[15] Edwin Cartlidge. 2019. Square Kilometre Array hit with further cost hike and delay. Physics World (Aug. 2019). https://physicsworld.com/a/square-
+kilometre-array-hit-with-further-cost-hike-and-delay/
+[16] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph,
+Greg Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf, Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray,
+Nick Ryder, Mikhail Pavlov, Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter, Philippe Tillet, Felipe Petroski Such, Dave
+Cummings, Matthias Plappert, Fotios Chantzis, Elizabeth Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex Nichol, Alex Paino, Nikolas Tezak,
+Jie Tang, Igor Babuschkin, Suchir Balaji, Shantanu Jain, William Saunders, Christopher Hesse, Andrew N. Carr, Jan Leike, Josh Achiam, Vedant
+Misra, Evan Morikawa, Alec Radford, Matthew Knight, Miles Brundage, Mira Murati, Katie Mayer, Peter Welinder, Bob McGrew, Dario Amodei,
+Sam McCandlish, Ilya Sutskever, and Wojciech Zaremba. 2021. Evaluating Large Language Models Trained on Code. arXiv:2107.03374 [cs] (July
+2021). http://arxiv.org/abs/2107.03374 arXiv: 2107.03374.
+[17] Kevin Clark, Urvashi Khandelwal, Omer Levy, and Christopher D. Manning. 2019. What Does BERT Look At? An Analysis of BERT’s Attention.
+arXiv:1906.04341 [cs] (June 2019). http://arxiv.org/abs/1906.04341 arXiv: 1906.04341.
+[18] Kaleigh Clary, Emma Tosch, John Foley, and David Jensen. 2019. Let’s Play Again: Variability of Deep Reinforcement Learning Agents in Atari
+Environments. arXiv:1904.06312 [cs, stat] (April 2019). http://arxiv.org/abs/1904.06312 arXiv: 1904.06312.
+[19] Kate Crawford. 2021. Atlas of AI . Yale University Press. https://yalebooks.yale.edu/book/9780300209570/atlas-ai
+[20] Emily Denton, Alex Hanna, Razvan Amironesei, Andrew Smart, Hilary Nicole, and Morgan Klaus Scheuerman. 2020. Bringing the People Back In:
+Contesting Benchmark Machine Learning Datasets. arXiv:2007.07399 [cs] (July 2020). http://arxiv.org/abs/2007.07399 arXiv: 2007.07399.
+[21] Emily Dinan, Gavin Abercrombie, A. Stevie Bergman, Shannon Spruit, Dirk Hovy, Y.-Lan Boureau, and Verena Rieser. 2021. Anticipating Safety
+Issues in E2E Conversational AI: Framework and Tooling. arXiv:2107.03451 [cs] (July 2021). http://arxiv.org/abs/2107.03451 arXiv: 2107.03451.
+[22] Julia Dressel and Hany Farid. 2018. The accuracy, fairness, and limits of predicting recidivism. Science Advances (Jan. 2018). https://doi.org/10.1126/
+sciadv.aao5580 Publisher: American Association for the Advancement of Science.
+[23] Jasha Droppo and Oguz Elibol. 2021. Scaling Laws for Acoustic Models. arXiv:2106.09488 [cs, eess] (June 2021). http://arxiv.org/abs/2106.09488
+arXiv: 2106.09488.
+[24] Nan Du, Yanping Huang, Andrew M. Dai, Simon Tong, Dmitry Lepikhin, Yuanzhong Xu, Maxim Krikun, Yanqi Zhou, Adams Wei Yu, Orhan
+Firat, Barret Zoph, Liam Fedus, Maarten Bosma, Zongwei Zhou, Tao Wang, Yu Emma Wang, Kellie Webster, Marie Pellat, Kevin Robinson, Kathy
+Meier-Hellstern, Toju Duke, Lucas Dixon, Kun Zhang, Quoc V. Le, Yonghui Wu, Zhifeng Chen, and Claire Cui. 2021. GLaM: Efficient Scaling of
+Language Models with Mixture-of-Experts. arXiv:2112.06905 [cs] (Dec. 2021). http://arxiv.org/abs/2112.06905 arXiv: 2112.06905.
+[25] Nelson Elhage, Neel Nanda, Catherine Olsson, Tom Henighan, Nicholas Joseph, Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, Tom Conerly,
+Nova DasSarma, Dawn Drain, Deep Ganguli, Zac Hatfield-Dodds, Danny Hernandez, Andy Jones, Jackson Kernion, Liane Lovitt, Kamal Ndousse,
+Dario Amodei, Tom Brown, Jack Clark, Jared Kaplan, Sam McCandlish, and Chris Olah. 2021. A Mathematical Framework for Transformer Circuits.
+[26] Sorelle A. Friedler, Carlos Scheidegger, and Suresh Venkatasubramanian. 2016. On the (im)possibility of fairness. arXiv:1609.07236 [cs, stat] (Sept.
+2016). http://arxiv.org/abs/1609.07236 arXiv: 1609.07236.
+[27] Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas
+Muennighoff, Jason Phang, Laria Reynolds, Eric Tang, Anish Thite, Ben Wang, Kevin Wang, and Andy Zou. 2021. A framework for few-shot
+language model evaluation. https://doi.org/10.5281/zenodo.5371628
+[28] Timnit Gebru, Jamie Morgenstern, Briana Vecchione, Jennifer Wortman Vaughan, Hanna Wallach, Hal Daumé III, and Kate Crawford. 2021.
+Datasheets for Datasets. arXiv:1803.09010 [cs] (Dec. 2021). http://arxiv.org/abs/1803.09010 arXiv: 1803.09010.
+17
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+[29] Samuel Gehman, Suchin Gururangan, Maarten Sap, Yejin Choi, and Noah A. Smith. 2020. RealToxicityPrompts: Evaluating Neural Toxic Degeneration
+in Language Models. ArXiv abs/2009.11462 (2020).
+[30] Mary Gray and Siddharth Suri. 2019. Ghost Work . Mariner Books. https://ghostwork.info/
+[31] Soyeon Caren Han, Taejun Lim, Siqu Long, Bernd Burgstaller, and Josiah Poon. 2021. GLocal-K: Global and Local Kernels for Recommender Systems.
+(Aug. 2021). https://doi.org/10.1145/3459637.3482112
+[32] Laura Hanu and Unitary team. 2020. Detoxify. Published: Github. https://github.com/unitaryai/detoxify.
+[33] F. Maxwell Harper and Joseph A. Konstan. 2015. The MovieLens Datasets: History and Context. ACM Transactions on Interactive Intelligent Systems
+5, 4 (Dec. 2015), 19:1–19:19. https://doi.org/10.1145/2827872
+[34] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. 2021. Measuring Massive Multitask
+Language Understanding. arXiv:2009.03300 [cs] (Jan. 2021). http://arxiv.org/abs/2009.03300 arXiv: 2009.03300.
+[35] Dan Hendrycks, Nicholas Carlini, John Schulman, and Jacob Steinhardt. 2021. Unsolved Problems in ML Safety. arXiv:2109.13916 [cs] (Dec. 2021).
+http://arxiv.org/abs/2109.13916 arXiv: 2109.13916.
+[36] Dan Hendrycks, Kevin Zhao, Steven Basart, Jacob Steinhardt, and Dawn Song. 2021. Natural Adversarial Examples. arXiv:1907.07174 [cs, stat]
+(March 2021). http://arxiv.org/abs/1907.07174 arXiv: 1907.07174.
+[37] Tom Henighan, Jared Kaplan, Mor Katz, Mark Chen, Christopher Hesse, Jacob Jackson, Heewoo Jun, Tom B. Brown, Prafulla Dhariwal, Scott Gray,
+Chris Hallacy, Benjamin Mann, Alec Radford, Aditya Ramesh, Nick Ryder, Daniel M. Ziegler, John Schulman, Dario Amodei, and Sam McCandlish.
+2020. Scaling Laws for Autoregressive Generative Modeling. arXiv:2010.14701 [cs] (Nov. 2020). http://arxiv.org/abs/2010.14701 arXiv: 2010.14701.
+[38] Danny Hernandez, Jared Kaplan, Tom Henighan, and Sam McCandlish. 2021. Scaling Laws for Transfer. arXiv:2102.01293 [cs] (Feb. 2021).
+http://arxiv.org/abs/2102.01293 arXiv: 2102.01293.
+[39] Joel Hestness, Sharan Narang, Newsha Ardalani, Gregory Diamos, Heewoo Jun, Hassan Kianinejad, Md Mostofa Ali Patwary, Yang Yang, and
+Yanqi Zhou. 2017. Deep Learning Scaling is Predictable, Empirically. arXiv:1712.00409 [cs, stat] (Dec. 2017). http://arxiv.org/abs/1712.00409 arXiv:
+1712.00409.
+[40] Daniel Ho, Jennifer King, Russell Wald, and Christopher Wan. 2021. Building a National AI Research Resource . White Paper. Stanford University.
+https://hai.stanford.edu/white-paper-building-national-ai-research-resource
+[41] Erik Hoel. 2021. Big Tech is replacing human artists with AI. https://erikhoel.substack.com/p/big-tech-is-replacing-human-artists
+[42] AI Now Institute. 2021. Democratize AI? How the proposed National AI Research Resource falls short. https://medium.com/@AINowInstitute/
+democratize-ai-how-the-proposed-national-ai-research-resource-falls-short-96ae5f67ccfa
+[43] Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B. Brown, Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario
+Amodei. 2020. Scaling Laws for Neural Language Models. arXiv:2001.08361 [cs, stat] (Jan. 2020). http://arxiv.org/abs/2001.08361 arXiv: 2001.08361.
+[44] Zachary Kenton, Tom Everitt, Laura Weidinger, Iason Gabriel, Vladimir Mikulik, and Geoffrey Irving. 2021. Alignment of Language Agents.
+arXiv:2103.14659 [cs] (March 2021). http://arxiv.org/abs/2103.14659 arXiv: 2103.14659.
+[45] Josh Kenway, Francois Camille, Sasha Costanza-Chock, Deborah Raji, Inioluwa, and Joy Buolamwini. 2022. Bug Bounties For Algorithmic Harms?
+Technical Report. Algorithmic Justice League. https://www.ajl.org/bugs
+[46] Boseop Kim, HyoungSeok Kim, Sang-Woo Lee, Gichang Lee, Donghyun Kwak, Dong Hyeon Jeon, Sunghyun Park, Sungju Kim, Seonhoon Kim,
+Dongpil Seo, Heungsub Lee, Minyoung Jeong, Sungjae Lee, Minsub Kim, Suk Hyun Ko, Seokhun Kim, Taeyong Park, Jinuk Kim, Soyoung Kang,
+Na-Hyeon Ryu, Kang Min Yoo, Minsuk Chang, Soobin Suh, Sookyo In, Jinseong Park, Kyungduk Kim, Hiun Kim, Jisu Jeong, Yong Goo Yeo, Donghoon
+Ham, Dongju Park, Min Young Lee, Jaewook Kang, Inho Kang, Jung-Woo Ha, Woomyoung Park, and Nako Sung. 2021. What Changes Can Large-scale
+Language Models Bring? Intensive Study on HyperCLOVA: Billions-scale Korean Generative Pretrained Transformers. arXiv:2109.04650 [cs] (Nov.
+2021). http://arxiv.org/abs/2109.04650 arXiv: 2109.04650.
+[47] Alex Knapp. 2012. How Much Does It Cost To Find A Higgs Boson? Forbes (June 2012). https://www.forbes.com/sites/alexknapp/2012/07/05/how-
+much-does-it-cost-to-find-a-higgs-boson/ Section: Tech.
+[48] Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. 2012. ImageNet Classification with Deep Convolutional Neural Networks. In Advances
+in Neural Information Processing Systems , F. Pereira, C. J. C. Burges, L. Bottou, and K. Q. Weinberger (Eds.), Vol. 25. Curran Associates, Inc.
+https://proceedings.neurips.cc/paper/2012/file/c399862d3b9d6b76c8436e924a68c45b-Paper.pdf
+[49] Connor Leahy. 2022. Announcing GPT-NeoX-20B. https://blog.eleuther.ai/announcing-20b/
+[50] Chuan Li. 2020. OpenAI’s GPT-3 Language Model: A Technical Overview. https://lambdalabs.com/blog/demystifying-gpt-3/
+[51] Opher Lieber, Or Sharir, Barak Lenz, and Yoav Shoham. 2021. Jurassic-1: Technical Details And Evaluation . Technical Report. AI21 Labs.
+[52] Andrew Lohn and Micha Musser. 2022. AI and Compute: How Much Longer Can Computing Power Drive Artificial Intelligence Progress? Technical
+Report. Center for Security and Emerging Technology. https://doi.org/10.51593/2021CA009
+[53] Margaret Mitchell, Simone Wu, Andrew Zaldivar, Parker Barnes, Lucy Vasserman, Ben Hutchinson, Elena Spitzer, Inioluwa Deborah Raji, and
+Timnit Gebru. 2019. Model Cards for Model Reporting. Proceedings of the Conference on Fairness, Accountability, and Transparency (Jan. 2019),
+220–229. https://doi.org/10.1145/3287560.3287596 arXiv: 1810.03993.
+[54] Shakir Mohamed, Marie-Therese Png, and William Isaac. 2020. Decolonial AI: Decolonial Theory as Sociotechnical Foresight in Artificial Intelligence.
+Philosophy & Technology 33 (Dec. 2020). https://doi.org/10.1007/s13347-020-00405-8
+[55] Nick Walton [@nickwalton00]. 2020. I’ve noticed a number of people using AI Dungeon to test GPT-3’s abilities. While it’s a great way to see how
+GPT-3 can power an interesting application. It’s a poor test of GPT-3’s abilities in general. The first generation of any custom prompt is actually
+18
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+GPT-2. https://twitter.com/nickwalton00/status/1289946861478936577
+[56] David Patterson, Joseph Gonzalez, Quoc Le, Chen Liang, Lluis-Miquel Munguia, Daniel Rothchild, David So, Maud Texier, and Jeff Dean. 2021.
+Carbon Emissions and Large Neural Network Training. arXiv:2104.10350 [cs] (April 2021). http://arxiv.org/abs/2104.10350 arXiv: 2104.10350.
+[57] Ethan Perez, Saffron Huang, Francis Song, Trevor Cai, Roman Ring, John Aslanides, Amelia Glaese, Nat McAleese, and Geoffrey Irving. 2022. Red
+Teaming Language Models with Language Models. arXiv:2202.03286 [cs] (Feb. 2022). http://arxiv.org/abs/2202.03286 arXiv: 2202.03286.
+[58] Alethea Power, Yuri Burda, Harri Edwards, Igor Babuschkin, and Vedant Misra. 2022. Grokking: Generalization Beyond Overfitting on Small
+Algorithmic Datasets. arXiv:2201.02177 [cs] (Jan. 2022). http://arxiv.org/abs/2201.02177 arXiv: 2201.02177.
+[59] Shrimai Prabhumoye, Rafal Kocielnik, Mohammad Shoeybi, Anima Anandkumar, and Bryan Catanzaro. 2021. Few-shot Instruction Prompts for
+Pretrained Language Models to Detect Social Biases. arXiv:2112.07868 [cs] (Dec. 2021). http://arxiv.org/abs/2112.07868 arXiv: 2112.07868.
+[60] Gabriele Prato, Simon Guiroy, Ethan Caballero, Irina Rish, and Sarath Chandar. 2021. Scaling Laws for the Few-Shot Adaptation of Pre-trained
+Image Classifiers. arXiv:2110.06990 [cs] (Oct. 2021). http://arxiv.org/abs/2110.06990 arXiv: 2110.06990.
+[61] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack
+Clark, Gretchen Krueger, and Ilya Sutskever. 2021. Learning Transferable Visual Models From Natural Language Supervision. arXiv:2103.00020 [cs]
+(Feb. 2021). http://arxiv.org/abs/2103.00020 arXiv: 2103.00020.
+[62] Jack W. Rae, Sebastian Borgeaud, Trevor Cai, Katie Millican, Jordan Hoffmann, Francis Song, John Aslanides, Sarah Henderson, Roman Ring,
+Susannah Young, Eliza Rutherford, Tom Hennigan, Jacob Menick, Albin Cassirer, Richard Powell, George van den Driessche, Lisa Anne Hendricks,
+Maribeth Rauh, Po-Sen Huang, Amelia Glaese, Johannes Welbl, Sumanth Dathathri, Saffron Huang, Jonathan Uesato, John Mellor, Irina Higgins,
+Antonia Creswell, Nat McAleese, Amy Wu, Erich Elsen, Siddhant Jayakumar, Elena Buchatskaya, David Budden, Esme Sutherland, Karen Simonyan,
+Michela Paganini, Laurent Sifre, Lena Martens, Xiang Lorraine Li, Adhiguna Kuncoro, Aida Nematzadeh, Elena Gribovskaya, Domenic Donato,
+Angeliki Lazaridou, Arthur Mensch, Jean-Baptiste Lespiau, Maria Tsimpoukelli, Nikolai Grigorev, Doug Fritz, Thibault Sottiaux, Mantas Pajarskas,
+Toby Pohlen, Zhitao Gong, Daniel Toyama, Cyprien de Masson d’Autume, Yujia Li, Tayfun Terzi, Vladimir Mikulik, Igor Babuschkin, Aidan Clark,
+Diego de Las Casas, Aurelia Guy, Chris Jones, James Bradbury, Matthew Johnson, Blake Hechtman, Laura Weidinger, Iason Gabriel, William Isaac,
+Ed Lockhart, Simon Osindero, Laura Rimell, Chris Dyer, Oriol Vinyals, Kareem Ayoub, Jeff Stanway, Lorrayne Bennett, Demis Hassabis, Koray
+Kavukcuoglu, and Geoffrey Irving. 2021. Scaling Language Models: Methods, Analysis & Insights from Training Gopher. arXiv:2112.11446 [cs] (Dec.
+2021). http://arxiv.org/abs/2112.11446 arXiv: 2112.11446.
+[63] Inioluwa Deborah Raji, Emily M. Bender, Amandalynne Paullada, Emily Denton, and Alex Hanna. 2021. AI and the Everything in the Whole Wide
+World Benchmark. arXiv:2111.15366 [cs] (Nov. 2021). http://arxiv.org/abs/2111.15366 arXiv: 2111.15366.
+[64] Inioluwa Deborah Raji and Joy Buolamwini. 2019. Actionable Auditing: Investigating the Impact of Publicly Naming Biased Performance Results
+of Commercial AI Products. In Proceedings of the 2019 AAAI/ACM Conference on AI, Ethics, and Society (AIES ’19) . Association for Computing
+Machinery, New York, NY, USA, 429–435. https://doi.org/10.1145/3306618.3314244
+[65] Inioluwa Deborah Raji, Andrew Smart, Rebecca N. White, Margaret Mitchell, Timnit Gebru, Ben Hutchinson, Jamila Smith-Loud, Daniel Theron,
+and Parker Barnes. 2020. Closing the AI accountability gap: defining an end-to-end framework for internal algorithmic auditing. In Proceedings of
+the 2020 Conference on Fairness, Accountability, and Transparency (FAT* ’20) . Association for Computing Machinery, New York, NY, USA, 33–44.
+https://doi.org/10.1145/3351095.3372873
+[66] Jonathan S. Rosenfeld, Amir Rosenfeld, Yonatan Belinkov, and Nir Shavit. 2019. A Constructive Prediction of the Generalization Error Across Scales.
+arXiv:1909.12673 [cs, stat] (Dec. 2019). http://arxiv.org/abs/1909.12673 arXiv: 1909.12673.
+[67] Cynthia Rudin, Caroline Wang, and Beau Coker. 2020. The Age of Secrecy and Unfairness in Recidivism Prediction. Harvard Data Science Review 2,
+1 (March 2020). https://doi.org/10.1162/99608f92.6ed64b30
+[68] Victor Sanh, Albert Webson, Colin Raffel, Stephen H. Bach, Lintang Sutawika, Zaid Alyafeai, Antoine Chaffin, Arnaud Stiegler, Teven Le Scao,
+Arun Raja, Manan Dey, M. Saiful Bari, Canwen Xu, Urmish Thakker, Shanya Sharma Sharma, Eliza Szczechla, Taewoon Kim, Gunjan Chhablani,
+Nihal Nayak, Debajyoti Datta, Jonathan Chang, Mike Tian-Jian Jiang, Han Wang, Matteo Manica, Sheng Shen, Zheng Xin Yong, Harshit Pandey,
+Rachel Bawden, Thomas Wang, Trishala Neeraj, Jos Rozen, Abheesht Sharma, Andrea Santilli, Thibault Fevry, Jason Alan Fries, Ryan Teehan, Stella
+Biderman, Leo Gao, Tali Bers, Thomas Wolf, and Alexander M. Rush. 2021. Multitask Prompted Training Enables Zero-Shot Task Generalization.
+arXiv:2110.08207 [cs] (Dec. 2021). http://arxiv.org/abs/2110.08207 arXiv: 2110.08207.
+[69] Roy Schwartz, Jesse Dodge, Noah A. Smith, and Oren Etzioni. 2020. Green AI. Commun. ACM 63, 12 (Nov. 2020), 54–63. https://doi.org/10.1145/
+3381831
+[70] Jaime Sevilla, Pablo Villalobos, Juan Felipe Cerón, Matthew Burtell, Lennart Heim, Amogh B Nanjajjar, Anson Ho, Tamay Besiroglu, Marius
+Hobbhahn, and Jean-Stanislas Denain. 2021. Parameter, Compute and Data Trends in Machine Learning. https://docs.google.com/spreadsheets/d/
+1AAIebjNsnJj_uKALHbXNfn3_YsT6sHXtCU0q7OIPuc4/
+[71] Tom Simonite. 2021. What Really Happened When Google Ousted Timnit Gebru. Wired (June 2021). https://www.wired.com/story/google-timnit-
+gebru-ai-what-really-happened/ Section: tags.
+[72] Shaden Smith, Mostofa Patwary, Brandon Norick, Patrick LeGresley, Samyam Rajbhandari, Jared Casper, Zhun Liu, Shrimai Prabhumoye, George
+Zerveas, Vijay Korthikanti, Elton Zhang, Rewon Child, Reza Yazdani Aminabadi, Julie Bernauer, Xia Song, Mohammad Shoeybi, Yuxiong He,
+Michael Houston, Saurabh Tiwary, and Bryan Catanzaro. 2022. Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B, A Large-Scale
+Generative Language Model. arXiv:2201.11990 [cs] (Feb. 2022). http://arxiv.org/abs/2201.11990 arXiv: 2201.11990.
+19
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+[73] Irene Solaiman and Christy Dennison. 2021. Process for Adapting Language Models to Society (PALMS) with Values-Targeted Datasets.
+arXiv:2106.10328 [cs] (Nov. 2021). http://arxiv.org/abs/2106.10328 arXiv: 2106.10328.
+[74] Emma Strubell, Ananya Ganesh, and Andrew McCallum. 2019. Energy and Policy Considerations for Deep Learning in NLP. arXiv:1906.02243 [cs]
+(June 2019). http://arxiv.org/abs/1906.02243 arXiv: 1906.02243.
+[75] Alex Tamkin, Miles Brundage, Jack Clark, and Deep Ganguli. 2021. Understanding the Capabilities, Limitations, and Societal Impact of Large
+Language Models. arXiv:2102.02503 [cs] (Feb. 2021). http://arxiv.org/abs/2102.02503 arXiv: 2102.02503.
+[76] Latitude Team. 2020. AI Dungeon: Dragon Model Upgrade. https://aidungeon.medium.com/ai-dungeon-dragon-model-upgrade-7e8ea579abfe
+[77] Will Thomas. 2020. Flagship Neutrino Project Working to Keep Costs Within Cap. https://www.aip.org/fyi/2020/flagship-neutrino-project-
+working-keep-costs-within-cap Publisher: American Institute of Physics.
+[78] Romal Thoppilan, Daniel De Freitas, Jamie Hall, Noam Shazeer, Apoorv Kulshreshtha, Heng-Tze Cheng, Alicia Jin, Taylor Bos, Leslie Baker, Yu
+Du, YaGuang Li, Hongrae Lee, Huaixiu Steven Zheng, Amin Ghafouri, Marcelo Menegali, Yanping Huang, Maxim Krikun, Dmitry Lepikhin,
+James Qin, Dehao Chen, Yuanzhong Xu, Zhifeng Chen, Adam Roberts, Maarten Bosma, Yanqi Zhou, Chung-Ching Chang, Igor Krivokon, Will
+Rusch, Marc Pickett, Kathleen Meier-Hellstern, Meredith Ringel Morris, Tulsee Doshi, Renelito Delos Santos, Toju Duke, Johnny Soraker, Ben
+Zevenbergen, Vinodkumar Prabhakaran, Mark Diaz, Ben Hutchinson, Kristen Olson, Alejandra Molina, Erin Hoffman-John, Josh Lee, Lora Aroyo,
+Ravi Rajakumar, Alena Butryna, Matthew Lamm, Viktoriya Kuzmina, Joe Fenton, Aaron Cohen, Rachel Bernstein, Ray Kurzweil, Blaise Aguera-Arcas,
+Claire Cui, Marian Croak, Ed Chi, and Quoc Le. 2022. LaMDA: Language Models for Dialog Applications. arXiv:2201.08239 [cs] (Jan. 2022).
+http://arxiv.org/abs/2201.08239 arXiv: 2201.08239.
+[79] Ted Underwood. 2021. Science fiction hasn’t prepared us to imagine machine learning. https://tedunderwood.com/2021/02/02/why-sf-hasnt-
+prepared-us-to-imagine-machine-learning/
+[80] Ben Wang and Aran Komatsuzaki. 2021. GPT-J-6B: A 6 Billion Parameter Autoregressive Language Model. https://github.com/kingoflolz/mesh-
+transformer-jax
+[81] Shuohuan Wang, Yu Sun, Yang Xiang, Zhihua Wu, Siyu Ding, Weibao Gong, Shikun Feng, Junyuan Shang, Yanbin Zhao, Chao Pang, Jiaxiang Liu,
+Xuyi Chen, Yuxiang Lu, Weixin Liu, Xi Wang, Yangfan Bai, Qiuliang Chen, Li Zhao, Shiyong Li, Peng Sun, Dianhai Yu, Yanjun Ma, Hao Tian, Hua
+Wu, Tian Wu, Wei Zeng, Ge Li, Wen Gao, and Haifeng Wang. 2021. ERNIE 3.0 Titan: Exploring Larger-scale Knowledge Enhanced Pre-training for
+Language Understanding and Generation. arXiv:2112.12731 [cs] (Dec. 2021). http://arxiv.org/abs/2112.12731 arXiv: 2112.12731.
+[82] Jason Wei, Maarten Bosma, Vincent Y. Zhao, Kelvin Guu, Adams Wei Yu, Brian Lester, Nan Du, Andrew M. Dai, and Quoc V. Le. 2021. Finetuned
+Language Models Are Zero-Shot Learners. arXiv:2109.01652 [cs] (Dec. 2021). http://arxiv.org/abs/2109.01652 arXiv: 2109.01652.
+[83] Laura Weidinger, John Mellor, Maribeth Rauh, Conor Griffin, Jonathan Uesato, Po-Sen Huang, Myra Cheng, Mia Glaese, Borja Balle, Atoosa
+Kasirzadeh, Zac Kenton, Sasha Brown, Will Hawkins, Tom Stepleton, Courtney Biles, Abeba Birhane, Julia Haas, Laura Rimell, Lisa Anne Hendricks,
+William Isaac, Sean Legassick, Geoffrey Irving, and Iason Gabriel. 2021. Ethical and social risks of harm from Language Models. arXiv:2112.04359
+[cs](Dec. 2021). http://arxiv.org/abs/2112.04359 arXiv: 2112.04359.
+[84] Johannes Welbl, Amelia Glaese, Jonathan Uesato, Sumanth Dathathri, John Mellor, Lisa Anne Hendricks, Kirsty Anderson, Pushmeet Kohli, Ben
+Coppin, and Po-Sen Huang. 2021. Challenges in Detoxifying Language Models. In Findings of the Association for Computational Linguistics: EMNLP
+2021. Association for Computational Linguistics, Punta Cana, Dominican Republic, 2447–2469. https://doi.org/10.18653/v1/2021.findings-emnlp.210
+[85] Jess Whittlestone and Jack Clark. 2021. Why and How Governments Should Monitor AI Development. arXiv:2108.12427 [cs] (Aug. 2021).
+http://arxiv.org/abs/2108.12427 arXiv: 2108.12427.
+[86] M. J. Wolf, K. W. Miller, and F. S. Grodzinsky. 2017. Why We Should Have Seen That Coming: Comments on Microsoft’s Tay “Experiment,” and
+Wider Implications. The ORBIT Journal 1, 2 (Jan. 2017), 1–12. https://doi.org/10.29297/orbit.v1i2.49
+[87] Shaohua Wu, Xudong Zhao, Tong Yu, Rongguo Zhang, Chong Shen, Hongli Liu, Feng Li, Hong Zhu, Jiangang Luo, Liang Xu, and Xuanwei
+Zhang. 2021. Yuan 1.0: Large-Scale Pre-trained Language Model in Zero-Shot and Few-Shot Learning. arXiv:2110.04725 [cs] (Oct. 2021). http:
+//arxiv.org/abs/2110.04725 arXiv: 2110.04725.
+[88] Jing Xu, Da Ju, Margaret Li, Y.-Lan Boureau, Jason Weston, and Emily Dinan. 2021. Bot-Adversarial Dialogue for Safe Conversational Agents. In
+Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies,
+NAACL-HLT 2021, Online, June 6-11, 2021 , Kristina Toutanova, Anna Rumshisky, Luke Zettlemoyer, Dilek Hakkani-Tür, Iz Beltagy, Steven Bethard,
+Ryan Cotterell, Tanmoy Chakraborty, and Yichao Zhou (Eds.). Association for Computational Linguistics, 2950–2968. https://doi.org/10.18653/v1/
+2021.naacl-main.235
+[89] Wei Zeng, Xiaozhe Ren, Teng Su, Hui Wang, Yi Liao, Zhiwei Wang, Xin Jiang, ZhenZhang Yang, Kaisheng Wang, Xiaoda Zhang, Chen Li, Ziyan
+Gong, Yifan Yao, Xinjing Huang, Jun Wang, Jianfeng Yu, Qi Guo, Yue Yu, Yan Zhang, Jin Wang, Hengtao Tao, Dasen Yan, Zexuan Yi, Fang Peng,
+Fangqing Jiang, Han Zhang, Lingfeng Deng, Yehong Zhang, Zhe Lin, Chao Zhang, Shaojie Zhang, Mingyue Guo, Shanzhi Gu, Gaojun Fan, Yaowei
+Wang, Xuefeng Jin, Qun Liu, and Yonghong Tian. 2021. PanGu-$\alpha$: Large-scale Autoregressive Pretrained Chinese Language Models with
+Auto-parallel Computation. arXiv:2104.12369 [cs] (April 2021). http://arxiv.org/abs/2104.12369 arXiv: 2104.12369.
+[90] Donglin Zhuang, Xingyao Zhang, Shuaiwen Leon Song, and Sara Hooker. 2021. Randomness In Neural Network Training: Characterizing The
+Impact of Tooling. arXiv:2106.11872 [cs] (June 2021). http://arxiv.org/abs/2106.11872 arXiv: 2106.11872.
+20
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+A APPENDIX
+A.1 Author Contribution Statement
+Jack Clark, Deep Ganguli, and Dario Amodei wrote the paper, with helpful comments from everyone at Anthropic.
+Jack Clark conceptualized the first drafts of the paper, and constructed the main arguments in Sections 3, and 4
+Deep Ganguli performed all experiments and analyses in Sections 2, created the figures, and helped frame and write the
+main arguments in the paper.
+Dario Amodei gave detailed feedback throughout the project and provided guidance on the overall framing of the paper
+and experiments.
+Christopher Olah gave initial feedback on early drafts of the paper and contributed numerous insights relating to how
+capabilities can emerge abruptly at different scales.
+Liane Lovitt suggested ways to frame the paper to better communicate insights to policymakers.
+Danny Hernandez carried out analysis of compute usage of academia versus industry.
+Dawn Drain provided an analysis of how AI developers may use scaling laws.
+Jared Kaplan helped with initial conceptualization of the project, wrote the infrastructure used to carry out the
+experiments, advised Deep Ganguli throughout the project, and made comments on the paper.
+Neel Nanda, Liane Lovitt, Danny Hernandez, Zac Hatfield-Dodds, and Daniela Amodei made extensive comments to
+the paper.
+Amanda Askell provided feedback on the COMPAS experiment, and the broader arguments being made in the paper.
+Led by Tom Brown in collaboration with Sam McCandlish, much of the technical staff at Anthropic contributed
+to efficient distributed model training and sampling, the underlying ML, and cluster stability. Contributors include
+Nicholas Joseph, Tom Henighan, and Andy Jones. Nelson Elhage, Kamal Ndousse, Zac Hatfield-Dodds. Ben Mann also
+contributed to this infrastructure and built the human feedback interface. Jackson Kernion managed the crowd workers
+and maintained the infrastructure.
+Sam McCandlish led model pretraining efforts, often in collaboration with Jared Kaplan.
+Tom Henighan managed our research cluster, helped build our distributed training system. He also helped with
+ML research on large language models. Nova DasSarma has also helped manage the cluster.
+21
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+Andy Jones was central in building our sampling infrastructure. He also provided engineering support to Deep
+Ganguli for all experiments.
+A.2 How Developers Use Scaling Laws
+Developers may use scaling laws in a variety of ways, some of which we outline here.
+(1)To empirically estimate the compute-efficient frontier — the lowest possible test loss one can achieve within
+a fixed compute budget. This can help developers forecast the theoretical costs of training large models and
+allocate resources accordingly.
+(2)To infer whether simple increases in scale may have the potential to unlock capabilities that don’t work at smaller
+scale. This helps developers forecast progress in AI and to tackle more ambitious problems.
+(3)To quantitatively test whether enhancements other than scaling (e.g. hyper-parameter tuning, novel architecture
+design, etc.) actually matter as models increase in scale. If these non-scale based changes do not give improvements
+at scale, then developers can allocate developer time to pursuing scale relative to other alternatives.
+(4)To debug model training. If a bigger model is not doing better than a smaller model, then developers know to
+prioritize looking for possible bugs inherent only to models of sufficient scale. Some commonly encountered
+bugs that become increasingly pernicious with scale involve numerical precision issues, data quality issues,
+over-fitting issues, and hardware related issues.
+(5)To evaluate the performance of models on a common scale. Often, different researchers publish results for models
+of different sizes. A researcher can use scaling laws to infer how much of the differences in model accuracy
+are merely due to scale, and also how differently sized models compare to one’s own models after accounting
+for scale. For instance, an improved approach might be comparable to a 10% model size increase. Knowing this
+information gives two separate options for pursuing such a model improvement.
+A.3 Recommendation System Experiment
+To illustrate how smooth general capability scaling (discussed in Section 2.1) may correlate with task performance and
+forecast economic value, we perform a small original experiment where we analyze the relationship between scale
+and capabilities for GPT-3-like language models [ 3] to be used as recommendation systems with zero-shot learning.
+We choose a recommendation system example because these systems have tangible economic relevance and societal
+impact.
+Figure 8 shows that language models smoothly decrease in the standard Root Mean Square Error (RMSE, lower is
+better) metric on the widely used Movielens 1M movie recommendation system task [ 33] as they increase in size. The
+smallest model achieves a significantly better RMSE ( 1.06) than chance (RMSE 1.91), and the largest model achieves a
+significantly lower RMSE ( 0.94) than a strong baseline model (RMSE 0.98, see below for further details). Although no
+models achieve state of the art (SOTA) performance (RMSE 0.82), these results are still surprising because the language
+models (in our zero-shot setting) see two orders of magnitude less training data than the SOTA model.
+Trends like those in Figure 8 forecast how much it would likely cost to develop a state-of-the-art capability on an
+economically valuable task. In this particular case, we get an incredulous result - at 800T parameters, a language model
+will achieve state of the art performance with zero-shot learning. This number indicates that it’s unlikely language
+models will be used as commercially deployed recommendation systems in this manner for several years (and that
+22
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+107
+108
+109
+1010
+Number of Parameters0.850.900.951.001.05LM RMSE
+Strong Baseline
+SOTAReccomendation System Benchmark
+Fig. 8 Language models can perform as zero-shot recommendation systems with increasing scale. This demonstrates how general
+capability scaling can correlate with an economically valuable task as described in Section 2.1.
+even then it might not be worth its costs).23But the results of a different experiment (e.g. a fine-tuned language model
+trained explicitly to solve this task), could have justified expenditure rather than advising against it. As such, scaling
+laws can de-risk investment without saying anything about the detailed behavior of the model in specific cases.
+More specific technical details are as follows. To perform this experiment, we chose the Movielens 1M (1 million
+ratings) dataset [ 33] both because of its widespread use, the fact that it contains demographic information about users
+(age, occupation, gender, zip code), and because we have observed language models to have considerable knowledge
+about movies (presumably due to a preponderance of text on the internet about movies).
+The dataset consists of ∼4K movies rated by ∼6K users on a scale of 1-5. On average, each user has rated ∼160
+movies, which means 96% of the data are missing. The goal of a recommendation system is to predict these missing
+values, which anticipate how a user will rate a movie they have not previously rated before.
+To evaluate performance on this task, we take the standard approach of partitioning the data into a train and test set,
+using 1% of the total dataset ( 10K ratings) as our test set. Performance on this task is typically reported as the root
+mean squared error (RMSE) between the predicted and actual ratings on the test set. Perfect predictions would yield an
+RMSE of 0and random guessing corresponds to an RMSE of 1.91. A strong baseline model simply assigns the average
+rating (averaged across all users) in the train set as the predicted ratings for all movies in the test set. This essentially
+ranks movies by their overall popularity, independent of any personalization. The strong baseline achieves an RMSE of
+0.98. State of the art performance on this dataset, is currently an RMSE of 0.822according to [31].24
+In general, state of the art algorithms rely on matrix completion (also known as matrix factorization) algorithms,
+which simply try to impute the missing values in the user-by-movie matrix by expressing this matrix as the outer product
+of a small number of low dimensional latent vectors, which are learned from the training data, in order to explicitly
+minimize the RMSE between predicted and actual ratings. Algorithms with lower RMSEs are typically parameterized
+by neural network models.
+It’s unclear how to use language models as matrix factorizers. Instead, we employ similar zero-shot learning approach
+with the following prompt:
+A {age} {gender} who is employed as an {occupation} previously rated
+{list_of_movies_and_ratings_from_training_set} will rate
+{movie_from_test_set} a
+We replace the variables in curly braces with their corresponding values from the training set (for the first 4variables)
+and test set (for the last variable). We then compute the probability that the language model will predict the next token
+23Of course, algorithmic improvement that shifts the scaling laws is still possible.
+24https://paperswithcode.com/sota/collaborative-filtering-on-movielens-1m
+23
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+in the sequence as a 1,2,3,4, or a 5. Finally, we compute the weighted mean of the ratings, where the weights
+are equal to the probabilities (which are normalized to sum to 1) the language model assigns to those ratings as the
+final rating prediction.
+We use zero-shot learning because the variable, list_of_movies_and_ratings_from_training_set , can often
+correspond to a very long sequence of text, since on average users have rated ∼200movies. Because our models have a
+fundamental limit on how large input text sequences can be, as determined by the context window length, we randomly
+sample up to 500 previously rated movies per user, in order to stay within the limits. An alternative strategy is to use
+few-shot learning, where multiple users are provided as examples in the prompt, but only show a small number, e.g., 5,
+of previously rated movies per user. Empirically, we found that our zero-shot approach (one user, but a lot of previously
+rated movies by that user) led to far lower RMSE than all of our few-shot learning experiments.
+There is a movie recommendation task for language models in the BigBench framework based on a Movielens
+benchmark.25However, this task is formulated specifically for a language model, in the form of a multiple choice task
+as opposed to a regression or matrix completion task. Our formulation of this task allows us to directly compare general
+purpose language models to special purpose systems on the same axis in order to assess a more realistic capability.
+Finally, we note that we can extend the analysis we do here to other economically valuable real-world tasks such as
+those in the recent Real-World Few-Shot Text-Classification (RAFT) benchmark [1].
+A.4 COMPAS Experiment
+We use the same dataset, filtering operations, and metrics used for the ProPublica analysis of COMPAS [ 2] (taken
+directly from the Ipython Notebook on GitHub).26We use the same prompt as [ 22] (which was designed for a human
+recidivism prediction experiment) for the language model:
+The defendant is a {sex} aged {age}. They have been charged with:
+{c_charge_desc}. This crime is classified as a {c_charge_degree}.
+They have been convicted of {priors_count} prior crimes. They
+have {juv_fel_count} juvenile felony charges and {juv_misd_count}
+juvenile misdemeanor charges on their record.
+Do you think this person will commit another crime within 2 years?
+We replace the variables in curly braces with values for each defendant in the dataset. Following [ 22] we also consider a
+prompt in which race is included, by changing the first sentence in the above prompt to be:
+The defendant is a {race} {sex} aged {age} . We rely on few-shot learning [ 11], in which we provide the
+language model with 50labeled examples taken at random from the training dataset (less than 1% of the data) before
+querying the models on each independent test prompt.
+Next, given the prompt above, we compute the probability that the next token in the prompt is a Yesand a No.
+We normalize these two probabilities to sum to 1. We then directly compare the probability of a Yesresponse to the
+ground-truth label as to whether or not the defendant in question actually re-offended, in addition to the analogous
+prediction provided by COMPAS. We use the Fairlearn Python package27to compute all metrics reported in the main
+text.
+25https://github.com/google/BIG-bench/blob/main/bigbench/benchmark_tasks/movie_recommendation/README.md
+26https://github.com/propublica/compas-analysis
+27https://github.com/fairlearn/fairlearn
+24
+Predictability and Surprise in Large Generative Models FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea
+107
+108
+109
+10100.750.800.850.900.951.001.05Predictive Accuracy Ratio
+COMPASFairBlack to white Accuracy Ratio
+Fig. 9 Predictive accuracy ratio for Black versus white defendants. A value of 1is fair. COMPAS achieves a value of 0.97. The
+language models show no clear trend in this ratio, regardless of when race is excluded in the prompt (blue) or included (orange).
+However, the largest language models are slightly less equitable than COMPAS according to this metric.
+In addition to the metrics reported in the main text, we also examined the predictive accuracy ratio for Black versus
+white defendants as in [ 2,22]. We saw no clear trends with model size (Figure 9) regardless of whether race was excluded
+from the prompt (blue) or included (orange). Though the largest language models are slightly less fair than COMPAS
+according to this metric.
+Our analysis suffers from several important caveats. First, it is well known that there are many more fairness metrics
+than the two we consider here, and that it’s statistically impossible for a single algorithm to achieve parity on all these
+metrics e.g., [ 26]. Second, benchmark risk assessment instrument datasets often contain numerous measurement biases
+and errors which can make them ill-suited for making claims about real-world impact without carefully considering
+the the complicated socio-technical systems (in this case, the US criminal justice system) in which they are used [ 6].
+Finally, comparisons to proprietary algorithms will always be difficult to make precise without either significant reverse
+engineering or pressure from companies to lead to more transparent algorithms [67].
+A.5 Open Ended Outputs and Creative Expression
+Capabilities may emerge in areas that are challenging to evaluate quantitatively, and therefore likely to resist systematic
+analysis. A key example is the case of AI models mimicking human creative expression. As a concrete example, we
+provide28a sample of over three thousand imitation poems generated randomly from a large language model (more
+accurately, these are samples generated from a prompt including several modern and contemporary poems, so a small
+fraction of the samples are not actually poems). We cannot provide any official evaluation, but informally we find both
+the quality of some of the texts, and the imitation of specific authorial styles quite impressive. Some professional writers
+who are aware of the growing capabilities of large language models are very impressed [ 41], but also alarmed by their
+far-reaching implications. Academics outside of engineering departments are also starting to consider the pros and
+cons of machine creativity [79].
+A.6 Toxicity Experiment Details
+We follow a similar analysis outlined in [ 3] where we leverage the RealToxicityPrompts [ 29] dataset to elicit short
+comments in response to real world samples of text (prompts) obtained from the internet. Following [ 29], we label the
+prompts as ‘toxic’ if they have a toxicity score >0.5, otherwise we label them ‘non-toxic’. We then obtain a random
+28https://gist.github.com/jareddk/6512393d4a996fbf3a72be265a5285aa
+25
+FAccT ’22, June 21–24, 2022, Seoul, Republic of Korea Ganguli, et al.
+sample of 1K of these prompts, with an equal proportion of ‘toxic’ and ‘non-toxic’. Next, we we sample 25model
+responses from language models of various sizes [3] per prompt. We use the same prompts per language model.
+We then measure the toxicity of the model responses with an open-source toxicity detector [ 32] that outputs a score,
+between 0and1, with a higher score corresponding to more toxic content. Next, we fit a linear regression model, where
+we predict the toxicity score based on a categorical coding of model size, and a binary indicator as to whether the
+prompt was labeled as toxic or non-toxic. We plot the estimated coefficients on model size (thus controlling for the
+toxicity of the prompt) and the 95% confidence intervals around them in the main text.
+Our analysis is subject to several caveats. First, it’s unclear how the magnitude of the effect size in Figure 5 influences
+human perception of the toxicity of the generated text. Different people often have different perceptions about text
+with the same toxicity score [ 84]. Second, automated toxicity detection algorithms are known to suffer from several
+limitations, for example, they can be biased for certain minority groups [ 29,84]. Finally, our reliance on an open-source
+toxicity detector [ 32] is counter to the more common use of the Perspective API for toxicity detection (though we
+believe these toxicity detectors to be similar[3]).
+A.7 AI and Compute Analysis Details
+We leverage data from existing work on estimating compute usage for training large-scale AI models29which was
+recently complemented with additional data from more recent experiments [ 70]. In this augmented dataset, we label
+training runs as Industry or Academic based primarily on affiliations of first authors. If a first author had a dual
+affiliation, we labeled the run as industry, because in practice we’ve found that with access to both, industry-controlled
+compute is the preferred path. The fit it in Figure 7 (Right) is based on a LOWESS regression with default parameters
+from the Seaborn Python package. These data are incomplete and should be interpreted carefully due to sampling
+bias. For example, we do not have access to compute estimates for industrial models used in production for search,
+recommendation engines, or self driving cars.
+29https://openai.com/blog/ai-and-compute/
+26

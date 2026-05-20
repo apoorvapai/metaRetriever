@@ -1,0 +1,703 @@
+Title: A Neural Conversational Model
+
+arXiv:1506.05869v3  [cs.CL]  22 Jul 2015ANeural ConversationalModel
+OriolVinyals VINYALS @GOOGLE.COM
+Google
+QuocV.Le QVL@GOOGLE.COM
+Google
+Abstract
+Conversational modeling is an important task in
+natural language understanding and machine in-
+telligence. Although previous approaches ex-
+ist, they are often restricted to speciﬁc domains
+(e.g.,bookinganairlineticket)andrequirehand-
+crafted rules. In this paper, we present a sim-
+pleapproachforthistaskwhichusestherecently
+proposed sequence to sequence framework. Our
+model conversesby predicting the next sentence
+given the previous sentence or sentences in a
+conversation. The strength of our model is that
+it can be trained end-to-end and thus requires
+much fewer hand-craftedrules. We ﬁnd that this
+straightforward model can generate simple con-
+versations given a large conversational training
+dataset. Our preliminaryresultssuggestthat, de-
+spite optimizing the wrong objective function,
+the model is able to converse well. It is able
+extract knowledge from both a domain speciﬁc
+dataset, and from a large, noisy, and general do-
+main dataset of movie subtitles. On a domain-
+speciﬁc IT helpdesk dataset, the model can ﬁnd
+a solution to a technical problem via conversa-
+tions. On a noisy open-domain movie transcript
+dataset, the model can perform simple forms of
+common sense reasoning. As expected, we also
+ﬁndthatthelackofconsistencyisacommonfail-
+uremodeofourmodel.
+1. Introduction
+Advances in end-to-end training of neural networks have
+ledtoremarkableprogressinmanydomainssuchasspeech
+recognition, computer vision, and language processing.
+Recent work suggests that neural networks can do more
+Proceedings of the 31stInternational Conference on Machine
+Learning, Lille, France, 2015. JMLR: W&CP volume 37. Copy-
+right 2015 bythe author(s).thanjustmereclassiﬁcation,theycanbeusedtomapcom-
+plicated structures to other complicated structures. An ex -
+ample of this is the task of mappinga sequence to another
+sequencewhichhasdirectapplicationsin naturallanguage
+understanding ( Sutskeveretal. ,2014). The main advan-
+tage of this framework is that it requires little feature en-
+gineering and domain speciﬁcity whilst matching or sur-
+passing state-of-the-art results. This advance, in our opi n-
+ion, allows researchersto work on tasks for which domain
+knowledgemaynotbereadilyavailable,orfortaskswhich
+aresimplytoohardtodesignrulesmanually.
+Conversationalmodelingcandirectlybeneﬁtfromthisfor-
+mulationbecauseit requiresmappingbetween queriesand
+reponses. Due to the complexity of this mapping, conver-
+sational modelinghas previouslybeen designedto be very
+narrowindomain,with a majorundertakingonfeatureen-
+gineering. In this work, we experiment with the conversa-
+tion modeling task by casting it to a task of predicting the
+next sequence given the previous sequence or sequences
+using recurrent networks ( Sutskeveretal. ,2014). We ﬁnd
+that this approach can do surprisingly well on generating
+ﬂuentandaccuraterepliestoconversations.
+We test the model on chat sessions from an IT helpdesk
+datasetofconversations,andﬁndthatthemodelcansome-
+times track the problem and provide a useful answer to
+the user. We also experiment with conversations obtained
+from a noisy dataset of movie subtitles, and ﬁnd that the
+model can hold a natural conversationand sometimes per-
+form simple forms of common sense reasoning. In both
+cases, the recurrent nets obtain better perplexity compare d
+tothen-grammodelandcaptureimportantlong-rangecor-
+relations. From a qualitative point of view, our model is
+sometimesabletoproducenaturalconversations.
+2. RelatedWork
+Our approach is based on recent work which pro-
+posed to use neural networks to map sequences to se-
+quences( Kalchbrenner&Blunsom ,2013;Sutskeveret al. ,
+2014;Bahdanauet al. ,2014). This framework has been
+A Neural Conversational Model
+used for neural machine translation and achieves im-
+provements on the English-French and English-German
+translation tasks from the WMT’14 dataset ( Luonget al. ,
+2014;Jean etal. ,2014). It has also been used for
+other tasks such as parsing ( Vinyalsetal. ,2014a) and
+image captioning ( Vinyalset al. ,2014b). Since it is
+well known that vanilla RNNs suffer from vanish-
+ing gradients, most researchers use variants of Long
+Short Term Memory (LSTM) recurrent neural net-
+works(Hochreiter& Schmidhuber ,1997).
+Our work is also inspired by the recent success of neu-
+rallanguagemodeling( Bengioet al. ,2003;Mikolovet al. ,
+2010;Mikolov,2012), which shows that recurrent neural
+networks are rather effective models for natural language.
+Morerecently,workbySordonietal.( Sordoniet al. ,2015)
+andShanget al. ( Shanget al. ,2015), used recurrentneural
+networkstomodeldialoguein shortconversations(trained
+onTwitter-stylechats).
+Building bots and conversational agents has been pur-
+sued by many researchers over the last decades, and it
+is out of the scope of this paper to provide an exhaus-
+tive list of references. However, most of these systems
+require a rather complicated processing pipeline of many
+stages (Lesteret al. ,2004;Will,2007;Jurafsky&Martin ,
+2009). Our work differs from conventional systems by
+proposing an end-to-end approach to the problem which
+lacks domain knowledge. It could, in principle, be com-
+bined with other systems to re-score a short-list of can-
+didate responses, but our work is based on producing an-
+swers given by a probabilistic model trained to maximize
+theprobabilityoftheanswergivensomecontext.
+3. Model
+Our approach makes use of the sequence-to-sequence
+(seq2seq) framework described in ( Sutskeveretal. ,2014).
+The model is based on a recurrent neural network which
+reads the input sequence one token at a time, and predicts
+theoutputsequence,alsoonetokenatatime. Duringtrain-
+ing,thetrueoutputsequenceisgiventothemodel,solearn-
+ing can be done by backpropagation. The model is trained
+tomaximizethecrossentropyofthecorrectsequencegiven
+its context. Duringinference,giventhat thetrue outputse -
+quenceisnotobserved,wesimplyfeedthepredictedoutput
+tokenasinputtopredictthenextoutput. Thisisa“greedy”
+inference approach. A less greedy approach would be to
+use beam search, and feed several candidates at the previ-
+ous step to the next step. The predicted sequence can be
+selectedbasedontheprobabilityofthesequence.
+Concretely, suppose that we observe a conversation with
+twoturns: theﬁrstpersonutters“ABC”,andsecondperson
+replies “WXYZ”. We can use a recurrent neural network,Figure 1. Using the seq2seqframework for modeling conversa-
+tions.
+and trainto map“ABC” to “WXYZ” asshown in Figure 1
+above. The hidden state of the model when it receives the
+end of sequence symbol “ <eos>” can be viewed as the
+thoughtvector becauseit storestheinformationofthesen-
+tence,orthought,“ABC”.
+The strength of this model lies in its simplicity and gener-
+ality. We canuse thismodelformachinetranslation,ques-
+tion/answering, and conversations without major changes
+in the architecture. Applying this technique to conversa-
+tion modeling is also straightforward: the input sequence
+canbetheconcatenationofwhathasbeenconversedsofar
+(thecontext),andtheoutputsequenceisthereply.
+Unlike easier tasks like translation, however, a model
+like sequence-to-sequencewill not be able to successfully
+“solve” the problem of modeling dialogue due to sev-
+eral obvious simpliﬁcations: the objective function being
+optimized does not capture the actual objective achieved
+through human communication, which is typically longer
+termandbasedonexchangeofinformationratherthannext
+step prediction. The lack of a model to ensure consistency
+andgeneralworldknowledgeisanotherobviouslimitation
+ofa purelyunsupervisedmodel.
+4. Datasets
+In our experimentswe used two datasets: a closed-domain
+IT helpdesk troubleshooting dataset and an open-domain
+movietranscriptdataset. Thedetailsofthetwodatasetsar e
+asfollows.
+4.1.IT Helpdesk Troubleshootingdataset
+Inourﬁrstsetofexperiments,weusedadatasetwhichwas
+extracted from a IT helpdesk troubleshootingchat service.
+Inthisservice,costumersfacecomputerrelatedissues,an d
+a specialist help them by conversing and walking through
+a solution. Typical interactions (or threads) are 400 words
+long, and turn taking is clearly signaled. Our training set
+contains 30M tokens, and 3M tokens were used as valida-
+tion. Some amount of clean up was performed, such as
+removingcommonnames,numbers,andfullURLs.
+A Neural Conversational Model
+4.2.OpenSubtitlesdataset
+We also tested our model on the OpenSubtitles
+dataset (Tiedemann ,2009). This dataset consists of
+movie conversations in XML format. It contains sen-
+tences uttered by characters in movies. We applied a
+simple processing step removing XML tags and obvi-
+ous non-conversational text (e.g., hyperlinks) from the
+dataset. As turn taking is not clearly indicated, we treated
+consecutive sentences assuming they were uttered by
+different characters. We trained our model to predict the
+next sentence given the previous one, and we did this for
+every sentence (noting that this doubles our dataset size,
+as each sentence is used both for context and as target).
+Ourtrainingandvalidationsplithas62Msentences(923M
+tokens) as training examples, and the validation set has
+26M sentences (395M tokens). The split is done in such a
+way that each sentence in a pair of sentences either appear
+together in the training set or test set but not both. Unlike
+the previous dataset, the OpenSubtitles is quite large, and
+rather noisy because consecutivesentencesmay be uttered
+by the same character. Given the broad scope of movies,
+this is an open-domain conversation dataset, contrasting
+withthe technicaltroubleshootingdataset.
+5. Experiments
+In this section, we describe the experimental results with
+the two datasets and show some samples of the interac-
+tions with the system that we trained. We also compare
+theperformanceofoursystemagainstapopularrule-based
+bot (CleverBot1) using human evaluations on a set of 200
+questions.
+5.1.IT Helpdesk Troubleshootingexperiments
+In this experiment, we trained a single layer LSTM with
+1024 memory cells using stochastic gradient descent with
+gradient clipping. The vocabulary consists of the most
+common 20K words, which includes special tokens indi-
+catingturntakingandactor.
+At convergence, this model achieved a perplexity of 8,
+whereasann-grammodelachieved 18. Belowisafewsam-
+ples of simulated troubleshooting sessions for most three
+ofthemostcommonITproblems(remoteaccess,software
+crashes,andpasswordissues). Intheseconversations, Ma-
+chineisourNeuralConversationalModel,and Humanthe
+humanactorinteractingwith it.
+Conversation1: VPN issues.
+Describe your problem: i am having issues ac-
+cessingvpn
+1http://www.cleverbot.com/Machine: hi
+Human: hello
+Machine: couldyoupleaseletmeknowwhatare
+theoperatingsystemsyouareusing?
+Human: i amusinglinux
+Machine: ok it was in the ssl vpn on which you
+statedit wasbroken
+Machine: please check if you are logged in to
+corpnetwork
+Machine: whatistheerror thatyouarerunning
+please
+Human: i amseeinganerrorrelatedtovpn
+Machine: whatistheerrormessagethatyouare
+getting when connecting to vpn using network
+connect?
+Human: connection refused or something like
+that
+Machine: may i know the version of network
+connectyouconnect?
+Human: i amnotsure iknowthat
+Machine: is the network connect prompting for
+anyusercertiﬁcate
+Machine: ?
+Human: yes
+Machine: areyouathomeoratwork atthemo-
+ment?
+Machine: ofﬁce?
+Human: i amathome
+Machine: try this
+Machine: goto<URL>page and enter your
+nameandpassword
+Human: done
+Machine: try logging in with <NAME>and
+checkif itsworkingﬁnenow
+Human: yes,nowit works!
+Machine: great
+Machine: anythingelse thaticanhelp
+Human: no,thatwasvery useful
+Machine: youareotherthan <NAME>: )
+Machine: haveanicenight
+(The<URL>indeed contains information about vpn ac-
+cess.)
+Conversation2: Browserissues.
+Describeyourproblem: browserkeepscrashing
+Machine: hi
+Human: hi
+Machine: could you please let me know what is
+theoperatingsystem youare using?
+Human: linux
+Machine: okthisistheissuewiththesystemper-
+formance, nasser, tools.
+Human: whatisthat?
+A Neural Conversational Model
+Machine: is ita windowsmachine?
+Machine: we havelinuxonyourmachine.
+Machine: is itwindowsxporwindows7?
+Human: i amusinglinux
+Machine: let me take a remote of your machine
+andcheckif issue hasbeenpushedproperly.
+Human: ok
+Machine: please open terminal and run the be-
+lowcommandsinonecomputer:
+Machine: sudoapt-get update
+Machine: sudoapt-get upgrade
+Machine: sudo<COMMAND >-updater
+Human: done
+Machine: let me try connectingnow
+Human: ok
+Machine: its done
+Machine: should use the second or hit run on
+thebackground
+Human: done
+Machine: try signing out now and follow the
+promptsasperthemessage givenabove
+Machine: shd irebootthemachine.
+Human: ok, pleasegoahead
+Machine: once its completed please try to login
+.
+Human: sure
+Machine: please ping me back once you have
+tried tologin
+Machine: are we still connected
+Human: i nowloggedin
+Machine: thanksforyourconﬁrmation
+Human: whatshouldi donow?
+Machine: wait for 1 5 minutes to complete the
+loginpolicy
+Machine: andthentry loggingin
+Human: ok
+Machine: is thereanythingelse tohelpyou?
+Human: let my try browsing a little bit and if it
+keepscrashingi will letyouknow
+Machine: sure will do
+Machine: seemsthe mailisnotloading
+Machine: are we still connectedto thechat?
+Machine: <reinvite>
+Human: it seems good now , cool , thank you ,
+bye
+Machine: you, too
+Machine: bye
+Conversation3: Passwordissues.
+Describeyourproblem: i forgotmypassword
+Machine: hi , this is <NAME>from helpdesk
+connect, whatcani helpyouwithtoday?
+Human: hi, i forgotmy passwordMachine: ok great
+Human: canyoutell me howi canrecoverit ?
+Machine: i ’ ll need to verify who it is at that
+machine
+Machine: canwe doahangout
+Machine: ?
+Human: yes
+Machine: <anonymized hangout instructions
+andveriﬁcations >
+Human: cool,i amgoodnow
+Machine: how’sthislookinggood?
+Machine: i ’ ll goaheadandclose thischat.
+Machine: take care. : )
+Human: bye
+Machine: bye.
+5.2.OpenSubtitlesexperiments
+In this experiment, we trained a two-layered LSTM using
+AdaGrad with gradient clipping. Each layer of the LSTM
+has4096memorycells, and we built a vocabularyconsist-
+ingofthemostfrequent100Kwords. Tospeedupthesoft-
+max, we project the memory cells to 2048 linear units be-
+forefeedingtheinformationtothe classiﬁer.
+Atconvergencetheperplexityoftherecurrentmodelonthe
+validationset is 17. Our smoothed5-gram modelachieves
+a perplexity of 28. Interestingly, adding the soft atten-
+tion mechanism of ( Bahdanauetal. ,2014) did not signiﬁ-
+cantlyimprovetheperplexityonneithertrainingorvalida -
+tionsets.
+5.2.1. M ODELSAMPLES
+In addition to the perplexity measure, our simple recur-
+rent model does often produce plausible answers. Here
+are a few sample question-answer pairs that allowed us to
+understand the capabilities of the model when trained on
+the noisy but large dataset of OpenSubtitles from movies.
+Again,intheseconversations, Machine isourNeuralCon-
+versationalModel,and Humanthehumanactorinteracting
+withit.
+Conversation1: Basic
+Human: hello!
+Machine: hello!
+Human: howare you?
+Machine: i ’m good.
+Human: what’syourname?
+Machine: i ’m julia.
+Human: whenwere youborn?
+Machine: july20th.
+Human: whatyearwere youborn?
+Machine: 1977.
+Human: where areyoufrom?
+A Neural Conversational Model
+Machine: i ’m outin theboonies.
+Human: areyouamanorawoman?
+Machine: i ’m awoman.
+Human: why arewe here?
+Machine: i ’m notsure .
+Human: okay,bye!
+Machine: bye.
+Human: see youlater.
+Machine: bye.
+Conversation 2: Simple Q&A (contexts and multiple
+choice)
+Human: my nameisdavid. whatismy name?
+Machine: david.
+Human: my nameisjohn. whatismy name?
+Machine: john.
+Human: areyoualeaderorafollower?
+Machine: i ’m aleader.
+Human: areyouafollowerora leader?
+Machine: i ’m aleader.
+Conversation3: GeneralknowledgeQ&A
+Human: whoisskywalker?
+Machine: he isahero.
+Human: whoisbill clinton?
+Machine: he ’sabillionaire.
+Human: issky blueorblack?
+Machine: blue.
+Human: doesacathaveatail ?
+Machine: yes.
+Human: doesacathaveawing?
+Machine: no
+Human: canacatﬂy?
+Machine: no.
+Human: howmanylegsdoesacathave?
+Machine: four,i think.
+Human: howmanylegsdoesaspiderhave?
+Machine: three ,i think.
+Human: howmanylegsdoesacentipedehave?
+Machine: eight.
+Human: whatisthe colorofthesky ?
+Machine: blue.
+Human: whatisthe colorofwater?
+Machine: water.
+Human: whatisthe colorofblood?
+Machine: it isthe sameasablackeye.
+Human: whatisthe usualcolorof aleaf?
+Machine: it isa greenone.
+Human: whatisthe colorofayellowcar?
+Machine: yellow.
+Human: howmuchis twoplustwo ?
+Machine: four.Human: howmuchis tenminustwo ?
+Machine: seventy- two.
+Conversation4: PhilosophicalQ&A
+Human: whatisthe purposeoflife ?
+Machine: to serve thegreatergood.
+Human: whatisthe purposeofliving?
+Machine: to liveforever.
+Human: whatisthe purposeofexistence ?
+Machine: to ﬁndout what happenswhen we get
+tothe planetearth.
+Human: where areyounow?
+Machine: i ’m inthemiddleofnowhere.
+Human: whatisthe purposeofdying?
+Machine: to havea life.
+Human: what isthe purposeof beingintelligent
+?
+Machine: to ﬁndoutwhatit is.
+Human: whatisthe purposeofemotions?
+Machine: i don’tknow.
+Conversation5: Morality
+Human: whatismoral?
+Machine: what empowered humanity , what in-
+tellectualtheessenceis.
+Human: whatisimmoral?
+Machine: the factthatyouhaveachild.
+Human: whatismorality?
+Machine: what isaltruism?
+Human: whatisthe deﬁnitionofaltruism ?
+Machine: if you don ’t believe in god , then you
+don’tknow.
+Human: ok... sowhatisthedeﬁnitionofmoral-
+ity ?
+Machine: well , the truth is , you ’re not a be-
+lieveringodalmighty.
+Human: tell me the deﬁnitionof morality , i am
+quiteupsetnow!
+Machine: i ’m not ashamed of being a philoso-
+pher!
+Human: tell methe deﬁnitionofmorality.
+Machine: i don’thaveethics.
+Human: look,ineedhelp,ineedtoknowmore
+aboutmorality...
+Machine: i don’tknowwhatethicsis.
+Human: seriously ,whatismorality?
+Machine: what isthedeﬁnitionof living?
+Human: why living has anything to do with
+morality?
+Machine: you’renota cop.
+Human: okay , i need to know how should i be-
+havemorally...
+A Neural Conversational Model
+Machine: i don’tknowhowtotell you.
+Human: ismoralityandethicsthesame?
+Machine: yes, sir.
+Human: what are the things that i do to be im-
+moral?
+Machine: i don’tknow.
+Human: give me some examples of moral ac-
+tions...
+Machine: i ’m nota moralist.
+Human: alright,morality?
+Machine: integrity.
+Human: whatisintegrity?
+Machine: i ’m sorry , i don’t knowwhat else to
+say.
+Human: bemoral!
+Machine: be aman!
+Human: i really like our discussion on morality
+andethics...
+Machine: and how i ’m not in the mood for a
+philosophicaldebate.
+Human: whatdoyouliketo talkabout?
+Machine: nothing.
+Conversation6: Opinions(notice the model outputs“he” ,
+“she”or“it” dependingonthesubjectbeingasked)
+Human: whatdoyouthinkabouttesla ?
+Machine: he ’sagoodconductor.
+Human: whatdoyouthinkaboutbill gates?
+Machine: he ’sagoodman.
+Human: Whatdoyouthinkaboutmessi ?
+Machine: he ’sagreatplayer.
+Human: whatdoyouthinkaboutcleopatra?
+Machine: oh, she’sveryregal.
+Human: what do you think about england dur-
+ingthereignofelizabeth?
+Machine: it wasa greatplace.
+We ﬁnd it encouragingthat the modelcan rememberfacts,
+understand contexts, perform common sense reasoning
+without the complexity in traditional pipelines. What sur-
+prises us is that the model does so without any explicit
+knowledgerepresentationcomponentexceptfortheparam-
+etersinthewordvectors.
+Perhaps most practically signiﬁcant is the fact that the
+model can generalize to new questions. In other words,
+it does not simply look up for an answer by matching the
+question with the existing database. In fact, most of the
+questionspresentedabove,exceptfortheﬁrstconversatio n,
+donotappearinthetrainingset.
+Nonetheless, one drawback of this basic model is that it
+only gives simple, short, sometimes unsatisfying answers
+to our questions as can be seen above. Perhaps a moreproblematic drawback is that the model does not capture
+a consistentpersonality. Indeed,if we asknot identicalbu t
+semanticallysimilarquestions,theanswerscansometimes
+be inconsistent. This is expected due to the simplicity of
+ourmodel andthe dataset in our experiments. The conver-
+sationbelowillustratessuchfailure:
+Conversation7: JobandPersonality
+Human: whatisyourjob?
+Machine: i ’m alawyer.
+Human: whatdoyoudo?
+Machine: i ’m adoctor.
+Lastly, as a comparison of other traditional bots that are
+rule-based,weprovidetheoutputofCleverBotforsomeof
+thequestionsinourtest:2
+Human: Are youafolloweroraleader?
+CleverBot: No !!
+Human: My nameisdavid. whatis myname?
+CleverBot: Howoldare youDavid?
+Human: My nameisjohn. what ismyname?
+CleverBot: John
+Human: Whatisthepurposeofbeingintelligent
+?
+CleverBot: The purpose of life is to love God
+andlove people.
+Human: Issky blueorblack?
+CleverBot: Iam 200yearsold.
+Human: Whatisthecolorof ayellowcar?
+CleverBot: Brown.
+Human: Whatistheusualcolorofa leaf?
+CleverBot: What is the color of the applein the
+fridge?
+Human: Whatisthepurposeoflife ?
+CleverBot: Mypurposeittoforwardmyspecies,
+inotherwordstomakeiteasierforfuturegener-
+ationsofmankindtolive.
+Human: Whatdoyouthinkabouttesla ?
+CleverBot: Iam tesla.
+Human: Whatdoyouthinkaboutcleopatra?
+CleverBot: Cooliscool.
+Human: What do you think about england dur-
+ingthereignofelizabeth?
+CleverBot: Ilike him. Doyou?
+Human: Whatdoyouthinkaboutbill gates?
+CleverBot: LetstalkaboutLink.
+Human: Whatismoral?
+CleverBot: Morality is the quality of being in
+accordwith standardsof rightorgoodconduct.
+Human: Whatisimmoral?
+2The outputs of CleverBot are non-deterministic so the an-
+swers maybe different for different trials.
+A Neural Conversational Model
+CleverBot: Whatistheobjectiveofsisteticlife?
+Human: Doesa cathavea wing?
+CleverBot: Whatisthenameofyourhusband.
+Human: Canacat ﬂy?
+CleverBot: : Whatisyourhusband’sname?
+Human: Whoisskywalker?
+CleverBot: There are two of them, Anakin Sky-
+walkerandLukeSkywalker,bothcharactersfrom
+starWars.
+Human: Howmanylegsdoesa cathave?
+CleverBot: Anant.
+Human: How many legs does a centipede have
+?
+CleverBot: A centipede’s number of legs varies
+from thirty totwo hundred.
+Human: Whatisyourjob?
+CleverBot: Iwork in mentalhealth.
+Human: Whatdoyoudo?
+CleverBot: Ihavenojob.
+5.2.2. H UMANEVALUATION
+In order to fairly and objectively compare our model
+against CleverBot, we picked 200 questions3, and asked
+fourdifferenthumanstorateourmodel(NCM)versusCle-
+verBot (CB). Human judges were asked to pick which of
+the two bots they preferred, and were also allowed to de-
+clarea tieif bothanswerswere ofequalquality.
+If three out of four human judges agreed, we record that
+score. Ourmodelwaspreferredin97outof200questions,
+whereasCleverBotwaspickedin60outof200. Therewas
+a tie in 20 questions, and in 23 questions the judges were
+indisagreement.
+Herearesomesamplesofhowthejudgesevaluatedthesys-
+tems(inboldwe showtheir preferredanswer,thethirdex-
+ampleshowsa tie,andthefourthexamplesshowsdiagree-
+ment):
+Human: Whatisthedeepestspotontheworld?
+NCM: The paciﬁcocean.
+CB:What?
+Human: Do you like Mexican food or Indian
+food?
+NCM:Ihateit.
+CB: IloveMexicanfood.
+Human: Whoareyoucrazyabout?
+NCM: You’retheone who’scrazy.
+CB: Whoareyou?
+3The questions we used together
+with the answers can be found in
+http://ai.stanford.edu/ ˜quocle/QAresults.pdfHuman: What’sthirtyplusforty?
+NCM: Sixty?
+CB: Whatshould we talkabout?
+We howeverbelievethat it remainsan openresearchprob-
+lem of designing a good metric to quickly measure the
+quality of a conversational model. We did so by manual
+inspection, by using Mechanical Turk to get human evalu-
+ations comparingwith a rule-based bot, and by computing
+the perplexity. However, there are obvious drawbacks on
+usingthose,andweareactivelypursuingthisandotherre-
+searchdirections.
+6. Discussion
+Inthispaper,we showthata simple languagemodelbased
+on theseq2seqframeworkcan be used to train a conversa-
+tional engine. Our modest results show that it can gener-
+ate simple and basic conversations,and extract knowledge
+from a noisy but open-domain dataset. Even though the
+model has obvious limitations, it is surprising to us that a
+purelydata drivenapproachwithoutanyrulescan produce
+rather proper answers to many types of questions. How-
+ever,themodelmayrequiresubstantialmodiﬁcationstobe
+able to deliver realistic conversations. Amongst the many
+limitations, the lack of a coherentpersonalitymakesit dif -
+ﬁcultforoursystemtopasstheTuringtest( Turing,1950).
+ACKNOWLEDGMENTS
+We thank Greg Corrado, Andrew Dai, Jeff Dean, Tom
+Dean,MatthieuDevin,RajatMonga,MikeSchuster,Noam
+Shazeer, Ilya Sutskever and the Google Brain team for the
+helpwiththeproject.
+References
+Bahdanau, D., Cho, K., and Bengio, Y. Neural machine
+translation by jointly learning to align and translate.
+arXivpreprintarXiv:1409.0473 ,2014.
+Bengio, Y., Ducharme, R., Vincent, P., and Janvin, C. A
+neuralprobabilisticlanguagemodel. TheJournalofMa-
+chineLearningResearch ,3:1137–1155,2003.
+Hochreiter,S. andSchmidhuber,J. Longshort-termmem-
+ory.NeuralComputation ,1997.
+Jean,S., Cho,K., Memisevic,R., andBengio,Y. Onusing
+very large target vocabulary for neural machine transla-
+tion.CoRR,abs/1412.2007,2014.
+Jurafsky, D. and Martin, J. Speech and language process-
+ing. PearsonInternational,2009.
+A Neural Conversational Model
+Kalchbrenner, N. and Blunsom, P. Recurrent continuous
+translationmodels. In EMNLP,2013.
+Lester, J., Branting, K., and Mott, B. Conversational
+agents. In Handbook of Internet Computing . Chapman
+&Hall, 2004.
+Luong, T., Sutskever, I., Le, Q. V., Vinyals, O., and
+Zaremba, W. Addressing the rare word problemin neu-
+ralmachinetranslation. arXivpreprintarXiv:1410.8206 ,
+2014.
+Mikolov,T. Statistical Language Models based on Neural
+Networks . PhD thesis, Brno University of Technology,
+2012.
+Mikolov, T., Karaﬁ´ at, M., Burget, L., Cernock` y, J., and
+Khudanpur,S. Recurrentneuralnetworkbasedlanguage
+model. In INTERSPEECH ,pp.1045–1048,2010.
+Shang, L., Lu, Z., and Li, H. Neural responding ma-
+chineforshort-textconversation.In ProceedingsofACL ,
+2015.
+Sordoni, A., Galley, M., Auli, M., Brockett, C., Ji, Y.,
+Mitchell,M.,Gao,J., Dolan,B., andNie,J.-Y. A neural
+networkapproachtocontext-sensitivegenerationofcon-
+versationalresponses. In Proceedingsof NAACL ,2015.
+Sutskever, I., Vinyals, O., and Le, Q. V. Sequence to se-
+quencelearningwithneuralnetworks. In NIPS,2014.
+Tiedemann, J. News from OPUS - A collection of multi-
+lingualparallel corporawith toolsandinterfaces. InNi-
+colov, N., Bontcheva, K., Angelova, G., and Mitkov, R.
+(eds.),Recent Advances in Natural Language Process-
+ing, volume V, pp. 237–248. John Benjamins, Amster-
+dam/Philadelphia, Borovets, Bulgaria, 2009. ISBN 978
+9027248251.
+Turing, A. M. Computing machinery and intelligence.
+Mind,pp.433–460,1950.
+Vinyals, O., Kaiser, L., Koo, T., Petrov, S., Sutskever, I.,
+and Hinton, G. Grammar as a foreign language. arXiv
+preprintarXiv:1412.7449 ,2014a.
+Vinyals, O., Toshev, A., Bengio, S., and Erhan, D. Show
+and tell: A neural image caption generator. arXiv
+preprintarXiv:1411.4555 ,2014b.
+Will, T.CreatingaDynamicSpeechDialogue . VDM Ver-
+lagDr,2007.

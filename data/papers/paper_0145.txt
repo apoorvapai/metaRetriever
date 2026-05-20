@@ -1,0 +1,358 @@
+Title: Self-attention Does Not Need $O(n^2)$ Memory
+
+arXiv:2112.05682v3  [cs.LG]  10 Oct 2022SELF-ATTENTION DOES NOTNEEDO(n2)MEMORY
+A P REPRINT
+Markus N. Rabe and Charles Staats
+Google Research
+{mrabe,cstaats}@google.com
+ABSTRACT
+We present a very simple algorithm for attention that requir esO(1)memory with respect to sequence
+length and an extension to self-attention that requires O(logn)memory. This is in contrast with the
+frequently stated belief that self-attention requires O(n2)memory. While the time complexity is
+stillO(n2), device memory rather than compute capability is often the l imiting factor on modern
+accelerators. Thus, reducing the memory requirements of at tention allows processing of longer
+sequences than might otherwise be feasible. We provide a pra ctical implementation for accelerators
+that requires O(√n)memory, is numerically stable, and is within a few percent of the runtime of the
+standard implementation of attention. We also demonstrate how to differentiate the function while
+remaining memory-efﬁcient. For sequence length 16384, the memory overhead of self-attention is
+reduced by 59X for inference and by 32X for differentiation.
+1 Introduction
+Attention (Bahdanau et al., 2015) is widely used in modern ne ural architectures. In particular, it is the heart of the
+Transformer architecture (Vaswani et al., 2017), which has revolutionized Natural Language Processing (Devlin et al. ,
+2019), and found wide-spread adoption across several resea rch areas since then.
+Given a query q∈Rdand lists of keys and values k1,...,k nandv1,...,v n∈Rdof length n,attention is deﬁned as
+follows:
+si= dot(q,ki), s′
+i=esi
+/summationtext
+jesj,attention( q,k,v) =/summationdisplay
+ivis′
+i.
+The result of the attention operation for a single query, is h ence a weighted sum of the value vectors, where the weights
+are the softmax of the dot products of the query and the keys.
+The straight-forward implementation of the attention oper ation above requires us to ﬁrst compute and remember sifor
+alli, leading to a O(n)time and memory complexity for each query. Transformers use self-attention , which issues a
+separate query for each position in the sequence, so the over all time and space complexity is O(n2).
+In many works the quadratic time and space complexity of self -attention has been used as the motivation for
+the investigation of variants of the original attention mec hanism and architectures with more favorable complex-
+ity classes (Kitaev et al., 2020; Roy et al., 2021; Zaheer et a l., 2020; Choromanski et al., 2020; Wang et al., 2020;
+Ren et al., 2021; Child et al., 2019; Tay et al., 2021; Wang et a l., 2020; Ma et al., 2021; Shen et al., 2021; Qiu et al.,
+2020). Modern accelerator hardware, such as GPUs and TPUs, a re often memory constrained for applications in
+deep learning, while compute is relatively cheap. So the spa ce complexity of transformers is a particular concern,
+c.f. Kitaev et al. (2020); Roy et al. (2021); Zaheer et al. (20 20).
+In this work, we present new algorithms for attention and sel f-attention that require only constant memory and loga-
+rithmic memory, respectively. The basic algorithm is very s imple; but it requires a trick to make it numerically feasibl e
+(see Section 3). We also present an implementation in JAX (Br adbury et al., 2018), which runs efﬁciently on TPUs,
+and requires O(√n)memory for self-attention (see Section 4).
+Unlike other works that aim to reduce the memory complexity o f attention, the memory-efﬁcient algorithm for atten-
+tion that we suggest is not an approximation, but computes th e same function. We can hence use the memory-efﬁcient
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+algorithm as a drop-in replacement for other attention impl ementations to save memory. This may allow us to re-
+consider architecture choices, or scale to new datasets tha t require longer, dense attention. However, our algorithm
+still requires O(n2)time complexity for self-attention and O(n)time complexity for single-query attention, and the
+various efﬁcient, long-context attention mechanisms rema in an interesting alternative to (dense) attention.
+2 Algorithm
+First, we present the algorithm for the attention operation with a single query and extend the algorithm to self-attenti on
+at the end of this Section. We observe that the division by/summationtext
+jesjcan be moved to the very end of the attention
+operation using the distributive law:
+si= dot(q,ki), s′
+i=esi,attention( q,k,v) =/summationtext
+ivis′
+i/summationtext
+js′
+j. (1)
+After publishing our initial draft, we were made aware that ( 1) is a rediscovery of the “lazy softmax" method of
+Jang et al. (2019, equation 4). Unfortunately their paper we nt in a different direction and did not discuss the memory
+complexity implications and other innovations we present i n the remainder of this paper. For more details see Section
+6.
+This can be computed with constant memory: The memory overhe ad of this algorithm consists of a vector v∗∈Rd
+and a scalar s∗∈R, both initialized with 0. Given the query q, keysk1,...,k nand values v1,...,v n, we process the
+keys and values in sequence. Given a key value pair ki,vi, we compute si= dot(q,ki)and update v∗←v∗+viesi
+ands∗←s∗+esi. After processing all keys and values, we dividev∗
+s∗to get the ﬁnal result.
+The analysis of space complexity assumes that inputs are giv en in a particular order: we ﬁrst read the query, and then
+a list of pairs of keys and values. If the inputs are provided in a different o rder, we have to additionally store an index
+into the sequence, requiring O(logn)memory instead.
+To extend this algorithm to self-attention, we compute the results to all queries sequential ly. This requires just one
+additional index into the list of queries, giving rise to the O(logn)memory complexity. Note that the operation
+produces outputs that are linear in the size of the number of q ueries, i.e., O(n), which is not counted towards the space
+complexity.
+3 Numerical Stability
+The formulation of standard attention that we presented in t he Introduction, as well as our memory-efﬁcient algorithm,
+are not numerically stable when using ﬂoating point arithme tic, because the softmax exponentiates the scores. For
+scores≥89the exponentiation results in inf(forbfloat16 andfloat32 ), which will be carried through to the ﬁnal
+result of the attention operation. In practice, the softmax is implemented by subtracting the maximum score from all
+scores. This does not change the result of the softmax, but av oids this numerical problem.
+Our incremental computation of the sum of exponentiated sco res (and the values times the scores) does not immedi-
+ately allow for the same trick, as the maximum may depend on th e last score in the sequence. But the subtraction
+cannot be delayed either, since the scores must be exponenti ated before they can be added to the cumulative sum.
+To resolve this problem, we introduce an additional scalar, which keeps track of the maximum score that the incre-
+mental algorithm has seen so far, and we renormalize the sums of exponentiated values as needed: We initialize the
+vectorv∗∈Rdand scalar s∗∈Rwith 0, and m∗with−inf. As before, given a key value pair ki,vi, we compute
+si= dot(q,ki), but then the algorithm differs slightly from Section 2. We ﬁ rst compute mi= max(m∗,si)and
+updatev∗←v∗em∗−mi+viesi−miands∗←s∗em∗−mi+esi−miandm∗←mi. After processing all keys and
+queries, we dividev∗
+s∗to get the ﬁnal result.
+4 An Implementation For TPUs
+In this section, we provide a version of the algorithm above t hat exploits the massive parallelism of modern hardware,
+such as GPUs or TPUs. The naive algorithm above is is not trivi al to parallelize for a compiler, as the incremental sum
+introduces a dependency across all keys and values.
+We present the entire implementation, including the suppor t for multiple attention heads and memory-efﬁcient differ-
+entiation in Figure 1. The implementation does not optimize strictly for memory efﬁciency, but instead aims to strike
+a balance between simplicity, computational efﬁciency, an d memory requirements.
+2
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+1importfunctools ,jax,math
+2fromjaximportnumpyasjnp
+3
+4def_query_chunk_attention (query, key, value, precision, key_chunk_size =4096):
+5"""Multi-head dot product attention with a limited number o f queries."""
+6num_kv, num_heads, k_features =key.shape
+7v_features =value.shape[-1]
+8key_chunk_size =min(key_chunk_size, num_kv)
+9query=query/jnp.sqrt(k_features)
+10
+11@functools .partial(jax .checkpoint, prevent_cse =False)
+12defsummarize_chunk (query, key, value):
+13attn_weights =jnp.einsum('qhd,khd->qhk' , query, key, precision =precision)
+14max_score =jnp.max(attn_weights, axis =-1, keepdims =True)
+15max_score =jax.lax.stop_gradient(max_score)
+16exp_weights =jnp.exp(attn_weights -max_score)
+17exp_values =jnp.einsum('vhf,qhv->qhf' , value, exp_weights, precision =precision)
+18return(exp_values, exp_weights .sum(axis =-1),
+19 max_score .reshape((query .shape[0], num_heads)))
+20
+21defchunk_scanner (chunk_idx):
+22key_chunk =jax.lax.dynamic_slice(
+23 key, (chunk_idx, 0,0),
+24 slice_sizes =(key_chunk_size, num_heads, k_features))
+25value_chunk =jax.lax.dynamic_slice(
+26 value, (chunk_idx, 0,0),
+27 slice_sizes =(key_chunk_size, num_heads, v_features))
+28returnsummarize_chunk(query, key_chunk, value_chunk)
+29
+30chunk_values, chunk_weights, chunk_max =jax.lax.map(
+31 chunk_scanner, xs =jnp.arange(0, num_kv, key_chunk_size))
+32
+33global_max =jnp.max(chunk_max, axis =0, keepdims =True)
+34max_diffs =jnp.exp(chunk_max -global_max)
+35chunk_values *=jnp.expand_dims(max_diffs, axis =-1)
+36chunk_weights *=max_diffs
+37
+38all_values =chunk_values .sum(axis =0)
+39all_weights =jnp.expand_dims(chunk_weights, -1).sum(axis =0)
+40returnall_values /all_weights
+41
+42defattention (query, key, value, precision =jax.lax.Precision .HIGHEST,
+43 query_chunk_size =1024):
+44"""Memory-efficient multi-head dot product attention."" "
+45num_q, num_heads, q_features =query.shape
+46
+47defchunk_scanner (chunk_idx, _):
+48query_chunk =lax.dynamic_slice(
+49 query, (chunk_idx, 0,0),
+50 slice_sizes =(min(query_chunk_size, num_q), num_heads, q_features))
+51return(chunk_idx +query_chunk_size,
+52 _query_chunk_attention(query_chunk, key, value, precis ion=precision))
+53
+54_, res=jax.lax.scan(
+55 chunk_scanner, init =0, xs=None, length =math.ceil(num_q /query_chunk_size))
+56returnres.reshape(num_q, num_heads, value .shape[-1])
+Figure 1: Implementation of memory-efﬁcient attention sui ted for TPUs.
+3
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+Sequence length n= 28210212214216218220
+Size of inputs and outputs 160KB 640KB 2.5MB 10MB 40MB 160MB 640MB
+Memory overhead of standard attention 270KB 4.0MB 64MB 1GB OOM OOM OOM
+Memory overhead of memory-eff. attn. 270KB 4.0MB 16MB 17MB 21MB 64MB 256MB
+Compute time on TPUv3 0.06ms 0.11ms 0.7ms 11.3ms 177ms 2.82s 45.2s
+Relative compute speed ±5%±5% -8±2% -13±2% - - -
+Table 2: Memory and time requirements of self-attention dur inginference .
+To exploit the parallelism available in modern hardware, we split the computation into chunks at the cost of some
+additional memory. In the outer loop (lines 54-55), we split the queries in to chunks of constant size, resulting in
+a linear number of iterations. In each iteration of the outer loop, we call _query_chunk_attention , which itself
+processes the keys and values in chunks (lines 30-31). The ch unks are processed sequentially and each chunk is
+summarized independently (lines 12 to 19). Assuming a chunk size of√nfor the keys and values, we hence obtain√nsummaries, giving rise to the O(√n)memory complexity.
+After the summaries are computed, they need to be rescaled (l ines 33 to 36) along the lines of Section 3, before we
+return the values divided by the weights (line 40). The resul t of each iteration of the outer loop is directly written to th e
+output tensor res(line 54), so that no additional memory is consumed across it erations. (A multi-stage summarization
+approach could achieve O(logn)but would complicate the implementation.)
+While a constant chunk size for the queries and a chunk size of√nfor the keys and values is optimal for memory
+consumption, the runtime is also affected by the choice of ch unk size in practice, which is heavily affected by the
+choice of hardware. Ultimately, we have to leave this trade- off to the programmer, and expose the chunk sizes as
+arguments query_chunk_size andkey_chunk_size . In Figure 1 we provide default values for the chunk sizes tha t
+lead to minimal runtime impact on TPU, while still providing signiﬁcant memory savings.
+5 Empirical Analysis
+In this section, we experimentally compare the memory requi rements and runtime performance
+of the suggested algorithm compared to the implementation o f attention currently provided by
+Flax (Heek et al. (2020), see flax/linen/attention.py ). We open-sourced the code of our
+implementation and most of the evaluation as a colab to help o thers reproduce the results:
+https://github.com/google-research/google-research/ tree/master/memory_efficient_attention .
+5.1 Inference
+In Table 2 we compare the memory requirements and the compute time of the memory-efﬁcient attention implemen-
+tation and the Flax implementation of attention. The size of inputs and outputs includes the query, key, and value
+tensors of dtype bfloat16 , and the output tensor of dtype float32 . We measure the memory overhead as the TPUs
+peak memory in excess of the input and output tensors. All com putations were done on a single TPUv3 chip. For this
+experiment, we only use one attention head.
+Our memory-efﬁcient implementation of attention removes t he memory bottleneck of self-attention, scaling at least to
+a sequence length of 1M. At this sequence length the algorith m is multiplying over 1 trillion combinations of queries
+and keys. The time complexity is still quadratic.
+The “relative compute speed” of the implementations was com puted as the median over 100 runs—but the numbers still
+ﬂuctuated across multiple runs of the evaluation and we only provide them to demonstrate that the runtime performance
+is roughly similar. Please note that this experiment analyz es the attention operation in isolation; the measured relat ive
+performance is not necessarily the same when the operations are embedded in larger architectures. In fact, we observed
+a slight increase in steps/sec of about 4% when training a sma ll Transformer.
+For all cases where the standard attention would not OOM (i.e . require >16GB device memory), we checked
+that the results of the two implementations are within 1.8×10−7for inputs drawn from a normal distribution with
+standard deviation 1(measured as the maximal absolute difference of any dimensi on in a self-attention over sequence
+length214).
+4
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+Sequence length n= 28210212214216218220
+Size of inputs and outputs 192KB 768KB 2.9MB 12MB 47MB 188MB 750MB
+Memory overhead of standard attention 532KB 8.0MB 128MB 2.0GB OOM OOM OOM
+Memory overhead of memory-eff. attn. 532KB 8.0MB 41MB 64MB 257MB 1.0GB 4.0GB
+Compute time on TPUv3 0.1ms 0.18ms 1.4ms 21ms 336ms 5.3s 85s
+Relative compute speed ±5%±5% -30±5% -35±5% - - -
+Table 3: Memory and time requirements of self-attention dur ingdifferentiation . Note that the slowdown in compute
+speed is expected due to the use of checkpointing in memory-e fﬁcient attention.
+0 0.2 0.4 0.6 0.8 1
+·10501020
+training stepBLEU score
+Standard attn
+Memory-efﬁcient attn
+Figure 4: BLEU scores of a two Transformer models trained wit h standard attention and memory-efﬁcient attention.
+5.2 Differentiation
+During the forward pass our algorithm saves memory by summar izing parts of the attention matrix sequentially, allow-
+ing it to forget the parts of the attention matrix it has summa rized already. A naive application of differentiation woul d
+have to store all those intermediate results and our algorit hm would loose its memory advantage entirely. So we apply
+checkpointing (Chen et al., 2016) in line 11 to the function t hat summarizes the individual chunks. The intermediate
+results can thus be forgotten during the forward pass and rec omputed during backpropagation.
+In Table 3 we compare runtime and peak memory during differen tiation of our implementation to standard attention.
+We used the same setting as for the forward pass, but applied jax.grad to an arbitrarily chosen loss function (the sum
+of the results). The relative compute speed was reduced sign iﬁcantly compared to standard attention. This is expected
+when using checkpointing since some values must be recomput ed during backpropagation.
+Note that applying checkpointing to the standard attention algorithm would not achieve these results. The standard
+algorithm with checkpointing would forget the attention ma trix after it is formed; our algorithm never forms the full
+attention matrix at all.
+5.3 Training
+We integrated our memory-efﬁcient implementation into a si mple Transformer architecture provided in the Flax library ,
+and ran the WMT en-de translation experiment with the standa rd attention module and with the memory-efﬁcient
+attention module. Throughout the training, the two impleme ntations behaved almost identically. After 100K training
+steps, the evaluation accuracy reached 62.69 for the memory -efﬁcient implementation and 62.59 for the standard
+implementation. This demonstrates that our memory-efﬁcie nt implementation of self-attention can be used to replace
+existing implementations. Figure 4 illustrates that both m odels resulted in very similar BLEU scores. We used the
+default settings for the WMT en-de experiment as given in the Flax implementation, except that we had to deactivate
+example packing to simplify the masking code. This also requ ired us to lower the learning rate to 0.005.
+5
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+100101102103104−100−80−60−40−200
+query chunk sizerelative runtime of query chunking in %
+104105106−60−40−200
+sequence length for self-attentionrelative runtime in %
+Figure 5: Left: Relative runtime of self-attention on sequence length 215using query chunking compared to standard
+attention. Right: Relative runtime of self-attention using query chunking co mpared to our memory-efﬁcient algorithm,
+where both are restricted to the same amount of memory.
+5.4 Comparison to Query Chunking
+The algorithms introduced in this work chunk both the keys an d the queries. Chunking the only queries has been
+explored already by Kitaev et al. (2020), but it is folklore t hat it slows down the computation signiﬁcantly. In Figure 5
+(left), we plot the runtime of self-attention using query-c hunking for different query chunk sizes compared to dense
+self-attention: we see that for small chunk sizes (e.g. ≤64) the performance suffers indeed, but for large chunk sizes,
+the loss of performance is less signiﬁcant. So, while lower m emory consumption can be achieved by query chunking
+alone, small values for query chunking are impractical.
+In comparison to query chunking, memory-efﬁcient attentio n can save additional memory by chunking also the keys.
+This can help to keep the query chunk size at a desirable point given a ﬁxed memory limit. In Figure 5, we constrained
+query chunking to the amount of memory that is used by memory- efﬁcient attention with the default settings for key
+and query chunk size (see Table 2, “Memory overhead of memory -efﬁcient att.”, we rounded the query chunk size
+towards the beneﬁt of query chunking). We see that as the sequ ence length increases, query chunking eventually slows
+down signiﬁcantly as the query chunk size has to be lowered to ≤64, while memory-efﬁcient attention does not suffer
+a major slowdown (see Table 2, “Relative compute speed”). So , in memory-constrained scenarios, memory-efﬁcient
+attention can outperform query chunking.
+6 Related Work
+After publishing our initial draft, we were made aware that J ang et al. (2019) already observed that the division of the
+softmax operation can be delayed until the end of the attenti on operation (“lazy softmax”), similar to our Equation
+(1). But their paper does not discuss memory complexity at al l. They also do not address numerical stability or
+backpropagation, and, as far as we know, there is no publicly available implementation of their work. Instead they use
+this algorithm to reduce the memory bandwidth for inference when sharding key-value pairs across multipl e chips.
+Dao et al. (2022) provide a CUDA implementation of memory-ef ﬁcient attention and demonstrate that the reduced
+memory requirements can translate to signiﬁcant speedups o n GPUs. One reason why we do not observe the same
+performance gains in this paper is that standard self-atten tion already balances the available FLOPs and memory
+bandwidth of TPUs.
+7 Conclusion
+This paper presents a simple trick to reduce the memory requi rement of (self-)attention dramatically, which appears
+to have been simply overlooked by the community. We hope that this short paper raises awareness of the fact that
+attention is not intrinsically memory-hungry, which may al low us to revisit some of the design choices in popular
+neural architectures and hardware architectures.
+6
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+Acknowledgements
+We want to thank Andrew Jaegle for discussions on this paper, and for experimenting with memory-efﬁcient attention
+in the context of Perceiver (Hawthorne et al., 2022). We are g lad to see that the algorithm proposed here has already
+found interest and would like to thank Rezaei (2021) and Wang (2022) for reimplementations in JAX and PyTorch
+with additional features like masking. We also want to thank DeLesley Hutchins for detailed feedback on our draft.
+References
+Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly learning to align and
+translate. In Yoshua Bengio and Yann LeCun (eds.), ICLR , 2015.
+James Bradbury, Roy Frostig, Peter Hawkins, Matthew James J ohnson, Chris Leary, Dougal Maclaurin, George Nec-
+ula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, a nd Qiao Zhang. JAX: composable transformations
+of Python+NumPy programs, 2018. URL http://github.com/google/jax .
+Tianqi Chen, Bing Xu, Chiyuan Zhang, and Carlos Guestrin. Tr aining deep nets with sublinear memory cost. CoRR ,
+abs/1604.06174, 2016.
+Rewon Child, Scott Gray, Alec Radford, and Ilya Sutskever. G enerating long sequences with sparse transformers.
+CoRR , abs/1904.10509, 2019. URL http://arxiv.org/abs/1904.10509 .
+Krzysztof Choromanski, Valerii Likhosherstov, David Doha n, Xingyou Song, Andreea Gane, Tamás Sarlós, Peter
+Hawkins, Jared Davis, Afroz Mohiuddin, Lukasz Kaiser, Davi d Belanger, Lucy J. Colwell, and Adrian Weller. Re-
+thinking attention with performers. CoRR , abs/2009.14794, 2020. URL https://arxiv.org/abs/2009.14794 .
+Tri Dao, Daniel Y . Fu, Stefano Ermon, Atri Rudra, and Christo pher Ré. Flashattention: Fast and memory-efﬁcient
+exact attention with io-awareness, 2022. URL https://arxiv.org/abs/2205.14135 .
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Tout anova. BERT: pre-training of deep bidirectional trans-
+formers for language understanding. In Jill Burstein, Chri sty Doran, and Thamar Solorio (eds.), Proceedings of
+the 2019 Conference of the North American Chapter of the Asso ciation for Computational Linguistics: Human
+Language Technologies, NAACL-HLT 2019, Minneapolis, MN, U SA, June 2-7, 2019, Volume 1 (Long and Short
+Papers) , pp. 4171–4186. Association for Computational Linguistic s, 2019. doi: 10.18653/v1/n19-1423. URL
+https://doi.org/10.18653/v1/n19-1423 .
+Curtis Hawthorne, Andrew Jaegle, C ˘at˘alina Cangea, Sebastian Borgeaud, Charlie Nash, Mateusz Ma linowski, Sander
+Dieleman, Oriol Vinyals, Matthew Botvinick, Ian Simon, Han nah Sheahan, Neil Zeghidour, Jean-Baptiste Alayrac,
+João Carreira, and Jesse Engel. General-purpose, long-con text autoregressive modeling with perceiver AR, 2022.
+URLhttps://arxiv.org/abs/2202.07765 .
+Jonathan Heek, Anselm Levskaya, Avital Oliver, Marvin Ritt er, Bertrand Rondepierre, Andreas Steiner, and Marc van
+Zee. Flax: A neural network library and ecosystem for JAX, 20 20. URLhttp://github.com/google/flax .
+Hanhwi Jang, Joonsung Kim, Jae-Eon Jo, Jaewon Lee, and Jangw oo Kim. Mnnfast: A fast and scalable system
+architecture for memory-augmented neural networks. In 2019 ACM/IEEE 46th Annual International Symposium on
+Computer Architecture (ISCA) , pp. 250–263, 2019.
+Nikita Kitaev, Łukasz Kaiser, and Anselm Levskaya. Reforme r: The efﬁcient transformer. arXiv preprint
+arXiv:2001.04451 , 2020.
+Xuezhe Ma, Xiang Kong, Sinong Wang, Chunting Zhou, Jonathan May, Hao Ma, and Luke Zettlemoyer. Luna: Linear
+uniﬁed nested attention. CoRR , abs/2106.01540, 2021. URL https://arxiv.org/abs/2106.01540 .
+Jiezhong Qiu, Hao Ma, Omer Levy, Wen-tau Yih, Sinong Wang, an d Jie Tang. Blockwise self-attention for long
+document understanding. In Findings of the Association for Computational Linguistics : EMNLP 2020 , pp. 2555–
+2565, 2020.
+Hongyu Ren, Hanjun Dai, Zihang Dai, Mengjiao Yang, Jure Lesk ovec, Dale Schuurmans, and Bo Dai. Combiner:
+Full attention transformer with sparse computation cost. arXiv preprint arXiv:2107.05768 , 2021.
+Amin Rezaei. Memory efﬁcient attention, 2021. URL https://github.com/AminRezaei0x443/memory-efficient -attention .
+Aurko Roy, Mohammad Saffar, Ashish Vaswani, and David Grang ier. Efﬁcient content-based sparse
+attention with routing transformers. Trans. Assoc. Comput. Linguistics , 9:53–68, 2021. URL
+https://transacl.org/ojs/index.php/tacl/article/vie w/2405 .
+Zhuoran Shen, Mingyuan Zhang, Haiyu Zhao, Shuai Yi, and Hong sheng Li. Efﬁcient attention: Attention with
+linear complexities. In IEEE Winter Conference on Applications of Computer Vision, WACV 2021, Waikoloa,
+7
+Self-attention Does Not Need O(n2)Memory A P REPRINT
+HI, USA, January 3-8, 2021 , pp. 3530–3538. IEEE, 2021. doi: 10.1109/WACV48630.2021. 00357. URL
+https://doi.org/10.1109/WACV48630.2021.00357 .
+Yi Tay, Mostafa Dehghani, Samira Abnar, Yikang Shen, Dara Ba hri, Philip Pham, Jinfeng Rao, Liu Yang, Sebastian
+Ruder, and Donald Metzler. Long range arena : A benchmark for efﬁcient transformers. In 9th International
+Conference on Learning Representations, ICLR 2021, Virtua l Event, Austria, May 3-7, 2021 . OpenReview.net,
+2021. URL https://openreview.net/forum?id=qVyeW-grC2k .
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit , Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia
+Polosukhin. Attention is all you need. In Advances in neural information processing systems , pp. 5998–6008, 2017.
+Phil Wang. Memory efﬁcient attention Pytorch, 2022. URL https://github.com/lucidrains/memory-efficient-atte ntion-pytorch .
+Sinong Wang, Belinda Z Li, Madian Khabsa, Han Fang, and Hao Ma . Linformer: Self-attention with linear complexity.
+arXiv preprint arXiv:2006.04768 , 2020.
+Manzil Zaheer, Guru Guruganesh, Kumar Avinava Dubey, Joshu a Ainslie, Chris Alberti, Santiago Ontañón,
+Philip Pham, Anirudh Ravula, Qifan Wang, Li Yang, and Amr Ahm ed. Big bird: Transformers for
+longer sequences. In Hugo Larochelle, Marc’Aurelio Ranzat o, Raia Hadsell, Maria-Florina Balcan, and
+Hsuan-Tien Lin (eds.), Advances in Neural Information Processing Systems 33: Annu al Conference on
+Neural Information Processing Systems 2020, NeurIPS 2020, December 6-12, 2020, virtual , 2020. URL
+https://proceedings.neurips.cc/paper/2020/hash/c851 2d142a2d849725f31a9a7a361ab9-Abstract.html .
+8

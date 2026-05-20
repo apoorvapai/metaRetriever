@@ -1,0 +1,2539 @@
+Title: The Depth-to-Width Interplay in Self-Attention
+
+The Depth-to-Width Interplay in Self-Attention
+Yoav Levine, Noam Wies, Or Sharir, Hoﬁt Bata, and Amnon Shashua
+The Hebrew University of Jerusalem
+Abstract
+Self-attention architectures, which are rapidly pushing the frontier in natural lan-
+guage processing, demonstrate a surprising depth- inefﬁcient behavior: previous
+works indicate that increasing the internal representation (network width) is just
+as useful as increasing the number of self-attention layers (network depth). We
+theoretically predict a width-dependent transition between depth-efﬁciency and
+depth- inefﬁciency in self-attention. We conduct systematic empirical ablations on
+networks of depths 6to48that clearly reveal the theoretically predicted behaviors,
+and provide explicit quantitative suggestions regarding the optimal depth-to-width
+allocation for a given self-attention network size. The race towards beyond 1-
+Trillion parameter language models renders informed guidelines for increasing
+self-attention depth and width in tandem an essential ingredient. Our guidelines
+elucidate the depth-to-width trade-off in self-attention networks of sizes up to the
+scale of GPT3 (which we project to be too deep for its size), and beyond, marking
+an unprecedented width of 30K as optimal for a 1-Trillion parameter network.
+1 Introduction
+The golden age of deep learning has popularized the depth-efﬁciency notion: From an expressiveness
+standpoint, increasing a neural network’s size by adding more layers (deepening) is advantageous
+relatively to other parameter increase alternatives, such as increasing the dimension of the internal
+representation (widening). Beyond overwhelming empirical signals for this notion [Simonyan and
+Zisserman, 2014, He et al., 2016], depth-efﬁciency was theoretically supported from a variety of
+angles [Cohen et al., 2016, Eldan and Shamir, 2016, Raghu et al., 2017, Daniely, 2017].
+Diminishing returns in the case of very deep networks were mainly attributed to optimization issues,
+and indeed the alleviation of these issues has allowed network depths to mount from 10s to100s
+and beyond [He et al., 2016], enabling deep convolutional networks (ConvNets) to advance the
+state-of-the-art in computer vision applications. However, as the ﬁeld matured, a more nuanced
+perspective emerged. Empirical [Zagoruyko and Komodakis, 2016, Wu et al., 2019] and theoretical
+[Lu et al., 2017] studies suggest that the interplay between depth and width may be more subtle.
+Recently, a method for increasing width and depth in tandem (“EfﬁcientNet" by Tan and Le [2019])
+has lead to the state-of-the-art on ImageNet while using a ConvNet with a fraction of the parameters
+used by previous leaders. Our work provides principled guidelines for increasing width and depth in
+tandem in self-attention networks.
+Since the introduction of the Transformer [Vaswani et al., 2017], along with its encoder-only variant,
+BERT [Devlin et al., 2019], self-attention based deep learning architectures have taken over the
+ﬁeld of natural language processing [Liu et al., 2019, Radford et al., 2019, Yang et al., 2019, Raffel
+et al., 2019a, Clark et al., 2020]. However, in contrast to the depth “arms race" that took place in the
+ConvNet case, the leading self-attention networks are not much deeper than the original BERT model.
+In fact, even the strongest self-attention models trained to date, which increased the 0:3B parameter
+count of BERT-large by factors of 100s to11B [Raffel et al., 2019a] and 175B [Brown et al., 2020],
+have only increased its depth by factors of 2and4, respectively. The remaining size increase stems
+from an increase in layer widths, clearly countering the depth-efﬁciency notion.
+34th Conference on Neural Information Processing Systems (NeurIPS 2020), Vancouver, Canada.arXiv:2006.12467v3  [cs.LG]  17 Jan 2021
+Figure 1: (a)An ablation taken from ﬁgure 6 in Kaplan et al. [2020], examining the perplexity
+scores of self-attention networks of varying depths and widths. Experiments on the L > 6curve
+(yellow) all approximately obey the same improvement trend which depends only on the number
+of network parameters and not on the depth-to-width ratio. For L6, depth-efﬁciency is clearly
+demonstrated, but due to the L>6curve the authors conclude “depth inefﬁciency" of self attention.
+(b)A representative of our experimental plots, which shows that a transition between depth-efﬁciency
+and inefﬁciency takes place, and that both regimes affect the behavior also at L>6. Figure 2 shows
+that this trend continues at least up to depth 48, and ﬁgure 3 shows that the transition between regimes
+grows exponentially with depth, as predicted by our theory.
+A recent empirical ablation study by Kaplan et al. [2020] provides support for the above signal.
+Figure 1(a), taken from this study, leads the authors to conclude that the overall (non-embedding)
+network size, given by 12Ld2
+xwhereLis the number of self-attention layers (network depth)
+anddxis the hidden representation dimension (network width), is the main predictor of performance
+regardless of the depth-to-width ratio. This suggests that depth may not play as crucial a role in
+self-attention networks as it does in convolutional networks.
+In this paper, we address the above question of the depth-to-width interplay in self-attention networks,
+and reveal fundamental subtleties in the above picture. We predict that self-attention will exhibit two
+qualitatively different depth-efﬁciency and depth- inefﬁciency behaviors, in two distinct parameter
+regimes, as depicted in ﬁgure 1(b). After presenting our theoretical analysis in sections 2-4, we
+provide a thorough empirical evaluation in section 5, which validates our predicted trends for self-
+attention networks of depths 6to48. Importantly, our theoretical and empirical results provide
+quantitative guidelines for optimal depth-to-width parameter allocation given a ﬁxed parameter
+budget (see for example table 1). The current challenge of reaching beyond 1-Trillion parameter
+language models renders informed guidelines of how to increase self-attention depth and width in
+tandem a mandatory ingredient. Our results clearly show that the optimal path towards the 1-Trillion
+parameter mark includes massive widening.
+1.1 An overview of our theoretical approach and ﬁndings
+We analyze self-attention networks in which all non-linear activations and normalization operations
+are removed. Otherwise, the analyzed class (presented in section 2) has the regular deep multi-headed
+Key/Query/Value structure of common self-attention. After presenting this class in detail, we point
+to recent studies which demonstrate that normalization and position-wise activations are much less
+pertinent to the ability of self-attention to correlate inputs than its core connectivity, described in
+full by our analyzed model. More generally, removing non-linearities for analysis of deep network
+connectivity traits is a common simplifying assumption: results on expressiveness and optimization
+of fully-connected [Saxe et al., 2013, Kawaguchi, 2016, Hardt and Ma, 2016], convolutional [Cohen
+et al., 2016], and recurrent [Khrulkov et al., 2018, Levine et al., 2018a] networks have been attained
+via this technique. Trade-offs between the depth and width of fully-connected neural networks have
+been recently examined from theoretical [Fan et al., 2020, Bu et al., 2020] and empirical [Nguyen
+et al., 2020] perspectives. To the best of our knowledge, our theoretical analysis is the ﬁrst to address
+the question of parameter allocation between depth and width in self-attention networks.
+We employ the tool of a function’s separation rank with respect to subsets of its inputs, which
+quantiﬁes its ability to model input dependencies (presented in section 3). The separation rank
+2
+Borrowed from Brown et al. [2020] Trained in practice Optimal by our ﬁt
+Model Name Size in params Depth (L) Width (dx)Depth (L) Width (dx)
+GPT-3 Small 125M 12 768 23 555
+GPT-3 Medium 350M 24 1024 32 886
+GPT-3 Large 760M 24 1536 38 1220
+GPT-3 XL 1.3B 24 2048 42 1550
+GPT-3 2.7B 2.7B 32 2560 47 2110
+GPT-3 6.7B 6.7B 32 4096 54 3150
+GPT-3 13B 13.0B 40 5140 60 4200
+GPT-3 175B or “GPT-3” 175.0B 96 12288 80 13500
+Optimal 1-Trillion arch 1T – – 95 30100
+Table 1: Our projections regarding optimal depth-to-width parameter distribution at self-attention
+sizes corresponding to huge language models trained in Brown et al. [2020], according to the ﬁt in
+section 5 (see ﬁgure 4 for the statistical uncertainty in these predictions). Up to the scale of 10B, the
+trained GPT3 architectures were generally too shallow per their parameter count, meaning that they
+under-performed relatively to the optimal architecture at that size (similarly to the depth 6network
+in the white regime of ﬁgure 1(a). Coversely, the largest model trained to date, GPT3-175B, is too
+deep given its size, and could have beneﬁted from widening at the expense of depth (similarly to the
+depth 48network in the gray regime of ﬁgure 2(c). We project that the strongest 1-Trillion parameter
+model would entail widening to an unprecedented width of 30K.
+was employed for attaining theoretical insights on the dependencies modeled by convolutional and
+recurrent networks [Cohen and Shashua, 2017, Levine et al., 2018a].
+Rather than reinforcing the seemingly plausible hypothesis for the trend in ﬁgure 1(a), by
+which widening a self-attention network is as effective as deepening it, we conﬁrm the contrary.
+We show that the operation of stacking self-attention layers is so effective that it quickly saturates a
+capacity of the network’s width. We establish in section 4 the existence of a depth threshold which
+depends logarithmically on the width dx, denotedLth(dx)log(dx). Below the threshold, we prove
+that depth-efﬁciency takes place in self-attention networks: a network of depth LLth(dx)cannot
+be replicated by a shallower network, unless the latter’s width grows double-exponentially with
+L. We prove the above by showing that the separation rank of functions realized by self-attention
+networks grows double-exponentially with depth, but only polynomially with width, shedding light
+on the effectiveness of the self-attention mechanism in modeling input interactions when recursively
+repeated. However, we show that this overwhelming advantage of depth is quickly replaced by a
+balanced growth. We prove that for self-attention networks with L>L th(dx)the ability to model
+input dependencies, as modeled by the separation rank, increases similarly with depth and width. We
+corroborate our theoretical ﬁndings empirically, as shown in the example of ﬁgure 1(b) and more
+extensively in section 5.
+1.2 An overview of our empirical approach and ﬁndings
+For two networks with the same parameter count but of different depths L1<L 2and widthsd2<d1,
+our theory indicates that: (1) there is no advantage to the deeper network when its dimension d2is
+too small (width caps the beneﬁt of the added layers of depths L1+ 1;:::;L 2), but (2) the deeper
+network should outperform the shallower one when its width d2is large enough such that the added
+layers are in the depth-efﬁciency regime.
+Traces of this predicted phenomenon appear in existing literature: A closer look at depths L6in
+the experiment of Kaplan et al. [2020] in ﬁgure 1(a) reveals depth-efﬁciency, though the conclusion
+of that study was of an overall depth inefﬁciency of self-attention, based on the behavior of their
+L>6curve. In section 5 we demonstrate empirically that the more nuanced transition between depth-
+efﬁciency and inefﬁciency, as predicted by our theory, affects commonly used self-attention depths
+ofL= 6;12;18;24;30;36;48(a representative plot from our experiments is given in ﬁgure 1(b)).
+The experiments reveal a third regime of “width-efﬁciency": a network can be too deep for a given
+parameter budget, and under-perform relatively to a shallower and wider network of the same size
+(see ﬁgure 2).
+3
+We ﬁt the network sizes at which a transition between the different depth-efﬁciency regimes occur
+to an exponential form, predicted by our theory (see ﬁgure 3). This allows us to extrapolate the
+depth-efﬁciency behavior of larger architectures, and project practical guidelines for the architectural
+design of contemporary huge language models. Table 1 shows our suggested depths and widths
+for models of sizes used in the recent GPT3 paper [Brown et al., 2020]. It seems that popular
+self-attention architectures at all sizes trained up to GPT3’s crossing of the 100B parameter threshold,
+could generally beneﬁt from deepening, with the appropriate widening (indicated by our guidelines).
+With that, our results clearly indicate the importance of widening self-attention networks when
+aiming for the 1 Trillion parameter mark . We project the optimal architecture at that size to have
+depth 95 and width 30K, wider than any self-attention network trained to date.
+2 The self-attention mechanism
+Differentiable attention models in which the output attends over all LSTM-based input representations
+have been introduced in the context of machine translation [Bahdanau et al., 2014]. Self-attention
+(also referred to as intra-attention), which relates different inputs to each other, was ﬁrst employed
+for machine reading [Cheng et al., 2016], and soon thereafter shown to be useful for a variety of
+language applications when operating over LSTM-based representations [Parikh et al., 2016, Paulus
+et al., 2017, Lin et al., 2017]. Vaswani et al. [2017] were the ﬁrst to demonstrate that a model based
+solely on attention, the Transformer, can be better than LSTM based networks. The Transformer’s
+encoder, BERT [Devlin et al., 2019], based entirely on self-attention, has demonstrated unprecedented
+performance across natural language understanding tasks.
+2.1 The Transformer encoder architecture
+We begin by describing the self-attention operation of the original Transformer, and then in the
+next subsection we present the modiﬁcations made in our analyzed model. Each layer l2[L] :=
+f1;:::;Lgof a depth-LTransformer encoder is comprised of two sub-layers. The H-headed self-
+attention sublayer of layer lcomputes the following function at position i2[N], over itsNinputs
+fxl;j2RdxgN
+j=1:
+fl;i
+SA 
+xl;1;;:::;xl;N
+=NX
+j=1HX
+h=1SMj
+1=pda
+WQ;l;hxl;i;WK;l;hxl;j	
+WO;l;hWV;l;hxl;j(1)
+whereSMjff(j)g:=ef(j)=P
+j0ef(j0)is the softmax operation and 8h2[H]the learned weights
+matricesWK;l;h;WQ;l;h;WV;l;h2Rdadxconvert the representation from its dimension dxinto the
+attention dimension da=dx=H, creating Key, Query, and Value representations, respectively. The
+learned weights matrix WO;l;h2Rdxdaconverts the attention result back into the representation
+dimension. The multi-headed self-attention sublayer output in eq. (1), followed by a residual
+connection and layer-norm [Ba et al., 2016], is inserted into a position-wise feed-forward + ReLU
+sublayer, such that each layer’s output at position i2[N]is:
+fl;i
+Layer 
+xl;1;:::;xl;N
+=WFF,2ReLU
+WFF,1LayerNorm
+fl;i
+SA+xl;i
+; (2)
+where the feed-forward matrices are usually taken to be WFF,12R4dxdx;WFF,22Rdx4dx, such
+that the parameter count for an entire layer is 12d2
+x. Finally, the depth- Lmulti-headed self-attention
+operation of the Transformer encoder is obtained by a composition of Lsuch layers, i.e., when setting
+8l2f2;:::;Lg;j2[N] :xl;j=LayerNorm
+fl 1;j
+Layer
+, with x1;jdenoting the input to the deep
+self-attention network at position j.1
+2.2 The analyzed architecture
+We analyze a deep multi-headed self-attention network variant which excludes the layer-norm
+operation, the softmax normalization, and the ReLU activation (see a thorough discussion on the
+effect of these relaxations in the next subsection). For cleanliness of presentation, we defer the
+analysis of the residual connection to the appendix (it bears insigniﬁcant impact on our bounds).
+Speciﬁcally, in the analyzed network, each layer l2[L]computes the following function at position
+i2[N]over its inputsfxl;j2RdxgN
+j=1:
+1Focusing on the self-attention operation, we omit a description of the input embedding matrix, as well as of
+the positional embeddings added at the input, which do not affect our analysis given realistic vocabulary sizes.
+4
+yl;i 
+xl;1;:::;xl;N
+=NX
+j=1HX
+h=1
+WQ;l;hxl;i;WK;l;hxl;j
+WO;l;hWV;l;hxl;j; (3)
+where the Feed-Forward matrices can be now effectively embedded within WO;l;h. Our analysis
+below treats a deep multi-headed self-attention network that is attained by a concatenation of Lsuch
+layers. Importantly, the resultant “linearized" network form, where activations and normalizations are
+removed, is by no means a linear mapping over the network input – every layer integrates 3copies of
+its input in the above non-linear fashion.
+By recursively applying eq. (3)Ltimes we attain the analyzed depth- Lself-attention network. We
+denote the function realized by a network with embedding dimension dxandHattention heads per
+layer at output location i2[N]by:
+yi;L;dx;H; 
+x1;:::;xN
+:=NX
+j1;:::;jC=1gL 
+xi;xj1;:::;xjC
+; (4)
+where denotes all 4LHlearned weight matrices: 8(l;h)2[L]
+[H] :WK;l;h;WQ;l;h;WV;l;h2
+Rdadx;andWO;l;h2Rdxda, and the function gLis a placeholder, fully detailed in the appendix,
+which integrates C=3L 1
+2different input vectors. Network connectivity implies that the number of
+summed position indices is also C. Comparing the form of eq. (4)to the operation of a single layer
+in eq. (3), it can be seen schematically that while a single layer mixes the output position iwith every
+input position jonce and aggregates the result, depth brings forth an exponential enhancement to the
+amount of inputs mixed at once as well as to the amount of summed terms. In section 4, we quantify
+this effect and analyze the limitations posed by the dimension of the internal representation (the
+width) on the network’s ability to make use of this exponential growth with depth. In the following
+subsection, we comment on the differences between the Transformer encoder architecture described
+in eqs. (1) and (2) and the self-attention architecture presented in eqs. (3) and (4).
+2.3 Relaxations
+Empirical evidence indicates that while the ReLU activations and softmax normalization contribute to
+performance (layer-norm mainly contributes to optimization), the basic mechanism in eqs. (3)and(4)
+above captures the deﬁning self-attention characteristic of integrating the inputs with each other in a
+ﬂexible manner:
+The ReLU activation relaxation : Press et al. [2019] demonstrate that a “self-attention ﬁrst" BERT
+variant that ﬁrst performs all of the self-attention operations (eq. (1)) consecutively, and only then
+performs all of the position-wise feed-forward+ReLU operations, achieves comparable language
+modeling performance relatively to the Baseline, which takes the regular approach of interleaving
+these functionalities ( i.e., concatenating the BERT’s layer described in eq. (2)). They report that the
+interleaved Baseline achieves a perplexity score of 18:630:26on the WikiText-103 test [Merity
+et al., 2016] when averaged over 5random seeds, while the “self-attention ﬁrst" model achieves a
+perplexity score of 18:82on this test set. The best pre-Transformer perplexity result on the WikiText-
+103 test, reported by an LSTM-based architecture, was 29:2[Rae et al., 2018]. Since ReLU and
+feed-forward do not mix different locations, this outcome directly implies that the self-attention
+mechanism itself provides all of the elaborate input integration which differentiates BERT from
+previous architectures.
+The softmax normalization relaxation : Initially, an intuitive interpretation of attention as distributing
+“fractions" of an overall attention budget among inputs was given to its actual operation of dynamically
+linking input and output locations. The intuitive interpretation, tightly linked to the need to transform
+the Key/Query similarity score into a distribution, has been recently challenged, as a growing body of
+work shows that the attention weights distribution does not directly correlate with predictions [Jain
+and Wallace, 2019, Pruthi et al., 2019, Brunner et al., 2020]. Moreover, Richter and Wattenhofer
+[2020] recently point out undesirable traits of the softmax operation, demonstrating that its property
+of conﬁning the outcome to the convex hull of its inputs unnecessarily limits the expressibility of
+the self-attention mechanism. They experiment on a suite of synthetic tasks with a BERT variant in
+which the softmax normalization is removed, and ﬁnd it to perform on par on almost all examined
+tasks. When replacing the softmax with other normalizations they report improvements. Finally,
+completely linearized attention (softmax removed) was employed on real tasks as means of reducing
+5
+costs, since the softmax operation cost scales with the input size [de Brébisson and Vincent, 2016,
+Wang et al., 2020].
+The goal of the above points is not to advocate modiﬁcations in BERT’s non-linearity or normalization
+operations (we leave that to other works), but to note that while these are under examination and are
+susceptible for alteration, the connectivity of self-attention, manifested by eqs. (3)and(4), is the
+core mechanism driving its functionality. Our results, to be presented in section 4, demonstrate how
+conclusions drawn by directly analyzing this mechanism accord with the operation of commonly
+employed self-attention networks.
+3 A measure of capacity for modeling input dependencies
+In this section, we introduce the separation rank of the function realized by a self-attention network as
+a measure that quantiﬁes its ability to model dependencies between subsets of its variable set fxjgN
+j=1.
+We will use this measure in order to establish the two depth-efﬁciency/ inefﬁciency regimes in self-
+attention. The separation rank, introduced in Beylkin and Mohlenkamp [2002] for high-dimensional
+numerical analysis, was employed for various applications, e.g., chemistry [Harrison et al., 2003],
+particle engineering [Hackbusch, 2006], and machine learning [Beylkin et al., 2009]. Importantly, the
+separation rank has been established as a measure of dependencies modeled by deep convolutional
+and recurrent networks w.r.t. their inputs [Cohen and Shashua, 2017, Levine et al., 2018a,b].
+Let(A;B)be a partition of the input locations, i.e.,AandBare disjoint subsets of [N]whose union
+gives [N]. The separation rank of a function y(x1;:::;xN)w.r.t. partition (A;B), is the minimal
+number of summands that together sum up to equal y, where each summand is multiplicatively
+separable w.r.t. (A;B),i.e., is equal to a product of two functions – one that intakes only inputs from
+one subsetfxj:j2Ag, and another that intakes only inputs from the other subset fxj:j2Bg.
+Formally, the separation rank ofy: (Rdx)N!Rw.r.t. the partition (A;B)is deﬁned as follows:
+sep(y;A;B) := minn
+R2N[f0g:9g1:::gR: (Rdx)jAj!R;g0
+1:::g0
+R: (Rdx)jBj!Rs:t: (5)
+y 
+x1;:::;xN
+=XR
+r=1gr 
+fxj:j2Ag
+g0
+r 
+fxj:j2Bg
+If the separation rank of a function w.r.t. a partition of its input is equal to 1, the function is
+separable, meaning it cannot take into account consistency between the values of fxjgj2Aand those
+offxjgj2B. In a statistical setting, if yis a probability density function, this would mean that
+fxjgj2Aandfxjgj2Bare statistically independent. The higher sep(y;A;B)is, the farther yis from
+this situation, i.e.the more it models dependency between fxjgj2Aandfxjgj2B, or equivalently,
+the stronger the correlation it induces between the inputs indexed by Aand those indexed by B.
+The ﬁxed connectivity of ConvNets has been shown to yield high separation ranks w.r.t. partitions
+which separate neighboring inputs ( e.g., where all odd positions are in Aand all even positions are
+inB), while suffering from low separation ranks w.r.t. partitions which separate distant inputs ( e.g.,
+whereA= 1;:::;N=2andB=N=2+ 1;:::;N ). Our analysis establishes a qualitatively different trait
+for self-attention networks, which treat all balanced partitions alike:
+Proposition 1. Forp2[dx], letyi;L;dx;H;
+p be the scalar function computing the pth entry of an
+output vector at position i2[N]of the depth- Lself-attention network with embedding dimension dx
+andHattention heads per layer, deﬁned in eqs. (3)and(4). Then, its separation rank w.r.t. balanced
+partitions, which obey A[B= [N];jAj;jBj=N=2, is invariant to the identity of the partition, i.e.,
+8A[B= [N];~A[~B= [N]; s:t:jAj;jBj;j~Aj;j~Bj=N=2:
+sep(yi;L;dx;H;
+p ;A;B) =sep(yi;L;dx;H;
+p ;~A;~B) (6)
+Accordingly, we will omit the speciﬁcation of the partition in future uses, denoting sep(yi;L;dx;H;
+p )
+as the separation rank of yi;L;dx;H;
+p w.r.t. any balanced partition of the inputs.
+This result accords with the intuition regarding the ﬂexibility of the attention mechanism – it does
+not integrate the input in a predeﬁned pattern like convolutional networks, but dynamically learns
+to correlate any inter-dependent subsets of the inputs. Natural text exhibits non-smooth non-local
+dependency structures, as correlations between input segments can abruptly rise and decay with
+distance. The fact that self-attention facilitates all correlation patterns equally poses it as a more
+natural architecture for language modeling related tasks. Convolutional networks, with their local
+6
+connectivity, may have the right inductive bias for imagery data, but partitions unfavored by them
+may reﬂect more erratic correlations that are nonetheless relevant for natural language inputs.
+However, the above property of indifference to the input partition is not enough for succeeding at
+tasks with elaborate input dependencies, since a function with equally low separation ranks for all
+input partitions has limited ability to model such dependencies. In the following section, we analyze
+how different architectural parameters affect the ability of self-attention networks to correlate their
+inputs, and by bounding their separation ranks, we establish the different depth-efﬁciency regimes in
+self-attention networks.
+4 The effect of depth in self-attention networks
+In this section, we present tight bounds on the separation rank of self-attention networks, which reveal
+two qualitatively different regimes. In the ﬁrst regime of L<log3(dx), analyzed in subsection 4.1,
+we establish that deepening is clearly preferable to widening. In the second regime of L>log3(dx),
+analyzed in subsection 4.2, we show that deepening and widening play a similar role in enhancing
+the expressiveness self-attention networks.
+4.1 Depth-efﬁciency in self-attention
+The recursive structure of deep self-attention hints at an exponential increase of input mixing with
+depth: The output of each layer is introduced 3times into the Key/Query/Value computation made
+by the subsequent layer. In this subsection, we formalize this intuition for self-attention networks
+of sufﬁcient width, dx>3L. Theorem 1 below bounds the separation rank of such networks.
+Subsequent to its statement and brief outline of its proof, we explicitly show in corollary 1 the implied
+double-exponential requirement from a bounded depth network attempting to replicate a deeper one.
+Theorem 1. Forp2[dx], letyi;L;dx;H;
+p be the scalar function computing the pth entry of an output
+vector at position i2[N]of the depth- Lself-attention network with embedding dimension dxand
+Hattention heads per layer, deﬁned in eqs. (3)and(4). Letsep(yi;L;dx;H;
+p )be its separation rank
+(section 3). If L;dxobeyL<log3(dx), then the following holds almost everywhere in the network’s
+learned parameter space, i.e.for all values of the weight matrices (represented by ) but a set of
+Lebesgue measure zero:
+3L 2(log3(dx H) +a)log3 
+sep(yi;L;dx;H;
+p )
+3L 1
+2log3(dx+H) (7)
+witha= L+ [2 log32]. (note that log3(dx H) +a>0in this regime of L<log3(dx)).
+We provide below a short proof sketch of the lower bound in the above theorem. The derivation of
+the upper bound is more straightforward, and is left for the appendix, along with a formal proof of
+the lower bound.
+Proof sketch for the lower bound in theorem 1 : We make use of grid tensor based function discretiza-
+tion [Hackbusch, 2012] – The function realized by a self-attention network is evaluated for a set
+of points on an exponentially large grid in the input space, and the outcomes are stored in a matrix
+M 
+yi;L;dx;H;
+p
+, which we prove upholds: rank
+M 
+yi;L;dx;H;
+p
+sep(yi;L;dx;H;
+p ),i.e., its
+rank lower bounds the separation rank. Since the entries of M 
+yi;L;dx;H;
+p
+vary polynomially
+with the self-attention network’s weights, we show that it sufﬁces to ﬁnd a single network weights
+assignment for which the rank of the matrix is greater than the desired lower bound, in order
+to prove the case for almost all of the conﬁgurations of the network’s learned weights (but a set
+of measure zero). Thus, we prove the lower bound in theorem 1 by choosing a simple weight
+assignment that still represents the self-attention connectivity, and showing that for this value of ,
+rank
+M 
+yi;L;dx;H;
+p
+achieves the lower bound, in turn lower bounding the separation rank.
+Theorem 1 bounds the separation rank of a deep self-attention network of sufﬁcient width between two
+functions that grow double-exponentially with depth and polynomially with width, tightly describing
+its behavior w.r.t. depth and width. Because equivalence cannot hold between two functions of
+different separation ranks, the above result implies a double-exponential requirement from the width
+of a shallow network attempting to replicate the deep one, and clear depth efﬁciency holds:
+Corollary 1. With probability 1, the function realized upon randomization of the weights of a deep
+self-attention network deﬁned in eqs. (3)and(4)with depthLdeepand widthddeep
+x>3Ldeep, may only
+7
+be realized by a shallower network with depth Lshallow=Ldeep=dand widthdshallow
+x =wdshallow
+x , where
+d>1;w> 1(i.e., the deep network is deeper by a factor of dand the shallow network is wider by a
+factor ofw), if the following holds:
+w/exp(exp(d)):
+4.2 Depth in-efﬁciency in self-attention
+Beyond establishing depth-efﬁciency in early self-attention layers, the above analysis sheds light
+on the contribution of a self-attention network’s depth to its ability to correlate input subsets. The
+separation rank (w.r.t. any partition) of a single layer, given by eq. (3), is only linear in Handdx,
+showcasing a limitation of the class of functions realized by single self-attention layers to model
+elaborate input dependencies. Theorem 1 quantiﬁes the double exponential growth of this capacity
+measure with the number of stacked self-attention layers. The following theorem shows that this
+growth is capped by the dimension of the internal representation:
+Theorem 2. Foryi;L;dx;H;
+p as deﬁned in theorem 1, if L > log3(dx), then the following holds
+almost everywhere in the network’s learned parameter space, i.e.for all values of the weight matrices
+(represented by ) but a set of Lebesgue measure zero:
+1
+2dxL+b1+b2log3 
+sep(yi;L;dx;H;
+p )
+2dxL+c1+c2 (8)
+with corrections on the order of L:b1= L H
+2+ 1
+,c1=L, and on the order of dxlog3(dx):
+b2= dx 
+1 +1
+2log3 dx H
+2
+,c2= 2dxlog3dx=2p
+2e+ log3dx.
+We provide below a proof sketch of the upper bound in the above theorem. The formal proof, along
+with the proof of the lower bound, which is similar to the one illustrated above for the lower bound in
+theorem 1, are left for the appendix.
+Proof sketch for the upper bound in theorem 2 : By observing that yi;L;dx;H;
+p is a polynomial of
+degree 2C= 3L 1(Cis introduced in eq. (4)), we ﬁnd a kernel   
+x1;:::;xN
+that maps the
+input into a space where each of the output monomials is a linear functional. We ﬁnd a basis for
+the subspace Vspanned by the output monomials, and bound the separation rank of each element
+in that basis by a constant. The dimension of Vis exponential in Ndxand polynomial in 3L 1,
+providing equal groundings for depth and width. A careful analysis that exploits the sums over the
+indicesj1;:::;jCin eq. (4), removes the dependence on N.
+Theorem 2 states that when the network’s depth passes a width dependent threshold, the separation
+rank turns from increasing polynomially with width and double-exponentially with depth to increasing-
+exponentially with width and depth together. Thus, while an increase in network size increases its
+capacity to model input dependencies, our result shows that there is no longer a clear cut advantage
+of depth in this respect:
+Corollary 2. Letydeepdenote the function realized by a deep self-attention network at any output
+locationi2[N], deﬁned in eqs. (3)and(4)with depth and width denoted Ldeep;ddeep
+xsuch that
+Ldeep>log3ddeep
+x. Denote1:=log3ddeep
+x
+Ldeep<1. Then, there exists 2=O(log(H)log(ddeep
+x)
+log(Ldeep))such that the function realized by a network of depth: Lshallow=1Ldeep+2, and
+width:dshallow
+x = 32ddeep
+x, denoted yshallow, has higher separation rank, i.e.:
+sep(yshallow
+p )>sep (ydeep
+p0) ; wherep;p02[dx] (9)
+The above corollary, which follows from theorems 1 and 2, shows that the separation rank of a
+function realized by a self-attention network of arbitrary depth L>log3(dx)can be surpassed by a
+shallower network of polynomial width, contrarily to the established behavior for networks of depth
+L<log3(dx).
+We leave it as an open conjecture that a polynomially sized shallower network can exactly replicate
+the operation of a deeper network in this regime. With that, we point out that a variety of results which
+directly bound different complexity measures of deep networks have been put forward, shedding light
+on their operation [Montufar et al., 2014, Bianchini and Scarselli, 2014, Raghu et al., 2017, Serra
+et al., 2017, Inoue, 2019]. Bounds on the separation rank have been used to explain the operation of
+more veteran architectures, and we ﬁnd them to be particularly relevant in the case of self-attention:
+this complexity measure quantiﬁes the amount of input inter-dependency induced by the network,
+directly reﬂecting a widespread intuition on the success behind the self-attention mechanism.
+8
+Figure 2: An experimental validation of the existence of the two depth-efﬁciency/ inefﬁciency regimes
+for common self-attention networks. The transition between regimes occurs in exponentially larger
+network sizes as the networks gets deeper, in agreement with our theory (see ﬁgure 3).
+5 Depth-efﬁciency regimes in common self-attention networks
+In the previous sections, we analyzed a simpliﬁed version of self-attention networks (described in
+section 2). For this class, we proved the existence of the two different depth-efﬁciency/ inefﬁciency
+regimes in self-attention networks, and further quantiﬁed the transition point between regimes to be
+exponential in network width (and accordingly in network size). In this section, we demonstrate that
+our theoretical predictions are manifested in common self-attention networks: the experiments below
+were conducted over common self-attention architectures which include all operations that were
+omitted in our theoretical analysis. We describe the training setup in section 5.1, the experiments in
+section 5.2, and the projection regrading optimal depth to width ratios (see table 1) in section 5.3.
+5.1 The training setup
+We trained common self-attention architectures of depths L= 6;12;18;24;30;36;48and varying
+widths, such that the network sizes range between 106and6108(full details on the widths of the
+trained architectures are given in the appendix). We trained decoder-only (unidirectional) models,
+by optimizing the autoregressive log-likelihood of the training examples. We used a smaller than
+usual vocabulary size of 2000 so that the vocabulary embedding parameters, given by dxVfor a
+vocabulary of size V, would constitute a small fraction of the learned parameters for all data points.
+Autoregressive models were shown to work well even on character level vocabularies ( e.g., [Peters
+et al., 2018]); due to modeling a joint distribution over the text, they are less sensitive to vocabulary
+size than bidirectional models [Levine et al., 2021].
+Our training set was English Wikipedia, BookCorpus and OpenWebText. We report the loss on a
+held out test set of size 170K sequences. Notably, we estimated the variance of the pretraining and
+evaluation procedure by rerunning 11of the trained architectures three times each, and found it to be
+very low – the reported test loss is stable up to its third digit. The remainder of the training details are
+given in the appendix.
+5.2 Experiments
+5.2.1 Distinct depth-efﬁciency regimes in self-attention
+Figure 2 shows that the predicted devision into two depth-efﬁciency/ inefﬁciency regimes indeed
+takes place in common self-attention architectures. When comparing depths (Lshallow;Ldeep) =
+f(6;12);(12;24);(24;48)g, a qualitatively different depth-efﬁciency behavior is observed as the
+network size varies. For smaller network sizes, deepening is not favorable over widening. Our
+theoretical analysis predicts this, showing that when the width of the deeper network is not large
+enough it can not use its excess layers efﬁciently. However, when the network’s size is increased by
+widening, a transition into the depth-efﬁciency regime is clearly demonstrated: for the same parameter
+budget the deeper network performs better. Once the deeper network becomes wide enough, such
+that the depth threshold for depth-efﬁciency surpasses Lshallow, it is signiﬁcantly more expressive.
+5.2.2 Transition between regimes depends exponentially on depth
+Importantly, beyond a qualitative match to the two predicted depth-efﬁciency/ inefﬁciency behaviors,
+the experiments corroborate our prediction for an exponential dependence of the “depth-efﬁciency
+width" — the width for which a network becomes depth-efﬁcient — on the network’s depth. By
+9
+Figure 3: (a)A ﬁt of the predicted exponential dependence of network width on its depth at the
+transition point between the depth-efﬁciency/inefﬁciency regimes. The experimental points are
+marked by black crosses and their empirical errors by red vertical lines. (b)The network size at
+the transition between regimes NTransition as a function of network depth. The green area marks an
+interval of 2NTransition as calculated in eq. 10 with the ﬁt parameters and their variance given in
+eq. 11. Architectures to the top-left of the curve are too shallow relative to their size, and can be
+improved by deepening. (c)The color in each range of network sizes corresponds to the color of the
+depth reaching the minimal loss in this range. This implies that architectures to the bottom-right of
+the curve in ﬁgure (b) are too deep relative to their size, and can be improved by widening.
+quantifying this exponential behavior (ﬁgure 4), we attain practical guidelines for depth-to-width
+parameter allocation in a self-attention network of a given size.
+Per network depth, we examine the width in which it diverges from the subse-
+quent trained depth, i.e., we examine the following pairs of trained adjacent depths:
+(6;12);(12;18);(18;24);(24;30);(30;36);(36;48). For each pair, we estimate the shallower net-
+work’s transition width (marking the crossing between gray and white areas in ﬁgure 2) as the
+average of its width in two points: the ﬁrst point in which the shallower network under-performs in a
+statistically signiﬁcant manner (see standard deviation estimation in the appendix), and the point to
+its left in which the performance of the two is not distinguishable. We take the empirical error of this
+estimation to be the distance between the two points.
+Our theoretical results in section 4 predict that the above empirically estimated transition should
+occur when the shallower network’s width dxis exponential in its depth L. Accordingly, we ﬁt
+a linear dependence of the log of the width on the depth and receive the ﬁt coefﬁcients (a;b):
+log (dx) =a+bL. The linear ﬁt, shown in Figure 3(a) yields measures of R2= 0:998and
+2
+red= 0:854(see further details in the appendix). These measures imply a good compatibility of the
+theoretically predicted dependence to the measurements, and further reinforce the practical use we
+make of the ﬁt parameters aandbhereinafter, for predicting the network size for which the regime
+transition occurs per depth.
+Speciﬁcally, we insert dx=eaebLinto the dependence N= 12Ld2
+xand calculate the transition
+size and its propagated uncertainty as:
+NTransition (L) = 12Le2ae2bL(10)
+NTransition (L) =q
+(dN=da)22a+ (dN=db)22
+b+ 2 (dN=da) (dN=db)ab
+with the ﬁt parameters given by:
+(a b) = 
+5:0390:030 5:5510 21:310 3
+(11)
+2
+aab
+ab2
+b
+=
+9:410 4 3:7410 5
+ 3:7410 51:710 6
+Figure 3(b) shows the empirical transition sizes per depth on top of the projection and its error,
+calculated by eq. 10 with the ﬁt parameters in eq. 11. Networks to the left of the curve are too shallow
+given their parameter budget, and can be improved by deepening at the expense of their width.
+5.2.3 “Width-efﬁciency" in small network sizes
+Our experiments reveal an empirical phenomenon that was not predicted by our theory. We established
+in section 4 that depth does not have an advantage when the width is too small, but our bounds
+10
+do not separate wider networks from deeper ones in this depth-inefﬁciency regime. A surprising
+phenomenon is seen in ﬁgures 2(b,c): for small enough network sizes, deeper self-attention networks
+perform worse than shallow ones. We leave a theoretical treatment of this regime for future work.
+The above “width-efﬁciency" empirical phenomenon leads to an important observation: for a given
+network size, a certain network can be too shallow, as we predicted theoretically and corroborated
+empirically above, but it can also be too deep . In other words, the region to the right of the ﬁt curve
+in ﬁgure 3(b) includes networks that can be improved by widening at the expense of their depth.
+This implies that rather than representing a minimal depth per given self-attention network size,
+the curve in ﬁgure 3(b) represents the area of an optimal depth per network size. We provide a
+demonstration of this idea in ﬁgure 3(c), which clearly shows that when comparing networks of
+depthsL= 6;12;24;48, each one would be best to use in a different range of network sizes (the
+color in each range corresponds to the best performing depth in that range).
+5.3 Projecting to larger networks
+Beyond reﬂecting our theoretical predictions, the ﬁt in ﬁgure 3 can be used to project beyond the
+scope of our experiments in order to shed light on architecture design decisions made for much larger
+self-attention networks, like the contemporary huge Transformer-based language models [Brown
+et al., 2020, Raffel et al., 2019b, Rosset, 2020]. Figure 4 shows the extrapolation of the ﬁtted function
+and the uncertainty up to networks of depth 100. Notably, despite the uncertainty growing as the scope
+extends,NTransition (L=100)
+NTransition (L=100)= 0:2,i.e., the predictions for the optimal network size in the L= 100
+case are likely to be accurate within 20% of the predicted size, yielding meaningful and unforeseen
+practical implications.
+Figure 4: An extrapolation of the optimal size per depth
+(eq. 10) beyond the scope of our experiments. The purple
+circles mark the GPT3 experiments detailed in table 1.For example, when examining the ar-
+chitecture of GPT3, the deepest self-
+attention network trained to date with
+96layers, we get NTransition (96) =
+1:170:231012, or over a Trillion
+parameters. This places GPT3 with
+its 175B parameters signiﬁcantly be-
+low our ﬁt, suggesting that it may be
+too deep given its parameter budget.
+In fact, the optimal depth for GPT3’s
+size is predicted to be L= 80 , since
+NTransition (80) = 1:650:251011.
+Table 1 includes further suggestion for
+huge models following our ﬁt, includ-
+ing a suggestion to deepen networks
+on the left of the curve in ﬁgure 4.
+With high certainty given our exper-
+imental data, the optimal model size
+increase towards 1 Trillion parameter
+models and beyond is via widening.
+6 Discussion
+An apparent “depth- inefﬁciency" of self-attention networks was pointed out by prior works – in
+contrast to other successful deep learning architectures, in the case of self-attention there does not
+seem to be a clear advantage to deepening vs. widening. Our theoretical analysis clearly reﬂects
+this behavior in one parameter setting, but suggests an important nuance regarding its origins, while
+predicting a separate “depth-efﬁciency" regime in another parameter setting. Rather than an obvious
+explanation for the observed depth inefﬁciency, by which the self-attention mechanism does not
+beneﬁt much from the operation of compounding, our analysis strongly points at the converse: self-
+attention is so effective at integrating its inputs, that it very quickly reaches saturation in the amount
+of dependencies that can be supported by the representation dimension.
+Thus, for early self-attention compounding, we prove a rapid growth in expressiveness with depth,
+and speciﬁcally in the ability to ﬂexibly correlate between any input locations, which can not be
+accounted for by any reasonable widening. However, our analysis pinpoints a transition in which the
+11
+capacity of width to support the above rapid growth exhausts. Thus, when the width of a self-attention
+network is not large enough, the above depth-efﬁciency disappears – deepening and widening become
+equivalent in terms of expressiveness.
+We did not ﬁnd a result which directly upper bounds depth-efﬁciency in other architecture classes.
+Works by Sharir and Shashua [2018], Levine et al. [2019] show an exponential growth with depth
+of a measure related to the separation rank in certain classes of convolutional networks. Comparing
+this with the double-exponential growth shown in theorem 1 for early self-attention layers, it may
+be conjectured that convolutional networks seemingly beneﬁt more from depth than self-attention
+does because their separation rank grows less rapidly, so they do not saturate some width dependent
+threshold as quickly as self-attention does. We leave these investigations for future work.
+The experiments presented in section 5 reveal a qualitative and quantitative match to our theoretical
+predictions. Beyond reinforcing the validity of our theoretical interpretation, our comprehensive
+experimental setup allowed us to extrapolate and project depth-to-width trade-offs in huge self-
+attention networks, that are currently being trained as powerful language models. For example, GPT3,
+the deepest self-attention network trained to date with 96layers, has matched this depth with an
+unprecedented width of 12K. However, our projections clearly show that for this number of layers the
+network should be much wider. In fact, the logarithmic dependence that we establish between
+the optimal depth and width clearly dictates that size increase should be mainly via widening
+from this point (100B models) onwards. This is good news from an engineering perspective:
+width can be increased more efﬁciently than depth in terms of parallelization. The multi-million
+dollar price tag on these architectures, along with the race to push the envelope towards 1-Trillion
+parameter models and beyond, make such informed guidelines an essential ingredient.
+Beyond elucidating the behavior of vanilla self-attention architectures, our work theoretically moti-
+vates architectural changes that can provide the next leap in self-attention network expressiveness. By
+indicating the network width as the limiting factor for depth-efﬁciency, our analysis encourages the de-
+velopment of methods for increasing network width with low expenses. For example, we point at the
+concept of ShufﬂeNet [Ma et al., 2018], which has proven to be efﬁcient for convolutional networks.
+They increase the representation dimension while using only a fraction of it for computation in each
+layer. This way, the computational costs are contained, but the width related theoretical limitations,
+posed by our work, are relaxed. Recently, Fedus et al. [2021] trained a 1-Trillion parameter model
+via a related approach which learns to choose the subset of parameters to apply in each layer. Indeed,
+we view our work as part of an effort to provide timely interpretations as feedback for the tremendous
+empirical pull in our ﬁeld.
+Acknowledgments
+We thank Daniel Jannai for assistance in the experiments, and Jared Kaplan for the permission to
+use the ﬁgure in Kaplan et al. [2020]. This research was supported by the ERC (European Research
+Council) and the ISF (Israel Science Foundation). Experiments were performed with Cloud TPUs
+and supported by Google’s TensorFlow Research Cloud (TFRC). Yoav Levine was supported by the
+Israel Academy of Sciences Adams fellowship.
+Arash Amini, Amin Karbasi, and Farokh Marvasti. Low-rank matrix approximation using point-wise operators.
+IEEE Transactions on Information Theory , 58(1):302–310, 2012.
+Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization. arXiv preprint arXiv:1607.06450 ,
+2016.
+Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly learning to
+align and translate. arXiv preprint arXiv:1409.0473 , 2014.
+Gregory Beylkin and Martin J Mohlenkamp. Numerical operator calculus in higher dimensions. Proceedings of
+the National Academy of Sciences , 99(16):10246–10251, 2002.
+Gregory Beylkin, Jochen Garcke, and Martin J Mohlenkamp. Multivariate regression and machine learning with
+sums of separable functions. SIAM Journal on Scientiﬁc Computing , 31(3):1840–1857, 2009.
+Monica Bianchini and Franco Scarselli. On the complexity of neural network classiﬁers: A comparison between
+shallow and deep architectures. Neural Networks and Learning Systems, IEEE Transactions on , 25(8):
+1553–1565, 2014.
+12
+Tom B Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners.
+arXiv preprint arXiv:2005.14165 , 2020.
+Gino Brunner, Yang Liu, Damian Pascual Ortiz, Oliver Richter, Massimiliano Ciaramita, and Roger Wattenhofer.
+On identiﬁability in transformers. 2020.
+Kaifeng Bu, Yaobo Zhang, and Qingxian Luo. Depth-width trade-offs for neural networks via topological
+entropy. arXiv preprint arXiv:2010.07587 , 2020.
+Richard Caron and Tim Traynor. The zero set of a polynomial. WSMR Report 05-02 , 2005.
+Jianpeng Cheng, Li Dong, and Mirella Lapata. Long short-term memory-networks for machine reading. arXiv
+preprint arXiv:1601.06733 , 2016.
+Kevin Clark, Minh-Thang Luong, Quoc V . Le, and Christopher D. Manning. Electra: Pre-training text encoders
+as discriminators rather than generators. In International Conference on Learning Representations , 2020.
+URL https://openreview.net/forum?id=r1xMH1BtvB .
+Nadav Cohen and Amnon Shashua. Inductive bias of deep convolutional networks through pooling geometry. In
+5th International Conference on Learning Representations (ICLR) , 2017.
+Nadav Cohen, Or Sharir, and Amnon Shashua. On the expressive power of deep learning: A tensor analysis.
+Conference On Learning Theory (COLT) , 2016.
+Amit Daniely. Depth separation for neural networks. arXiv preprint arXiv:1702.08489 , 2017.
+Alexandre de Brébisson and Pascal Vincent. A cheap linear attention mechanism with fast lookups and ﬁxed-size
+representations. arXiv preprint arXiv:1609.05866 , 2016.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: pre-training of deep bidirectional
+transformers for language understanding. In Jill Burstein, Christy Doran, and Thamar Solorio, editors,
+Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational
+Linguistics: Human Language Technologies, NAACL-HLT 2019, Minneapolis, MN, USA, June 2-7, 2019,
+Volume 1 (Long and Short Papers) , pages 4171–4186. Association for Computational Linguistics, 2019. doi:
+10.18653/v1/n19-1423. URL https://doi.org/10.18653/v1/n19-1423 .
+Ronen Eldan and Ohad Shamir. The power of depth for feedforward neural networks. In Conference on learning
+theory , pages 907–940, 2016.
+Fenglei Fan, Rongjie Lai, and Ge Wang. Quasi-equivalence of width and depth of neural networks. 2020.
+William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with
+simple and efﬁcient sparsity. arXiv preprint arXiv:2101.03961 , 2021.
+Wolfgang Hackbusch. On the efﬁcient evaluation of coalescence integrals in population balance models.
+Computing , 78(2):145–159, 2006.
+Wolfgang Hackbusch. Tensor spaces and numerical tensor calculus , volume 42. Springer Science & Business
+Media, 2012.
+Moritz Hardt and Tengyu Ma. Identity matters in deep learning. arXiv preprint arXiv:1611.04231 , 2016.
+Godfrey Harold Hardy, John Edensor Littlewood, and George Pólya. Inequalities . Cambridge university press,
+1952.
+Robert J Harrison, George I Fann, Takeshi Yanai, and Gregory Beylkin. Multiresolution quantum chemistry in
+multiwavelet bases. In Computational Science-ICCS 2003 , pages 103–110. Springer, 2003.
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pages 770–778, 2016.
+K. Inoue. Expressive numbers of two or more hidden layer relu neural networks. In 2019 Seventh International
+Symposium on Computing and Networking Workshops (CANDARW) , pages 129–135, 2019.
+Sarthak Jain and Byron C. Wallace. Attention is not explanation. In Jill Burstein, Christy Doran, and Thamar
+Solorio, editors, Proceedings of the 2019 Conference of the North American Chapter of the Association for
+Computational Linguistics: Human Language Technologies, NAACL-HLT 2019, Minneapolis, MN, USA, June
+2-7, 2019, Volume 1 (Long and Short Papers) , pages 3543–3556. Association for Computational Linguistics,
+2019. doi: 10.18653/v1/n19-1357. URL https://doi.org/10.18653/v1/n19-1357 .
+13
+Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess, Rewon Child, Scott Gray,
+Alec Radford, Jeffrey Wu, and Dario Amodei. Scaling laws for neural language models. arXiv preprint
+arXiv:2001.08361 , 2020.
+Kenji Kawaguchi. Deep learning without poor local minima. In Advances in neural information processing
+systems , pages 586–594, 2016.
+Valentin Khrulkov, Alexander Novikov, and Ivan Oseledets. Expressive power of recurrent neural networks. In
+6th International Conference on Learning Representations (ICLR) , 2018.
+Yoav Levine, Or Sharir, Alon Ziv, and Amnon Shashua. Beneﬁts of depth for long-term memory of recurrent
+networks. (ICLR 2018) International Conference on Learning Representations workshop , 2018a.
+Yoav Levine, David Yakira, Nadav Cohen, and Amnon Shashua. Deep learning and quantum entanglement:
+Fundamental connections with implications to network design. In 6th International Conference on Learning
+Representations (ICLR) , 2018b.
+Yoav Levine, Or Sharir, Nadav Cohen, and Amnon Shashua. Quantum entanglement in deep learning ar-
+chitectures. Phys. Rev. Lett. , 122:065301, Feb 2019. doi: 10.1103/PhysRevLett.122.065301. URL
+https://link.aps.org/doi/10.1103/PhysRevLett.122.065301 .
+Yoav Levine, Barak Lenz, Opher Lieber, Omri Abend, Kevin Leyton-Brown, Moshe Tennenholtz, and Yoav
+Shoham. Pmi-masking: Principled masking of correlated spans. In International Conference on Learning
+Representations , 2021. URL https://openreview.net/forum?id=3Aoft6NWFej .
+Zhouhan Lin, Minwei Feng, Cicero Nogueira dos Santos, Mo Yu, Bing Xiang, Bowen Zhou, and Yoshua Bengio.
+A structured self-attentive sentence embedding. arXiv preprint arXiv:1703.03130 , 2017.
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke
+Zettlemoyer, and Veselin Stoyanov. Roberta: A robustly optimized BERT pretraining approach. CoRR ,
+abs/1907.11692, 2019. URL http://arxiv.org/abs/1907.11692 .
+Zhou Lu, Hongming Pu, Feicheng Wang, Zhiqiang Hu, and Liwei Wang. The expressive power of neural
+networks: A view from the width. In Advances in neural information processing systems , pages 6231–6239,
+2017.
+Ningning Ma, Xiangyu Zhang, Hai-Tao Zheng, and Jian Sun. Shufﬂenet v2: Practical guidelines for efﬁcient cnn
+architecture design. In Proceedings of the European conference on computer vision (ECCV) , pages 116–131,
+2018.
+Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer sentinel mixture models. arXiv
+preprint arXiv:1609.07843 , 2016.
+Paul Michel, Omer Levy, and Graham Neubig. Are sixteen heads really better than one? In Advances in Neural
+Information Processing Systems , pages 14014–14024, 2019.
+Guido F Montufar, Razvan Pascanu, Kyunghyun Cho, and Yoshua Bengio. On the number of linear regions of
+deep neural networks. In Advances in neural information processing systems , pages 2924–2932, 2014.
+Thao Nguyen, Maithra Raghu, and Simon Kornblith. Do wide and deep networks learn the same things?
+uncovering how neural network representations vary with width and depth. arXiv preprint arXiv:2010.15327 ,
+2020.
+Ankur P Parikh, Oscar Täckström, Dipanjan Das, and Jakob Uszkoreit. A decomposable attention model for
+natural language inference. arXiv preprint arXiv:1606.01933 , 2016.
+Romain Paulus, Caiming Xiong, and Richard Socher. A deep reinforced model for abstractive summarization.
+arXiv preprint arXiv:1705.04304 , 2017.
+Matthew E Peters, Mark Neumann, Mohit Iyyer, Matt Gardner, Christopher Clark, Kenton Lee, and Luke
+Zettlemoyer. Deep contextualized word representations. arXiv preprint arXiv:1802.05365 , 2018.
+Oﬁr Press, Noah A Smith, and Omer Levy. Improving transformer models by reordering their sublayers. arXiv
+preprint arXiv:1911.03864 , 2019.
+Danish Pruthi, Mansi Gupta, Bhuwan Dhingra, Graham Neubig, and Zachary C Lipton. Learning to deceive
+with attention-based explanations. arXiv preprint arXiv:1909.07913 , 2019.
+Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. Language models are
+unsupervised multitask learners. 2019.
+14
+Jack W Rae, Chris Dyer, Peter Dayan, and Timothy P Lillicrap. Fast parametric learning with activation
+memorization. arXiv preprint arXiv:1803.10049 , 2018.
+Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei
+Li, and Peter J Liu. Exploring the limits of transfer learning with a uniﬁed text-to-text transformer. arXiv
+preprint arXiv:1910.10683 , 2019a.
+Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei
+Li, and Peter J Liu. Exploring the limits of transfer learning with a uniﬁed text-to-text transformer. arXiv
+preprint arXiv:1910.10683 , 2019b.
+Maithra Raghu, Ben Poole, Jon Kleinberg, Surya Ganguli, and Jascha Sohl Dickstein. On the expressive power
+of deep neural networks. In Proceedings of the 34th International Conference on Machine Learning-Volume
+70, pages 2847–2854. JMLR. org, 2017.
+Oliver Richter and Roger Wattenhofer. Normalized attention without probability cage. arXiv preprint
+arXiv:2005.09561 , 2020.
+Corby Rosset. Turing-NLG: A 17-billion-parameter language model
+by microsoft. https://www.microsoft.com/en-us/research/blog/
+turing-nlg-a-17-billion-parameter-language-model-by-microsoft/ , 2020. Accessed:
+2020-04-12.
+Andrew M Saxe, James L McClelland, and Surya Ganguli. Exact solutions to the nonlinear dynamics of learning
+in deep linear neural networks. arXiv preprint arXiv:1312.6120 , 2013.
+Thiago Serra, Christian Tjandraatmadja, and Srikumar Ramalingam. Bounding and counting linear regions of
+deep neural networks. arXiv preprint arXiv:1711.02114 , 2017.
+Or Sharir and Amnon Shashua. On the expressive power of overlapping architectures of deep learning. In 6th
+International Conference on Learning Representations (ICLR) , 2018.
+Or Sharir, Ronen Tamari, Nadav Cohen, and Amnon Shashua. Tractable generative convolutional arithmetic
+circuits. 2016.
+Karen Simonyan and Andrew Zisserman. Very deep convolutional networks for large-scale image recognition.
+arXiv preprint arXiv:1409.1556 , 2014.
+Mingxing Tan and Quoc V Le. Efﬁcientnet: Rethinking model scaling for convolutional neural networks. arXiv
+preprint arXiv:1905.11946 , 2019.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser,
+and Illia Polosukhin. Attention is all you need. In Isabelle Guyon, Ulrike von Luxburg, Samy Bengio,
+Hanna M. Wallach, Rob Fergus, S. V . N. Vishwanathan, and Roman Garnett, editors, Advances in Neural
+Information Processing Systems 30: Annual Conference on Neural Information Processing Systems 2017, 4-9
+December 2017, Long Beach, CA, USA , pages 5998–6008, 2017. URL http://papers.nips.cc/paper/
+7181-attention-is-all-you-need .
+Andreas Veit, Michael J Wilber, and Serge Belongie. Residual networks behave like ensembles of relatively
+shallow networks. In Advances in neural information processing systems , pages 550–558, 2016.
+Chengwei Wang, Tengfei Zhou, Chen Chen, Tianlei Hu, and Gang Chen. Off-policy recommendation system
+without exploration. In Paciﬁc-Asia Conference on Knowledge Discovery and Data Mining , pages 16–27.
+Springer, 2020.
+Zifeng Wu, Chunhua Shen, and Anton Van Den Hengel. Wider or deeper: Revisiting the resnet model for visual
+recognition. Pattern Recognition , 90:119–133, 2019.
+Zhilin Yang, Zihang Dai, Yiming Yang, Jaime G. Carbonell, Ruslan Salakhutdinov, and Quoc V .
+Le. Xlnet: Generalized autoregressive pretraining for language understanding. In Hanna M.
+Wallach, Hugo Larochelle, Alina Beygelzimer, Florence d’Alché-Buc, Emily B. Fox, and Ro-
+man Garnett, editors, Advances in Neural Information Processing Systems 32: Annual Con-
+ference on Neural Information Processing Systems 2019, NeurIPS 2019, 8-14 December 2019,
+Vancouver, BC, Canada , pages 5754–5764, 2019. URL http://papers.nips.cc/paper/
+8812-xlnet-generalized-autoregressive-pretraining-for-language-understanding .
+Sergey Zagoruyko and Nikos Komodakis. Wide residual networks. arXiv preprint arXiv:1605.07146 , 2016.
+15
+Contents
+A Upper bounds on the separation rank 16
+A.1 The function realized by a deep multi-headed self-attention network . . . . . . . . . . . . . . 16
+A.2 Proof of the upper bound in theorem 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+A.3 Proof of the upper bound in theorem 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+A.4 The effect of residual connections . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+A.5 Technical lemmas . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+B Lower bounds on the separation rank 24
+B.1 preliminaries . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+B.1.1 Tensors and their matricization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+B.1.2 Grid tensors provide lower bounds for the separation rank . . . . . . . . . . . . . . . 24
+B.1.3 Method for bounding the grid tensor’s rank . . . . . . . . . . . . . . . . . . . . . . . 25
+B.2 Proof of the lower bounds in theorems 1 and 2 . . . . . . . . . . . . . . . . . . . . . . . . . 25
+B.3 Technical lemmas . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27
+C Proof of Proposition 1 on the separation rank symmetry 31
+D Experimental details 32
+D.1 Fit details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32
+A Upper bounds on the separation rank
+A.1 The function realized by a deep multi-headed self-attention network
+In this subsection, we prove facts on the general structure of the function realized by the analyzed self-attention
+architecture that will be of use to us in the upcoming proofs. For a cleaner presentation, we will rewrite eq. (3)
+in vectorized notation:
+Y=HX
+h=1WO;hWV;hXXT
+WK;hT
+WQ;hX (12)
+whereX;Y (X)2RdxNdenote matrices respectively holding xj,yj 
+x1;:::;xN
+in theirj’th column. Simi-
+larly treating eq. (4), we will denote by YL;dx;H;(X)2RdxNthe matrix holding yj;L;dx;H; 
+x1;:::;xN
+in itsj’th column.
+We begin by proving a lemma that reveals the structure of gLpresented in eq. (4):
+Lemma 1. DeﬁningC(L):=3L 1
+2, any depthLcomposition of the self-attention layers deﬁned in eq. (3)can
+be written as:
+YL;dx;H;=X
+h2[H][C(L)]B(0;h)TM(1;h)M(C(L);h)A(0;h)X (13)
+where8h2[H][C]0cC(L) :M(c;h)=A(c;h)XXTB(c;h)TandA(c;h);B(c;h)2Rdadx.
+Proof. By Induction on L. Base case:
+Y(1)(X) =HX
+h=1WO;h
+|{z}
+BTWV;hXXT
+WK;hT
+|{z}
+MWQ;h
+|{z}
+AX
+16
+Y(L+1)(X) =HX
+h=1WO;hWV;hY(L)(X)Y(L)(X)T
+WK;hT
+WQ;hY(L)(X)
+Now, substituting in the induction hypothesis on the structure of Y(L)(X)yields:
+=HX
+h=1WO;hWV;h0
+@X
+h12[H][C(L)]B(0;h1)TM(1;h1)M(C(L);h1)A(0;h1)X1
+A
+0
+@X
+h22[H][C(L)]XTA(0;h2)TM(C(L);h2)TM(1;h2)TB(0;h2)1
+A
+WK;hT
+WQ;h
+0
+@HX
+h32[H][C(L)]B(0;h3)TM(1;h3)M(C(L);h3)A(0;h3)X1
+A
+Finally unifying the summations over h;h1h2;h3to single sum over [H][C(L)3+1=C(L+1)]gives
+X
+h2[H][C(L+1)]WO;hWV;hB(0;h)T
+|{z}
+2RdxdaM(1;h)M(C(L);h)A(0;h)XXTA(0;h)T
+|{z}
+in the desired form of MM(C(L);h)TM(2;h)T(14)
+M(1;h)TB(0;h)
+WK;h(0)T
+WQ;hB(0;h)T
+| {z }
+in the desired form of MM(1;h)M(C(L);h)A(0;h)X(15)
+Note that the number of Munits, each with a summation on a different index j2[N], is3C(L) + 1 =
+C(L+ 1) , implyingC(L) =3L 1
+2as needed.
+Corollary 3. DeﬁningC(L):=3L 1
+2, any depthLcomposition of Lself-attention layers can be written as:
+yi;L;dx;H;
+x1;:::;xN
+=NX
+j1;:::;jC=1gL
+xi;xj1;:::;xjC
+(16)
+Where
+gL
+xi;xj1;:::;xjC
+:=X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1h
+B(0;h)i
+r1;p0
+@C(L)Y
+c=1D
+A(c;h)
+rc;x(jc)ED
+B(c;h)
+rc+1;x(jc)E1
+AD
+A(0;h)
+rC(L)+1;x(i)E
+Proof. To get the required form, we will use lemma 1 above and write the matrix multiplication in eq. (13)
+explicitly.
+M(c;h)
+r1;r2=NX
+j=1h
+A(c;h)Xi
+r1;jh
+XTB(c;h)Ti
+j;r2=NX
+j=1D
+A(c;h)
+r1;x(j)ED
+B(c;h)
+r2;x(j)E
+Therefore
+yi;L;dx;H;
+p
+x(1);:::;x(N)
+=X
+h2[H][C(L)]B(0;h)T
+pM(1;h)M(C(L);h)A(0;h)x(i)
+=NX
+j1;:::;jC(L)=1X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1
+h
+B(0;h)i
+r1;p0
+@C(L)Y
+c=1D
+A(c;h)
+rc;x(jc)ED
+B(c;h)
+rc+1;x(jc)E1
+AD
+A(0;h)
+rC(L)+1;x(i)E
+In the next two subsections, we will use the above lemma 1 to prove the two competing upper bounds on the
+separation rank of self-attention networks.
+17
+A.2 Proof of the upper bound in theorem 1
+In the following theorem, we show how an upper bound on the separation rank is implied by the form of eq. (13)
+in the statement of lemma 1.
+Theorem 3. DeﬁningC(L):=3L 1
+2, for any depth L1input sizeN > 1partitionP[Q= [N]and
+output locations i2[N]; p2[dx], the following holds:
+sep
+yi;L;dx;H;
+p;P;Q
+(H(da+ 1))C(L)
+Proof. We begin by writing the matrix multiplication in eq. (13) explicitly.
+M(c;h)
+r1;r2=NX
+j=1h
+A(c;h)Xi
+r1;jh
+XTB(c;h)Ti
+j;r2=X
+j2PD
+A(c;h)
+r1;x(j)ED
+B(c;h)
+r2;x(j)E
++X
+j2QD
+A(c;h)
+r1;x(j)ED
+B(c;h)
+r2;x(j)E
+Therefore, rewriting the summation to be over fPc2fP;QggC(L)
+c=1that correspond to the two partition segments
+P=Q .
+yi;L;dx;H;
+p
+x(1);:::;x(N)
+=X
+h2[H][C(L)]B(0;h)T
+pM(1;h)M(C(L);h)A(0;h)x(i)
+=X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1X
+P1;:::;PC(L)2fP;Qg
+B(0;h)
+r1;p0
+@C(L)Y
+c=1X
+j2PcD
+A(c;h)
+rc;x(j)ED
+B(c;h)
+rc+1;x(j)E1
+AD
+A(0;h)
+rC(L)+1;x(i)E
+Now we reorder the above sum by summing over indices of swaps between PandQ, i.e.2[C]such that
+P6=P+1, and split the multiplicationQC(L)
+c=1according to the crossing indices:
+=X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1C(L)X
+b=0X
+0=b+1<bb 1:::1<0=C(L)B(0;h)
+r1;p
+0
+B@0
+B@bb
+2cY
+m=02mY
+c=2m+1+1X
+j2PD
+A(c;h)
+rc;x(j)ED
+B(c;h)
+rc+1;x(j)E1
+CAD
+A(0;h)
+rC(L)+1;x(i)E1
+CA
+0
+B@db
+2e 1Y
+m=02m+1Y
+c=2m+2+1X
+j2QD
+A(c;h)
+rc;x(j)ED
+B(c;h)
+rc+1;x(j)E1
+CA
+Where we assume w.l.o.g that i2Pand therefore P1;P1+1;:::;P0 1;P0=P. The above reordering
+allows pushing the summation of non swapping rcindices into the P;Q parentheses:
+=X
+h2[H][C(L)]C(L)X
+b=0X
+0=b+1<bb 1:::10=C(L)daX
+r1+1;:::;rb+1=1B(0;h)
+r1;p (17)
+0
+BBBBBBBBB@daX
+rC(L)+1=1
+|{z}
+just for1<C
+otherwise ignoredaX
+r1=1|{z}
+used either
+inPorQ0
+BBBBBBBBB@bb
+2cY
+m=0daX
+r2m+1+2
+...
+r2m=12mY
+c=2m+1+1X
+j2PD
+A(c;h)
+rc;x(j)ED
+B(c;h)
+rc+1;x(j)E1
+CCCCCCCCCAD
+A(0;h)
+rC(L)+1;x(i)E1
+CCCCCCCCCA
+| {z }
+function ofP0
+BBBBBB@daX
+r1=1|{z}
+used either
+inPorQdb
+2e 1Y
+m=0daX
+r2m+2+2;:::;r2m+1=12m+1Y
+c=2m+2+1X
+j2QD
+A(c;h)
+rc;x(j)ED
+B(c;h)
+rc+1;x(j)E1
+CCCCCCA
+| {z }
+function ofQ
+18
+Since the separation rank of each term in the above summation is 1, we proved the following upper bound on the
+separation rank:
+sep
+yi;L;dx;H;
+p;P;Q
+X
+h2[H][C(L)]C(L)X
+b=0X
+0=b+1<bb 1:::10=C(L)daX
+r1+1;:::;rb+1=11
+=HC(L)C(L)X
+b=0 
+C(L)
+b!
+(da)b=HC(L)(da+ 1)C(L)= (H(da+ 1))C(L)
+We note that unlike the dacase, the same Hindex can affect nonconsecutive M(c1;h);M(c2;h), therefore we
+can’t simply push the hindices as done for the rindices in eq. (17).
+From here, the upper bound in theorem 1 follows by
+log3
+sep
+yi;L;dx;H;
+p;P;Q
+log3
+(H(da+ 1))C(L)
+=3L 1
+2log3(dx+H) (18)
+A.3 Proof of the upper bound in theorem 2
+In the following theorem, we show how an upper bound on the separation rank is implied by the polynomial
+degree ofyi;L;dx;H;
+p in eq. (16). We will use the notation of  n
+k– the multiset coefﬁcient, given in the
+binomial form by n+k 1
+k
+. We will use the identity
+a1:::an2Z0 :Pn
+r=1ar=k	=  n
+k
+.
+Theorem 4. DeﬁningC(L):=3L 1
+2, for any depth L1input sizeN > 1partitionP[Q= [N]and
+output locations i2[N]; p2[dx], the following holds:
+sep
+yi;L;dx;H;
+p;P;Q
+dx(C(L) + 1)  
+dx
+2C(L)!!2C(L)
+dx+ 1dx
+(19)
+Proof. We begin by opening the inner products in eq. (16), explicitly writing the indices:
+yi;L;dx;H;
+p =NX
+j1;:::;jC(L)=1X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1B(0;h)
+r1;p0
+@C(L)Y
+c=1D
+A(c;h)
+rc;x(jc)ED
+B(c;h)
+rc+1;x(jc)E1
+AD
+A(0;h)
+rC(L)+1;x(i)E
+=dxX
+1;:::;C(L)+1;1;:::;C(L)=1NX
+j1;:::;jC(L)=1X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1
+0
+@B(0;h)
+r1;pA(0;h)
+rC(L)+1;C(L)+1x(i)
+C(L)+1C(L)Y
+c=1A(c;h)
+rc;cx(jc)
+cB(c;h)
+rc;cx(jc)
+c1
+A
+And separating between coefﬁcients and x’s:
+=dxX
+1;:::;C(L)+1;1;:::;C(L)=10
+@X
+h2[H][C(L)]daX
+r1;:::;rC(L)+1=1B(0;h)
+r1;pA(0;h)
+rC(L)+1;C(L)+1C(L)Y
+c=1A(c;h)
+rc;cB(c;h)
+rc;c1
+A
+| {z }
+:=T1;:::;C(L)+1;1;:::;C(L)0
+@NX
+j1;:::;jC(L)=1x(i)
+C(L)+1C(L)Y
+c=1x(jc)
+cx(jc)
+c1
+A
+Now we can group monomials by the powers n1;:::;ndxof each coordinate
+19
+=dxX
+C(L)+1X
+n1+:::ndx=2C(L)
+|{z}
+The powers0
+BBB@How to distributethe powers between the c’sz }| {X
+!;:::;C(L);1;:::;C(L)2[dx]
+8m2[dx]jfc2[C(L) :c=m]gj+jfc2[C(L) :c=m]gj=nmT1;:::;C(L)+1;1;:::;C(L)1
+CCCA
+n1::::;ndx;C(L)+1
+x(1);:::; x(N)
+Where:
+n1::::;ndx;C(L)+1
+x(1);:::; x(N)
+:=X
+o1++oN=C(L)|{z}
+How manyjindices
+equal to each [N]X
+0n1;1;:::;ndx;N2C(L)
+8m2[dx]PN
+j=1nm;j=nm
+8j2[N]Pdx
+m=1nm;j=2oj|{z}
+How to distribute the powers between [N]x(i)
+C(L)+1NY
+j=1dxY
+m=1
+x(j)
+mnm;j
+Finally, we need to bound the separation rank of n1::::;ndx;C(L)+1. W.l.o.g we choose the partition P=
+1;:::;N
+2	
+;Q=N
+2+ 1;:::;N	
+andi2Pthen we can divide the powers between P;Q in the following
+way:
+n1::::;ndx;C(L)+1
+x(1);:::; x(N)
+=X
+0r1;P;:::;rdx;P2C(L)
+0r1;Q;:::;rdx;Q2C(L)
+8m2[dx]rm;P+rm;Q=nmC(L)X
+E=0
+0
+BBBBBBBB@X
+o1++oN
+2=EX
+0n1;1;:::;ndx;N
+22C(L)
+8m2[dx]PN
+j2Pnm;j=rm;P
+8j2[N]Pdx
+m=1nm;j=2ojx(i)
+C(L)+1Y
+j2PdxY
+m=1
+x(j)
+mnm;j1
+CCCCCCCCA
+| {z }
+function ofP0
+BBBBBBBB@X
+oN
+2+1++oN=C(L) EX
+0n1;1;:::;ndx;N
+22C(L)
+8m2[dx]PN
+j2Qnm;j=rm;Q
+8j2[N]Pdx
+m=1nm;j=2ojY
+j2QdxY
+m=1
+x(j)
+mnm;j1
+CCCCCCCCA
+| {z }
+function ofQ
+Thus, since each summand is of separation rank 1, the separation rank of n1::::;ndx;C(L)+1is bounded by the
+number of summands:
+(C(L) + 1)dxY
+=1  
+2
+r!!lemma 3z}|{
+(C(L) + 1)2C(L)
+dx+ 1dx
+where the inequality followed from lemma 3. Since we have at most dx dx
+2C(L)
+differentwe conclude that:
+sep
+yi;L;dx;H;
+p;P;Q
+dx  
+dx
+2C(L)!!
+|{z}
+number of(C(L) + 1)2C(L)
+dx+ 1dx
+20
+From here, theorem 2 follows by the multiset identity in lemma 4:
+log3h
+sep
+yi;L;dx;H;
+p;P;Qi
+log3"
+dx(C(L) + 1)  
+dx
+2C(L)!!2C(L)
+dx+ 1dx#
+(20)
+log3"
+dx(C(L) + 1)2e(dx+ 2C(L))
+dxdx2C(L)
+dx+ 1dx#
+log3"
+3Ldx(2e)dx3L 1
+dx+ 12dx#
+only for 3L>dxz}|{
+ log3[3Ldx(2e)dx(23L 1
+dx)2dx]
+L+ log3dx+dxlog32e+ 2dxlog323L
+dx
+(2dx+ 1)L+ log3dx+ 2dx
+log32p
+2e log3dx
+A.4 The effect of residual connections
+Figure 5: A residual network in its compressed and unraveled form, taken from Veit et al. [2016].
+Having upper-bounded the separation rank of the deep self-attention network deﬁned in section 2.2 of the main
+text, we comment on the effect of adding residual connections over each layer, as is done in the regular network
+(described in section 2.1 of the main text). Consider a network composed of a concatenation of the building
+blocks shown in ﬁgure 5(a), taken from Veit et al. [2016]. A building block in layer lincludes a module fl,
+which in our case is the self-attention layer given in eq. (3) of the main text,2and a skip connection which adds
+fl’s input to its output (circles denote addition). Veit et al. [2016] propose an unraveled view of such a network,
+shown in ﬁgure 5(b), which we will employ in the proof of theorem 5 for clarity of presentation.
+We begin by proving a lemma that quantiﬁes how the separation rank of the composition of a self-attention layer
+over a function is related to the function’s separation rank:
+Lemma 2. Letgj2Rdxbe an input vector at position jto a self-attention layer deﬁned by eq. (3) of the main
+text, and letKbe an upper bound to the separation rank of any of the entries p2[dx]of any input gj2Rdx,
+i.e.,8p2[dx];j2[N] :Sep 
+gj
+p
+K. Letyi
+pbe thepth entry of the self-attention layer output at position i.
+Then, an upper bound to the separation rank of yi
+p2Ris given by:
+Sep
+yi
+p
+Nd4
+x
+HK3
+Proof. Denote byG2RdxNthe matrix holding gj2Rdxin itsjth column. Note that by the conditions of
+the lemma any entry of GupholdsSep(G)K. Writing eq. (3) of the main text as a summation over matrix
+indices:
+yi
+p=HX
+h=1dx=HX
+1=1dxX
+2=1NX
+j=1dxX
+4=1dx=HX
+5=1dxX
+6=1WO;h
+p1WV;h
+12G2j(G>)j4(WK;h)>
+45WQ;h
+56G6i (21)
+2We have embedded the Feed-Forward layer within WOdue to the linearity of the analyzed model.
+21
+The lemma follows by multiplying the number of summed terms by an upper bound on the separation rank of
+each summed term, K3.
+We now prove a theorem which establishes that the integration of skip connections modiﬁes the upper bound in
+theorem 1 of the main text by a small factor.
+Theorem 5. Forp2[dx], letyi;L
+pbe the scalar function computing the pth entry of an output vector at position
+i2[N]of the depth-Lresidual network depicted in ﬁgure 5, where flis the self-attention layer in eq. (3) of the
+main text. Then:
+log3Sep(yL;i
+p)Llog3L+ (4 log3dx+ log3N log3H)3L 1
+2
+Comparing this dependence to the upper bound in the theorem 1 of the main text, given in eq. (18), this theorem
+implies that the effect of residual connections is insigniﬁcant to our analysis.
+Proof. Observing ﬁgure 5(b) which gives the L= 3example, we upper bound the separation rank of the entire
+unraveled network by noting that its output is composed from L+ 1additions of outputs from branches of depth
+l= 0;::::;L (0being the direct link of the input to the output), such that schematically the separation rank at the
+output of the entire network can be upper bounded by:
+Sep(yL;i
+p)(L+ 1)Sep(longest branch (L))
+where we denoted longest branch (L)as the function at the output of fL, before the addition with the other
+branches. Noting that the input to fLcan be recursively viewed as an output of an unraveled network of depth L 
+1, we bound the separation rank of the function at the input to fLbyLSep(longest branch (L 1)). SincefLis a
+self-attention layer, Lemma 2 implies that Sep(longest branch (L))Nd4
+x
+H(LSep(longest branch (L 1)))3.
+Continuing recursively, and inserting the stopping condition Sep(longest branch (L= 1)) =Nd4
+x
+H(since the
+input tof1is a speciﬁc entry of the input to the entire network, of separation rank 1), we attain:
+Sep(yL;i
+p)LY
+l=1(l+ 1)Nd4
+x
+H3l 1
+;
+satisfying the theorem.
+We now prove a theorem which establishes that the integration of skip connections modiﬁes the upper bound in
+theorem 2 of the main text by a small factor.
+Theorem 6. DeﬁningC(L):=3L 1
+2, forp2[dx], letyi;L;dx;H;
+p;residual be the scalar function computing the pth
+entry of an output vector at position i2[N]of the depth-Lresidual network depicted in ﬁgure 5, where flis the
+self-attention layer in eq. (3) of the main text. Then for any partition P[Q= [N], the following holds:
+sep
+yi;L;dx;H;
+p;residual;P;Q
+dx(C(L) + 1)2  
+dx
+2C(L)!!2C(L)
+dx+ 1dx
+Comparing this dependence to the upper bound in the theorem 2 of the main text, given in eq. (19), the above
+theorem implies that the effect of residual connections is insigniﬁcant to our analysis.
+Proof. We will adapt the proof of theorem 4. All of the arguments remain unchanged, except that we obtain the
+network structure via lemma 5 instead of lemma 1. Following the new structure we will have two additional
+summations, one over jand one over (see lemma 5), as well as an additional input Xfactor. We will leave
+the summation over jduring the whole proof, thus multiplying the separation rank by at most C(L). Note that
+similarity to the hsummation, the summation over has no inﬂuence on the separation rank, since it collapses
+into a single coefﬁcient T. Finally the unput Xfactor contribute at most 1to the separation rank, therefore we
+can bound the separation rank by C(L) + 1 times the bound in eq. (19).
+Finally, since the upper bounds undergo such minor increases in the presence of skip connections, the lower
+bounds can be left with no further tightening, without affecting the analysis and its conclusions.
+22
+A.5 Technical lemmas
+Lemma 3. (inequality of arithmetic and geometric multiset coefﬁcient means)
+Letn;k2Nand:Nk!N:=r1;:::rk`Qk
+j=1 n
+rj
+then:
+8rz;:::rk2N(r1;:::rk) Qn 1
+t=1 M
+k+tk
+((n 1)!)k
+whereM:=Pk
+j=1rj
+Proof. Deﬁneft:=Qk
+j=1(rj+t)and :=Qn 1
+t=1ftthan by the inequality of arithmetic and geometric
+means
+8t2[k]ft 
+1
+kkX
+j=1(rj+t)!k
+=M
+k+tk
+Therefore
+(r1;:::;rk) =kY
+j=1  
+n
+rj!!
+=kY
+j=1 
+n+rj 1
+rj!
+=kY
+j=1(n+rj 1)!
+rj! (n 1)!
+=1
+((n 1)!)kkY
+j=1n 1Y
+t=1(rj+t) =1
+((n 1)!)kn 1Y
+t=1ftQn 1
+t=1 M
+k+tk
+((n 1)!)k
+One can see that when Mdivided bykit hold that
+0
+BB@ktimesz}|{
+M
+k;:::;M
+k1
+CCA=1
+((n 1)!)kn 1Y
+t=1ft=1
+((n 1)!)kn 1Y
+t=1M
+k+tk
+= n 1Y
+t=1M
+k+t!k
+hence the name of this lemma.
+Lemma 4.  n
+k
+
+2e(n+k)
+nn
+Proof. : by using the inequality n
+k
+ en
+kkwe have
+  
+n
+k!!
+= 
+n+k 1
+n 1!
+2e(n+k)
+nn
+We now prove a lemma which reveals the alternation to the network structure as expressed in eq. (13) when
+taking skip connections into account.
+Lemma 5. DeﬁningC(L):=3L 1
+2, any depthLskip connection composition of the self-attention layers
+deﬁned in eq. (3)can be written as:
+YL;dx;H;=X+C(L)X
+j=1njX
+=1X
+h2[H][j]B(0;h;j; )TM(1;h;j; )M(j;h;j; )A(0;h;j; )X (22)
+where8j2[C(L)]nj0and82[nj]h2[H][j]0cj:M(c;h)=A(c;h)XXTB(c;h)Tand
+A(c;h);B(c;h)2Rdadx.
+Proof. By Induction on L. Base case:
+Y(1)(X) =X+HX
+h=1WO;h
+|{z}
+BTWV;hXXT
+WK;hT
+|{z}
+MWQ;h
+|{z}
+AX
+23
+Y(L+1)(X) =HX
+h=1WO;hWV;hY(L)(X)Y(L)(X)T
+WK;hT
+WQ;hY(L)(X)
+Now, rewriting Y(L)asX+
+Y(L) X
+yields:
+Y(L+1)(X) =X
+E;F;G2fX;Y(L) XgHX
+h=1WO;hWV;hEFT
+WK;hT
+WQ;hG
+Now, substituting in the induction hypothesis on the structure of Y(L)(X)yields:
+Y(L+1)(X) =X
+E;F;G2
+X;PC(L)
+j=1Pnj
+=1P
+h2[H][j]B(0;h;j; )TM(1;h;j; )M(j;h;j; )A(0;h;j; )X
+HX
+h=1WO;hWV;hEFT
+WK;hT
+WQ;hG
+Similarly to eq. (14) each of the 8terms in the outer summation is of the required form, thus we complete the
+proof.
+B Lower bounds on the separation rank
+B.1 preliminaries
+B.1.1 Tensors and their matricization
+We begin by laying out basic concepts in tensor theory required for the upcoming analysis. The core concept of
+atensor may be thought of as a multi-dimensional array. The order of a tensor is deﬁned to be the number of
+indexing entries in the array, referred to as modes . The dimension of a tensor in a particular mode is deﬁned as
+the number of values taken by the index in that mode. If Ais a tensor of order Nand dimension Miin each
+modei2[N], its entries are denoted Ad1:::dN, where the index in each mode takes values di2[Mi].
+We will make use of the concept of the matricization ofAw.r.t. the balanced partition (I;J), denoted JAKI;J2
+RMN=2MN=2, which is essentially the arrangement of the tensor elements as a matrix whose rows correspond
+toIand columns to J. SupposeA2RMMis a tensor of order N, and let (I;J)be a balanced partition of
+[N],i.e.IandJare disjoint sizeN=2subsets of [N]whose union gives [N]. The matricization ofAw.r.t. the
+partition (I;J), denoted JAKI;J, is theMN=2-by-MN=2matrix holding the entries of Asuch thatAd1:::dNis
+placed in row index 1 +PN=2
+t=1(dit 1)MN=2 tand column index 1 +PN=2
+t=1(djt 1)MN=2 t.
+B.1.2 Grid tensors provide lower bounds for the separation rank
+We now present the concept of grid tensors, which are a form of function discretization [Hackbusch, 2012].
+Essentially, the function is evaluated for a set of points on an exponentially large grid in the input space
+and the outcomes are stored in a tensor. Formally, ﬁxing a set of template vectors x(1);:::; x(M)2Rdx,
+the points on the grid are the set f(x(d1);:::; x(dN))gM
+d1;:::;dN=1. Given a function y(x1;:::; xN), the set
+of its values on the grid arranged in the form of a tensor are called the grid tensor induced by y, denoted
+A(y)d1;:::;dNy(x1=x(d1);:::; xN=x(dN)).
+The following claim establishes a fundamental relation between a function’s separation rank (see section 3) and
+the rank of the matrix obtained by the corresponding grid tensor matricization. This relation, which holds for all
+functions, is formulated below for functions realized by self-attention networks:
+Claim 1. Forp2[dx], letyi;L;dx;H;
+p be the scalar function computing the pth entry of an output vector at
+positioni2[N]of the depth- Lself-attention network with hidden dimension dxandHattention heads per
+layer, deﬁned in eqs. (3)and(4). Then, for any integer Mand any set of template vectors x(1);:::; x(M)2Rdx
+it holds that:
+sep(I;J)
+yi;L;dx;H;
+p
+rank
+JA(yi;L;dx;H;
+p )KI;J
+; (23)
+whereA(yi;L;dx;H;
+p )is the grid tensor of yi;L;dx;H;
+p with respect to the above template vectors.
+Proof. Ifsep(I;J) 
+yi;L;dx;H;
+p
+=1then the inequality is trivially satisﬁed. Otherwise, assume that
+sep(I;J) 
+yi;L;dx;H;
+p
+=K2N, and letfgI
+;gJ
+gK
+=1be the functions of the respective decomposition
+24
+to a sum of separable functions, i.e. that the following holds:
+yi;L;dx;H;
+p (x1;:::; xN) =KX
+=1gI
+(xj:j2I)gJ
+(xj:j2J):
+Then, by deﬁnition of the grid tensor, for any template vectors x(1);:::; x(M)2Rdxthe following equality
+holds:
+A(yi;L;dx;H;
+p )d1;:::;dN=KX
+=1gI
+(x(dj):j2I)gJ
+(x(dj):j2J)
+KX
+=1V
+dj:j2[I]U
+dj:j2[J];
+whereVandUare the tensors holding the values of gI
+andgJ
+, respectively, at the points deﬁned by the
+template vectors. Under the matricization according to the (I;J)partition, it holds that JVKI;Jand JUKI;J
+are column and row vectors, respectively, which we denote by vanduT
+. It follows that the matricization of
+the grid tensor is given by:
+JA(yi;L;dx;H;
+p )KI;J=KX
+=1vuT
+;
+which means that rank 
+JA(yi;L;dx;H;
+p )KI;J
+K= sep(I;J) 
+yi;L;dx;H;
+p
+.
+B.1.3 Method for bounding the grid tensor’s rank
+Claim 1 assures us that the separation rank of the function realized by a self-attention network is lower bounded
+by the rank of the matrix obtained by the corresponding grid tensor matricization, for any choice of template
+vectors. Speciﬁcally:
+sep(I;J)
+yi;L;dx;H;
+p
+rank
+JA(yi;L;dx;H;
+p )KI;J
+:
+Thus, proving that rank 
+JA(yi;L;dx;H;
+p )KI;J
+is higher than the lower bounds stated in theorems 1 and 2 for
+all of the values of the parameters but a set of Lebesgue measure zero, would satisfy the theorems.
+We note that since the network’s operation is polynomial in , then the entries of the grid tensor are also
+polynomial. Sharir et al. [2016] prove a claim regarding the prevalence of the maximal matrix rank for matrices
+whose entries are polynomial functions. Essentially, they show that it sufﬁces to ﬁnd a single conﬁguration of
+the parameters, denoted 2RK(whereKis the number of scalar parameters), for which the resultant matrix is
+of rankr, in order to show the rank is at least rfor all conﬁgurations in RKbut a set of measure zero in RK.
+For simplicity of the proof we will ﬁnd a single conﬁguration 2CKfor which the resultant matrix is of the
+required rank. We therefore modify the original claim to ﬁt this setting, still proving the rank is lower bounded
+for all conﬁgurations in RKbut a set of measure zero in RK:
+Claim 2. LetM;N;K2N,1rminfM;Ngand anMNmatrixAwhere each entry is a polynomial
+mappingAijoverKvariables for every i2[M]andj2[N]. If there exists a point 2FK, where Fis either
+RorC, s.t. rank(A())r, then the setf2RK:rank(A())<rghas zero measure (w.r.t. the Lebesgue
+measure over RK).
+Proof. (based on a proof in Sharir et al. [2016]) Recall that rank (A())riff there exits a non-zero rr
+minor ofA(). Note that a minor of A()is polynomial in the entries of A(), and so it is polynomial in as
+well. Letc= M
+r
+ N
+rbe the number of minors in A, denote the minors by ffi()gc
+i=1, and deﬁne a new
+polynomial function f() =Pc
+i=1fi()2. It thus holds that f() = 0 iff for alli2[c]it holds thatfi() = 0 ,
+i.e.f() = 0 iffrank (A())<r.
+Now,f()is a polynomial in the entries of , and so it either vanishes on a set of zero measure in RK, or it is
+the zero polynomial (see Caron and Traynor [2005] for proof). Since we assumed that there exists 2FKs.t.
+rank(A())r, the latter option is not possible.
+B.2 Proof of the lower bounds in theorems 1 and 2
+In this section, we show there exists an assignment for the weight matrices of a self-attention network, along
+with a speciﬁc choice of template vectors, for which rank 
+JA(yi;L;dx;H;
+p )KI;J
+surpasses the lower bounds
+stated in theorems 1 and 2 in the appropriate depth to width ratios. In accordance with Claim 2, the lower bounds
+in the theorems will follow since such an assignment implies this rank is achieved for all conﬁgurations of the
+self-attention network weights but a set of Lebesgue measure zero.
+25
+Proof. (of lower bounds in theorems 1 and 2).
+Relying on claim 1 we will bound the separation rank from below via the rank of the matricization
+w.r.t. a partition (I;J)of a grid tensor induced by yi;L;dx;H;
+p , computed by any set of template vectors:
+sep(I;J) 
+yi;L;dx;H;
+p
+rank 
+JA(yi;L;dx;H;
+p )KI;J. Relying on claim 2, we ensure that the rank of
+JA(yi;L;dx;H;
+p )KI;Jis above a certain value almost everywhere by ﬁnding an assignment of the network
+parameters for which it achieves this value.
+Lemma 6 assures us that for any matrix V2RM=2(dx H)=2withl2normalized rows, there exists a choice
+ofM+ 1template vectors x(1);:::; x(M+1)2Rdx, as well as an assignment to the self-attention network
+weights for which:
+JA(yi;L;dx;H;
+p )K~I;~J=Const.
+VVT(3L 2)
+; (24)
+where JA(yi;L;dx;H;
+p )K~I;~Jis a sub-matrix of the grid tensor matricization JA(yi;L;dx;H;
+p )KI;Jof sizeM=2
+M=2andrepresents the Hadamard power operation, i.e., 
+Ak
+ij=Ak
+ij:Since proving the existence of a
+sub-matrix of a certain rank lower-bounds the rank of the full matrix by this rank, it sufﬁces to ﬁnd a matrix V
+such that rank 
+VVT(3L 2)
+upholds the stated dependence.
+Noting that the operation of raising a rank rmatrix to the Hadamard power of presults in a matrix upper
+bounded by
+r
+p
+(see proof in Amini et al. [2012] for example) with the notation of the multiset coefﬁcient
+  n
+k
+:= n+k 1
+k, and that the rank of VVTis upper bounded by(dx H)=2, we choose the dimension
+M=2=
+(dx H)=2
+3L 2
+to facilitate the rank increase.
+For this choice, observe that it sufﬁces to prove that the sub-matrix JA(yi;L;dx;H;
+p )K~I;~J2RM=2M=2is
+fully ranked in order to satisfy the theorems. This follows by using the identity n
+k
+ n
+kkwe have:
+  n
+k
+= n+k 1
+k
+= n+k 1
+n 1
+max n 1
+k+ 1k;
+k
+n 1+ 1n 1
+And accordingly:
+(dx H)=2
+3L 2
+max((dx H)=2 1
+3L 2+ 13L 2
+;3L 2
+(dx H)=2 1+ 1(dx H)=2 1)
+and the log of this bounds the expressions in the theorems’ lower bounds, where for each regime the tighter
+lower bound is used.
+Deﬁning for brevity d:=(dx H)=2and:= 3L 2, it remains only to ﬁnd a speciﬁc matrix V2R( (d
+) )dwith
+l2normalized rows such that the operation of taking the rank dmatrixVV>to the Hadamard power of would
+result in a fully ranked matrix. We will provide such a matrix, and prove for it that:
+
+VV>
+=( (d
+) )X
+k=1a(k)
+b(k)(25)
+forfa(k)g( (d
+) )
+k=1andfb(k)g( (d
+) )
+k=1which are two sets of linearly independent vectors.
+For;2[  d
+
+], observing an entry of 
+VV>:
+
+VV>
+=
+VV>
+= dX
+r=1v()
+rv()
+r!
+= (26)
+X
+k1++kd=
+
+k1;:::;kd"dY
+r=1
+v()
+rkr#""dY
+r=1
+v()
+rkr##
+(27)
+where the ﬁrst equality follows from the deﬁnition of the Hadamard power, in the section we denoted v()
+r;v()
+r
+as therth entries in rows andofV, and in the second line we expanded the power with the multinomial
+identity. Identifying the form of eq. (27) with the schematic form of eq. (25), it remains to ﬁnd a speciﬁc
+matrixV2R( (d
+) )dwithl2normalized rows for which the size  d
+
+setn
+a(k1;:::;kd)o
+k1++kd=is linearly
+independent, where a(k1;:::;kd)
+ =Qd
+r=1
+v()
+rkr.
+26
+We show this is the case for Vin which the rows are each associated with one of  d
+conﬁgurations
+of distributing dinteger numbers that sum up to ,i.e., in which each row is associated with speciﬁcn
+q
+1;:::;q
+d0;Pd
+r=1q
+r=o
+. Explicitly, we take the rows v()
+rto be:
+8r2[d] :v()
+r=
+q
+r=r
+Pd
+r0=1
+2q
+r0
+Given thisV, each vector in the above deﬁned setn
+a(k1;:::;kd)o
+k1++kd=is equal to:
+a(k1;:::;kd)
+ =dY
+r=1
+v()
+rkr=dY
+r=10
+@
+q
+r
+qPd
+r0=1
+2q
+r01
+Akr
+=Qd
+r=1
+q
+rkr
+Qd
+r=1Pd
+r0=1
+2q
+r0kr
+2
+= dX
+r0=1
+2q
+r0! 
+2
+h
+
+Pd
+r=1q
+rkri
+Observing that the factor attained from the normalization depends only on the rows and doesn’t vary with
+the different vectors labeled by (k1;:::;kd), we note it does not affect their linear dependence (amounts to a
+multiplication by a diagonal matrix with non-zero entries on the diagonal - does not affect the rank).
+We prove that the setn
+^a(k1;:::;kd)o
+k1++kd=for^a(k1;:::;kd)
+ = 
+Pd
+r=1q
+rkris linearly independent by
+arranging it as the columns of the matrix A2R( (d
+) )( (d
+) ), and showing that Ais fully ranked.
+Since the elements of Aare polynomial in 
+, then as lemma 7 shows, it is sufﬁcient to show that there exists a
+single contributor to the determinant of Athat has the highest degree of 
+in order to ensure that the matrix is
+fully ranked for all values of 
+but a ﬁnite set, so 
+should simply be chosen to be any number that is outside of
+this set. Observing the summands of the determinant, i.e. 
+P
+q1++qd=hq;(q)i, whereis a permutation on
+the columns of A, lemma 8 assures us the existence of a strictly maximal contributor, satisfying the conditions of
+lemma 7, thus the setn
+^a(k1;:::;kd)o
+k1++kd=is linearly independent, and the lower bounds in the theorems
+follow.
+B.3 Technical lemmas
+The following lemma details the assignment of the self-attention network weights and the choice of template
+vectors which help us establish theorem 1.
+Lemma 6. For any balanced partition of [N], denoted (I;J), for any even M, and for any matrix
+V2RM=2(dx H)=2with rows that are l2normalized, there exists a choice of M+ 1 template vectors
+x(1);:::; x(M+1)2Rdx, as well as an assignment to the self-attention network weights, for which:
+JA(yi;L;dx;H;
+p )K~I;~J=Const.
+VVT3L 2
+; (28)
+where JA(yi;L;dx;H;
+p )K~I;~Jis a sub-matrix of the grid tensor matricization JA(yi;L;dx;H;
+p )KI;Jof sizeM=2
+M=2andrepresents the Hadamard power operation, i.e., 
+Ak
+ij=Ak
+ij.
+Proof. We present below a choice of weights and template vectors that yields the stated form for a sub-matrix of
+JA(yi;L;dx;H;
+p )KI;J. Subsequently we will plug these values into the self-attention operation stated in eq. (3),
+and prove that this form follows.
+Though the proof has many technical details, it has 3 essential parts. We ﬁrst choose the weights of the ﬁrst
+layer so that the outputs in all locations are the same and equal to a summation of the input vectors. Because
+the weight matrices are not dxdxbut are decomposed through the attention dimension dadxordxda,
+then we divide the coordinates of the dx-dimensional vectors into contiguous segments of length da, and set
+the weights to either project these segments to the da-dimensional space or invert this mapping with added
+zero-padding. For the second part, we set the key and query matrices to use the same “projections” we used
+in the ﬁrst layer to compute inner-products between each segment, while setting the value and output matrices
+to preserve each head’s segment (with zero-padded coordinates). For the remainder of the network’s layers,
+we use the previous step to compute increasingly larger powers of the norm of the vector computed in the ﬁrst
+layer, by reconstructing the squared-norm from the inner products of each segment. The template vectors (and
+parameters) are chosen such that the square of this norm will be equal to VVT.
+27
+The assignment to the network weights:
+WV;1;h
+i;j =1
+N8
+>>>>>>>>>>>>>>>><
+>>>>>>>>>>>>>>>>:1i=j da(h 1)da(h 1)<jda(h 1) +da 1
+2
+0<ida 1
+2
+i1i=j da(h 1) da 1
+2da(h 1) +da 1
+2<jdah 1
+0<ida 1
+2
+ 1i=j da(h 1)da(h 1)<jda(h 1) +da 1
+2
+da 1
+2<ida 1
+ i1i=j da(h 1) da 1
+2da(h 1) +da 1
+2<jdah 1
+da 1
+2<ida 1
+1 j=dah;da 1
+2<ida
+0 Otherwise
+WO;l;h
+i;j =(
+1j=i da(h 1)da(h 1)<idah
+0 Otherwise
+81<l<L;WV;l;h
+i;j =(
+1i=j da(h 1)da(h 1)<jdah
+0 Otherwise
+WV;L;h
+i;j =i1j=da
+WK;1;h
+i;j =WQ;1;h
+i;j = 1i=1^j=da
+WK;2;h
+i;j =WQ;2;h
+i;j =8
+><
+>:1i=j da(h 1)da(h 1)<jda(h 1) +da 1
+2
+0<ida 1
+2
+0 Otherwise
+8l>2;WK;l;h
+i;j =WQ;l;h
+i;j =(
+1i= 1^jmodda6= 0
+0Otherwise
+In the above, we denoted the complex root of  1asi, to differentiate it from the index i. The choice of template
+vectors:
+x(i)
+j=8
+>>><
+>>>:Vi;(j) iM=2^(j 1) modda<da 1
+2
+Vi M=2+1;(j da 1
+2)M
+2<iM^da 1
+2(j 1) modda<da 1
+1 ( j 1) modda=da 1
+0 Otherwise
+where(j)bj 1=dac(da 1) + (j 1 modda) + 1 .
+W.l.o.g. we can assume that I=f1;:::;N=2g;J=fN=2+ 1;:::;Ng. We examine the sub-matrix deﬁned by
+the following indices:
+~I=f(i1;:::;iN=2) : 1i1M=2^8k>1;ik=M+ 1g (29)
+~J=f(j1;:::;jN=2) :M=2<j1M^8k>1;jk=M+ 1g (30)
+With all of the above in place, we are ready to prove that the resulting sub-matrix has the form of eq. (28). We
+begin with the output of the ﬁrst self-attention layer:
+y(1;i)(x(d1);:::; x(dN))k=NX
+j=1HX
+h=1D
+WQ;1;hx(di);WK;1;hx(dj)E
+(WO;1;hWV;1;hx(dj))k (31)
+1=NX
+j=1HX
+h=1=1z}|{
+x(di)
+da=1z}|{
+x(dj)
+da(WO;1;hWV;1;hx(dj))k (32)
+2=  HX
+h=1WO;1;hWV;1;h!
+x(i1)+x(j1)+ (N 2)x(M+1)!
+k(33)
+3=8
+><
+>:1 ( k 1) modda=da 1
+Vi1;(k)+iVj1;(k) (k 1) modda<da 1
+2
+1 Vi1;(k da 1
+2) iVj1;(k da 1
+2)Otherwise(34)
+28
+where (1)is becauseWQ;1;h=WK;1;hare matrices that are zero everywhere except for entry (1;da),(2)
+because when summing over the locations, only i1andj1are different from M+ 1, and (3)because applying
+the value and output matrices on any template vector uresults in:
+
+WO;1;hWV;1;hu
+k=daX
+=1WO;1;h
+k;dxX
+=1WV;1;h
+;u (35)
+=daX
+=1WO;1;h
+k;^uz }| {8
+><
+>:udah+ 1+iudah+ 1+da 1
+2da 1
+2
+1
+N udah+ 1 iudah+ 1+da 1
+2da 1
+2<da 1
+1
+NOtherwise(36)
+=(
+^u((k 1) modda)+1da(h 1)k<dah
+0(37)
+At this point, notice that for any i2[N],y(1;i)is the same, and we denote it with v. Note that it is a
+vector composed of Hda-dimensional sub-vectors, each composed of ada 1
+2-dimensional sub-vector and its
+complement in the nextda 1
+2indices, followed by a ﬁxed value of 1.
+Next, we will compute the result of the second layer, where we use the fact that every position is equal to vto
+drop the reference to a speciﬁc location i, i.e., y(l;i)=y(l):
+y(2)
+k=NHX
+h=1D
+WQ;2;hv;WK;2;hvE
+(WO;2;hWV;2;hv)k (38)
+=NHX
+h=1D
+~v(h);~v(h)E
+v(h); (39)
+where we used the notation v(h)
+k=vk1da(h 1)k<dah, i.e., a vector that is equal to vkon the
+h’thda-dimensional segment and otherwise ﬁlled with zeros, as well as the notation ~v(h)
+k=vk
+1da(h 1)kda(h 1)+da 1
+2. The last equality is because all matrices in this layer essentially just project
+theda-dimensional sub-vector of vfor its respective head h.
+For the third layer we get:
+y(3)=NHX
+h=1D
+WQ;2;hy(2);WK;2;hy(2)E
+(WO;2;hWV;2;hy(2)) (40)
+1=NHX
+h=10
+@X
+rmodda6=0y(2)
+r1
+A2
+y(2);h(41)
+2=NHX
+h=1 
+NHX
+h0=1D
+~v(h0);~v(h0)E!2
+ND
+~v(h);~v(h)E
+v(h)(42)
+3=N4k~vk4HX
+h=1D
+~v(h);~v(h)E
+v(h); (43)
+where we deﬁne ~v=PH
+h=1~v(h). Equality (1)is because in both WK;3;handWQ;3;hon the ﬁrst row is
+nonzero, and it has ones everywhere except in coordinates that are multiples of da, resulting in summing
+over all of these non-zero elements of the vector y(2). Equality (2)is because in the vector v(h)every entry
+has a corresponding entry equal to its complement, which upon summation is equal to one, leaving only theD
+~v(h0);~v(h0)E
+coefﬁcients of the vector y(2). Equality (3)is because
+k~vk2=h~v;~vi=X
+h1;h2D
+~v(h1);~v(h2)E
+=HX
+h=1D
+~v(h);~v(h)E
+; (44)
+where the last equality stems from the fact that every ~v(h)is non-zero on a different segment of its dxcoordinates.
+For any subsequent layer l<L we use the same set of parameters, and since the input of each preceding layer
+has the same form of y(l)=Nlk~vk2lPH
+h=1D
+~v(h);~v(h)E
+v(h), then we can just compute its recurrence
+29
+relation:
+y(l+1)=NHX
+h=1 
+Nlk~vk2lHX
+h0=1D
+~v(h0);~v(h0)E!2
+Nlk~vk2lD
+~v(h);~v(h)E
+v(h)(45)
+=N1+3lk~vk6lHX
+h=1 HX
+h0=1D
+~v(h0);~v(h0)E!2D
+~v(h);~v(h)E
+v(h)(46)
+=N3l+1k~vk2(3l+2)HX
+h=1D
+~v(h);~v(h)E
+v(h)(47)
+)l+1= 3l+ 1;l+1= 3l+ 2 (48)
+Using the initial conditions of 3= 4and3= 2, we get that l=3l 1 1
+2;l= 3l 2 1. For theL’th layer,
+the only difference is that WV;L;his deﬁned such that it returns a 1-hot vector that picks the da’th element of
+the previous step. Putting it all together we get:
+y(L)
+k=N3L 1 1
+2k~vk2(3l 2 1)HX
+h=1D
+~v(h);~v(h)E
+iv(h)
+da(49)
+y(L)
+k=N3L 1 1
+2ik~vk23l 2(50)
+Finally, we can evaluate k~vk2:
+k~vk2=dxX
+k=1~v2
+k=HX
+h=1da 1=2X
+k=1(Vi1;(da 1)(h 1)+k+iVj1;(da 1)(h 1)+k)2(51)
+=normalized)=1z}|{
+HX
+h=1da 1=2X
+k=1V2
+i1;(da 1)(h 1)+k normalized)=1z}|{
+HX
+h=1da 1=2X
+k=1V2
+j1;(da 1)(h 1)+k (52)
+2iHX
+h=1da 1=2X
+k=1Vi1;(da 1)(h 1)+kVj1;(da 1)(h 1)+k (53)
+= 2i(VVT)i1;j1; (54)
+which concludes the proof.
+Next, we show two lemmas that aid in the proof of the lower bound. We ﬁrst quote an identity by which for a
+matrix with entries that are polynomials in x, if a single contributor to the determinant has the highest degree of
+x, then the matrix is fully ranked for all values of xbut a ﬁnite set.
+Lemma 7. (from Levine et al. [2018a]). Let A2RNNbe a matrix whose entries are polynomials in x2R.
+In this case, its determinant may be written as det(A) =P
+2SNsgn()p(x), whereSNis the symmetric
+group onNelements and p(x)are polynomials deﬁned by p(x)QN
+i=1Ai(i)(x);82Sn. Additionally,
+let there exist such that deg(p(x))>deg(p(x))86= . Then, for all values of xbut a ﬁnite set, Ais
+fully ranked.
+Proof. We show that in this case det(A), which is a polynomial in xby its deﬁnition, is not the zero poly-
+nomial. Accordingly, det(A)6= 0 for all values of xbut a ﬁnite set. Denoting tdeg(p(x)), since
+t>deg(p(x))86= , a monomial of the form cxt;c2Rnf0gexists inp(x)and doesn’t exist in any
+p(x); 6= . This implies that det(A)is not the zero polynomial, since its leading term has a non-vanishing
+coefﬁcientsgn()c6= 0, and the lemma follows from the basic identity: det(A)6= 0()Ais fully
+ranked.
+The following quoted lemma, establishes a relation referred to as the vector rearrangement inequality , which
+helped us ensure that our matrix of interest upholds the conditions of lemma 7 and is thus fully ranked.
+Lemma 8. (from Levine et al. [2018a]). Let fv(i)gN
+i=1be a set ofNdifferent vectors in RRsuch that
+8i2[N]; j2[R] :v(i)
+j0. Then, for all 2SNsuch that6=IN, whereSNis the symmetric group on
+N, it holds that:
+NX
+i=1D
+v(i);v((i))E
+<NX
+i=1v(i)2
+:
+30
+Proof. We rely on theorem 368 in [Hardy et al., 1952], which implies that for a set of non-negative numbers
+fa(1);:::;a(N)gthe following holds for all 2SN:
+NX
+i=1a(i)a((i))NX
+i=1(a(i))2; (55)
+with equality obtained only for which upholds (i) =j()a(i)=a(j). The above relation, referred to as
+therearrangement inequality , holds separately for each component j2[R]of the given vectors:
+NX
+i=1v(i)
+jv((i))
+jNX
+i=1(v(i)
+j)2:
+We now prove that for all 2SNsuch that6=IN,9^j2[R]for which the above inequality is hard, i.e.:
+NX
+i=1v(i)
+^jv((i))
+^j<NX
+i=1(v(i)
+^j)2: (56)
+By contradiction, assume that 9^6=INfor which8j2[R]:
+NX
+i=1v(i)
+jv(^(i))
+j =NX
+i=1(v(i)
+j)2:
+From the conditions of achieving equality in the rearrangement inequality deﬁned in Equation (55), it holds
+that8j2[R] :v(^(i))
+j =v(i)
+j, trivially entailing: v(^(i))=v(i). Thus, ^6=INwould yield a contradiction
+tofv(i)gN
+i=1being a set of Ndifferent vectors in RR. Finally, the hard inequality of the lemma for 6=INis
+implied from Equation (56):
+NX
+i=1D
+v(i);v((i))E
+NX
+i=10
+@RX
+j=1v(i)
+jv((i))
+j1
+A=RX
+j=1 NX
+i=1v(i)
+jv((i))
+j!
+<RX
+j=1 NX
+i=1(v(i)
+j)2!
+=NX
+i=1v(i)2
+:
+C Proof of Proposition 1 on the separation rank symmetry
+Claim 3. For any depth L1input sizeN > 1and output locations i2[N]; p2[dx]The separation rank
+w.r.t. balanced partitions, which obey A[B= [N];jAj;jBj=N=2, is invariant to the identity of the partition,
+i.e.,8A[B= [N];~A[~B= [N]; s:t:jAj;jBj;j~Aj;j~Bj=N=2:
+sep(yi;L;dx;H;
+p ;A;B) =sep(yi;L;dx;H;
+p ;~A;~B) (57)
+Proof. We will denote A=
+a1;:::;aN
+2
+,B=
+b1;:::;bN
+2
+,~A=
+~a1;:::; ~aN
+2
+,~B=
+~b1;:::; ~bN
+2
+and
+by2SNthe unique permutation that satisfy
+8m2N
+2
+(am) = ~am^(bm) =~bm
+w.l.o.g we will assume that a1= ~a1=i.
+Assuming that sep(y;A;B) =R, then there exist g1;:::;gR;g0
+1;:::;g0
+Rs.t.
+8x(1);:::; x(N)2Rdxyi;L;dx;H;
+p
+x(1);:::; x(N)
+=RX
+v=1gv 
+x(a1);:::; x
+aN
+2!
+g0
+v 
+x(b1);:::; x
+bN
+2!
+i=(a1) =a1therefore the summations over j1;:::;jNin eq. (16) implies that for any x(1);:::;x(N)2Rdx
+we have
+yi;L;dx;H;
+p
+x(1);:::; x(N)
+=yi;L;dx;H;
+p
+x((1));:::; x((N))
+And therefore
+=RX
+v=1gv 
+x((a1));:::; x
+
+aN
+2!
+g0
+v 
+x((b1));:::; x
+
+bN
+2!
+=RX
+v=1gv 
+x( ~a1);:::; x
+~aN
+2!
+g0
+v 
+x(~b1);:::; x
+~bN
+2!
+31
+So we proved that
+sep(yi;L;dx;H;
+p ;~A;~B)sep(yi;L;dx;H;
+p ;A;B)
+Finally by switching the roles of ~A;~BandA;B we can get the inverse inequality so we conclude that
+sep(yi;L;dx;H;
+p ;~A;~B) =sep(yi;L;dx;H;
+p ;A;B)
+D Experimental details
+We conducted the network training described in section 5 of the main text with Adam optimizer for 1Msteps
+and a batch size of 512sequences of 128tokens. All experiments used a learning rate schedule with a 12000
+step linear warm-up followed by a cosine decay to zero. In order to increase width without changing other
+architectural parameters, we kept the number of heads per layer constant at 2(experimental evidence indicates
+that many heads per layer are not crucial [Michel et al., 2019, Kaplan et al., 2020], as does our theoretical
+analysis which shows that the number of heads per layer affects the separation rank logarithmically).
+Table 2 shows the per-depth widths of the trained architecture. More experiments were conducted per adjacent
+depth pairs in order to identify the transition point accurately, and reduce the error bars in ﬁgure 3. Table 3
+details the different standard deviation of repeating the training and evaluation experiment 3times per the given
+architectures.
+D.1 Fit details
+The estimated experimental transition points between the two depth-efﬁciency regimes that were collected
+according to the procedure described in section 5.2.2 are given in table 4. For the linear ﬁt we set xito be the
+depth andyithe log of the estimated width at the measured transition point (with an empirical error icalculated
+as in table 4).
+The2
+redmeasure is calculated by:
+2=nX
+i=1(yi ^yi)2
+2
+i(58)
+2
+red=2
+df
+where ^yiis the predicted value of the i-th sample according to the ﬁtting function given by the ﬁt parameters
+aandbin eq. 11, and df=n m= 3 is the number of observations n= 5 minus the number of ﬁtted
+parametersm= 2. The attained value of 2
+red= 0:854indicates a good ﬁt for such a low n, though hinting
+at a slight overestimation of the empirical errors. This may arise due to the limitations in attaining very dense
+measurements around the transition points (though as can be seen in table 2, we made an effort to sample the
+loss densely around the transitions).
+TheR2measure is calculated by:
+R2= 1 0
+@Pn
+i=1
+1
+2
+i(yi ^yi)2
+Pn
+i=1
+1
+2
+i(yi y)21
+A (59)
+where y=1
+nPn
+i=1
+1
+2
+iyi
+. The attained value of R2= 0:998indicates a good linear ﬁt of the data.
+32
+L=6 L=12 L=18 L=24 L=30 L=36 L=48
+128 88 - 64 - - 44
+168 120 - 88 - - 60
+184 130 - - - - -
+192 136 - - - - -
+200 142 - - - - -
+208 148 116 - - - -
+216 152 124 104 - - 72
+220 156 - - - - -
+224 158 130 112 - - 80
+236 168 - 88 - - 60
+248 176 144 128 - - 88
+272 192 - 136 - - 96
+296 208 - 144 - - 104
+320 224 184 160 144 128 112
+376 264 216 184 168 152 128
+- 272 244 - - - -
+- 280 228 - - - -
+408 288 232 200 176 160 144
+- 296 240 - - - -
+- 304 248 - - - -
+- 308 252 - - - -
+- 314 256 - - - -
+456 320 264 224 200 184 160
+- 328 268 - - - -
+- 240 278 - - - -
+496 352 288 248 224 200 176
+568 400 320 280 248 232 200
+- - 360 312 - - -
+680 480 384 336 304 272 240
+- - 406 352 - - -
+- - 416 360 - - -
+- - 424 368 - - -
+- - 434 376 - - -
+- - 440 376 - - -
+- - 448 388 - - -
+- - 456 396 - - -
+- - 464 402 - - -
+816 576 472 408 368 336 288
+960 680 560 480 432 392 336
+1088 768 624 544 484 440 384
+- - - 552 494 - -
+- - - 560 504 - -
+- - - 568 508 - -
+- - - 576 512 - -
+- - - 584 522 - -
+- - - 592 530 - -
+- - - 600 536 - -
+1416 1000 816 704 632 576 496
+- - - - 712 648 -
+- - - - 760 696 -
+- - - - 808 736 -
+- - - - 840 768 -
+- - - - 896 816 -
+2128 1504 1232 1064 952 872 752
+- - - - 992 904 -
+2832 2000 - 1416 1264 1160 1000
+Table 2: The widths dxof the different trained networks. In order to improve the estimation of the
+data points and their empirical error for the ﬁt in section 5.2.2, we performed dense measurements
+around potential transition points.
+33
+dx= 320dx= 680dx= 800
+1.92E-03 2.06E-03 6.51E-04
+(a) L = 6
+dx= 224dx= 400dx= 680dx= 1000
+2.08E-03 1.65E-03 1.33E-03 1.20E-03
+(b) L = 12
+dx= 160dx= 280dx= 480dx= 704
+7.36E-04 1.02E-03 1.48E-03 7.76E-04
+(c) L = 24
+Table 3: The standard deviation of the test loss for networks of varying widths and depths, when
+repeating the training and evaluation experiment 3times per point.
+L dxdx
+6 214 6
+12 308 12
+18 436 20
+24 572 12
+30 824 16
+(a) The identiﬁed transition points. (logdx) =1
+dxdxLlogdx (logdx)
+6 5.37 2.80e-2
+12 5.73 3.90e-2
+18 6.08 4.59e-2
+24 6.35 2.10e-2
+30 6.71 1.94e-2
+(b) Log space conversion for the linear ﬁt.
+Table 4: The collected depth-efﬁciency regime transition widths per depth.
+34

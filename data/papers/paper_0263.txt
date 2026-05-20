@@ -1,0 +1,1077 @@
+Title: Adversarial Training for Large Neural Language Models
+
+1Adversarial Training for Large Neural Language Models
+Xiaodong Liuy, Hao Chengy, Pengcheng Hez, Weizhu Chenz, Yu Wangy, Hoifung Poony,
+Jianfeng Gaoy
+yMicrosoft ResearchzMicrosoft Dynamics 365 AI
+{xiaodl,chehao,penhe,wzchen,yuwan,hoifung,jfgao}@microsoft.com
+Abstract
+Generalization and robustness are both key
+desiderata for designing machine learning
+methods. Adversarial training can enhance
+robustness, but past work often ﬁnds it hurts
+generalization. In natural language process-
+ing (NLP), pre-training large neural language
+models such as BERT have demonstrated im-
+pressive gain in generalization for a variety
+of tasks, with further improvement from ad-
+versarial ﬁne-tuning. However, these mod-
+els are still vulnerable to adversarial attacks.
+In this paper, we show that adversarial pre-
+training can improve both generalization and
+robustness. We propose a general algorithm
+ALUM ( Adversarial training for large neu-
+ralLangUageModels), which regularizes the
+training objective by applying perturbations in
+the embedding space that maximizes the ad-
+versarial loss. We present the ﬁrst comprehen-
+sive study of adversarial training in all stages,
+including pre-training from scratch, continual
+pre-training on a well-trained model, and task-
+speciﬁc ﬁne-tuning. ALUM obtains substan-
+tial gains over BERT on a wide range of
+NLP tasks, in both regular and adversarial
+scenarios. Even for models that have been
+well trained on extremely large text corpora,
+such as RoBERTa, ALUM can still produce
+signiﬁcant gains from continual pre-training,
+whereas conventional non-adversarial meth-
+ods can not. ALUM can be further combined
+with task-speciﬁc ﬁne-tuning to attain addi-
+tional gains. The ALUM code is publicly avail-
+able at https://github.com/namisan/mt-dnn.
+1 Introduction
+Generalization and robustness are two fundamental
+considerations in assessing machine learning meth-
+ods. Ideally, a learned model should perform well
+on unseen test examples and withstand adversarial
+attacks. In natural language processing (NLP), pre-
+training neural language models on unlabeled texthas proven very effective to improve generaliza-
+tion performance for a variety of downstream tasks,
+as exempliﬁed by BERT (Devlin et al., 2018) and
+other transformer-based models (Liu et al., 2019c;
+Radford et al., 2018; Clark et al., 2020; Dong et al.,
+2019; Bao et al., 2020). However, these models
+may still suffer catastrophic failures in adversarial
+scenarios (Nie et al., 2019; Hsieh et al., 2019). For
+example, Jin et al. (2019) show that classiﬁcation
+accuracy on a Yelp dataset drops from 95.6% on
+standard test to 6.8% on robust test for a BERT
+model.
+Adversarial training (Madry et al., 2017; Good-
+fellow et al., 2014) has been well studied in com-
+puter vision, but past work shows that it often hurts
+generalization (Raghunathan et al., 2019; Min et al.,
+2020). In NLP, there is growing interest in adver-
+sarial training, but existing work typically focuses
+on assessing the impact on generalization (Zhu
+et al., 2019; Jiang et al., 2019; Cheng et al., 2019;
+Wang et al., 2019). Moreover, adversarial training
+is generally limited to task-speciﬁc ﬁne-tuning1.
+See Minaee et al. (2020a) for a recent survey.
+In this paper, we present the ﬁrst comprehensive
+study on adversarial pre-training, and show that it
+can improve both generalization and robustness for
+a wide range of NLP tasks. We propose a unifying
+algorithm ALUM ( Adversarial training for large
+neural LangUageModels), which augments the
+standard training objective with an additional term
+that maximizes the adversarial loss via applying
+perturbation in the embedding space. ALUM is
+generally applicable to pre-training and ﬁne-tuning,
+on top of any Transformer-based language models.
+We conduct a comprehensive evaluation on vari-
+ous NLP tasks across multiple benchmark datasets,
+including GLUE, SQuAD v1.1/v2.0, SNLI, Sci-
+Tail for assessing model generalization, and ANLI,
+1A notable exception is Wang et al. (2019), but it only
+applied adversarial training to generative language modeling.arXiv:2004.08994v2  [cs.CL]  29 Apr 2020
+2HELLSWAG, SWAG, Adversarial SQuAD for as-
+sessing model robustness. Experimental results
+show that by conducting adversarial pre-training,
+ALUM attains signiﬁcant improvements, often out-
+performing previous state of the art by a large mar-
+gin. This is true even for the extremely well-trained
+RoBERTa model, where continual pre-training
+without adversarial training fails to attain any gain.
+Remarkably, in addition to improving generaliza-
+tion, we ﬁnd that adversarial pre-training also sub-
+stantially improves robustness, as exempliﬁed by
+the resulting large gains in adversarial datasets such
+as ANLI, Adversarial-SQuAD, HELLASWAG,
+which signiﬁcantly reduces the gap between stan-
+dard errors and robust errors for popular models
+like BERT and RoBERTa. This suggests that ad-
+versarial training on unlabeled data can provide a
+promising direction to reconcile the apparent con-
+ﬂict between generalization and robustness as ob-
+served in prior work (Raghunathan et al., 2019;
+Min et al., 2020). We also show that adversarial
+pre-training can be combined with adversarial ﬁne-
+tuning, resulting in extra gains.
+Our contributions are summarized as follows:
+We propose ALUM, a general algorithm to in-
+corporate adversarial training for pre-training
+and ﬁne-tuning large neural language models.
+We conduct a comprehensive evaluation on a
+wide range of NLP tasks and assess the impact
+of adversarial training in pre-training from
+scratch, continual pre-training, task-speciﬁc
+ﬁne-tuning, and their combinations.
+We obtain signiﬁcant improvements over prior
+state of the art, including extremely well-
+trained models such as RoBERTa, in both gen-
+eralization and robustness.
+To facilitate research, we will release our code
+and pre-trained models.
+2 Preliminary
+In this section, we give a quick overview of lan-
+guage model pre-training, using BERT (Devlin
+et al., 2018) as a running example for transformer-
+based neural language models.
+2.1 Input Representation
+We assume that the input consists of text spans
+(typically sentences) separated by a special to-
+ken[SEP ]. To address the problem of out-of-
+vocabulary words, tokens are divided into subwordunits, using Byte-Pair Encoding (BPE) (Sennrich
+et al., 2015) or its variants (Kudo and Richardson,
+2018), which generates a ﬁxed-size subword vo-
+cabulary to compactly represent words in training
+text corpora.
+2.2 Model Architecture
+Following recent pre-training methods (Devlin
+et al., 2018; Liu et al., 2019c), we use transformer-
+based models (Vaswani et al., 2017) to lever-
+age a multi-head attention mechanism, which
+have demonstrated superiority in parallel computa-
+tion and modeling long-range dependencies, com-
+pared to recurrent neural networks such as LSTM
+(Hochreiter and Schmidhuber, 1997). The input is
+ﬁrst passed to a lexical encoder, which combines
+a token embedding, a (token) position embedding
+and a segment embedding (i.e., which text span the
+token belongs to) by element-wise summation. The
+embedding layer is then passed to multiple layers
+of transformer modules to generate the contextual
+representation (Vaswani et al., 2017).
+2.3 Self Supervision
+A key innovation in BERT (Devlin et al., 2018) is
+the use of Masked Language Model (MLM) for
+self-supervised pre-training. Instead of predicting
+the next token based on the preceding tokens, as
+in traditional generative language models, MLM
+randomly replaces a subset of tokens by a special
+token (e.g., [MASK ]), and asks the model to pre-
+dict them. Essentially, it is a cloze task (Taylor,
+1953), where the training objective is the cross-
+entropy loss between the original tokens and the
+predicted ones. In BERT and RoBERTa, 15% of
+the input tokens are chosen, among which a ran-
+dom 80% are replaced by [MASK ], 10% are left
+unchanged and 10% are randomly replaced by a
+token from the vocabulary. In our experiments,
+instead of using a ﬁxed masked rate of 15%, we
+gradually increase it from 5% to 25% with 5% in-
+crement for every 20% of training epochs, as we
+ﬁnd this makes pre-training more stable.
+Additionally, BERT also uses Next Sentence
+Prediction (NSP) , which is a binary classiﬁca-
+tion task that for a given sentence pair determines
+whether one sentence follows the other in the orig-
+inal text. There have debates on how much NSP
+helps (Liu et al., 2019c). But we include it in our
+experiments for a fair comparison with BERT.
+33 ALUM (Adversarial training for large
+neural LangUage Models)
+In this section, we ﬁrst present a unifying view of
+standard training objectives and prior approaches
+to adversarial training. We then present ALUM,
+which is a general adversarial training algorithm
+applicable to pre-training and ﬁne-tuning, on top
+of any transformer-based neural language models.
+3.1 Standard Training Objectives
+Both pre-training and ﬁne-tuning can be viewed
+as minimizing the standard error on training data,
+with the training objectives derived from self-
+supervision (MLM and NSP in pre-training) or di-
+rect supervision (labeled examples in task-speciﬁc
+ﬁne-tuning), respectively.
+Speciﬁcally, the training algorithms seek to learn
+a functionf(x;) :x!C, parametrized by . In
+MLM,Cis the vocabulary, and f(x;)tries to pre-
+dict the masked token y. In ﬁne-tuning, Cis the
+task-speciﬁc label set, and f(x;)is the classiﬁer.
+Given a training dataset Dof input-output pairs
+(x;y)and the loss function l(:;:)(e.g., cross en-
+tropy),f(x;)is trained to minimize the empirical
+risk:
+min
+E(x;y)D[l(f(x;);y)] (1)
+3.2 Adversarial Training
+Pre-training a large neural language model such
+as BERT has proven effective to improve gener-
+alization performance in task-speciﬁc ﬁne-tuning
+(Devlin et al., 2018). However, such models can
+still suffer catastrophic loss in adversarial scenar-
+ios (Nie et al., 2019; Hsieh et al., 2019; Madry
+et al., 2017; Jin et al., 2019), with attacks as simple
+as replacing a few words in input sentences while
+preserving the semantics.
+To improve model robustness and withstand ad-
+versarial attacks, adversarial training has been pro-
+posed and studied extensively, predominantly in
+computer vision literature (Goodfellow et al., 2014;
+Madry et al., 2017). The key idea is to modify the
+training objective by applying small perturbation
+to input images that maximize the adversarial loss:
+min
+E(x;y)D[max
+l(f(x+;);y)] (2)
+where the inner maximization can be solved by
+running a number of projected gradient descent
+steps (Madry et al., 2017).
+While adversarial training has been successful
+in mitigating adversarial attacks, past work oftenencounters an apparent conﬂict between general-
+ization and robustness (Raghunathan et al., 2019,
+2020; Min et al., 2020), as adversarial training
+could hurt generalization performance.
+3.3 The ALUM Algorithm
+In NLP, applying adversarial training is not straight-
+forward, since the input are discrete elements (to-
+ken or subword sequences), but there have been
+some recent successes (Zhu et al., 2019; Jiang et al.,
+2019; Cheng et al., 2019; Wang et al., 2019; Mi-
+naee et al., 2020b). However, aside from Wang et al.
+(2019), there has not been any prior work on ad-
+versarial pre-training, and Wang et al. (2019) only
+applied adversarial training to generative language
+modeling using LSTM.
+ALUM is applicable to both pre-training and
+ﬁne-tuning. It builds on several key ideas that have
+proven useful in prior work. First, instead of ap-
+plying perturbation to the input text directly, one
+would perturb the embedding space. Namely, x
+is the sub-word embedding in f(x;)(Jiang et al.,
+2019; Zhu et al., 2019).
+Second, instead of adopting the adversarial train-
+ing objective of Eq. 2, as in Zhu et al. (2019)
+and most other approaches, we follow Jiang et al.
+(2019) to regularize the standard objective using
+virtual adversarial training (Miyato et al., 2018):
+min
+E(x;y)D[l(f(x;);y)+
+max
+l(f(x+;);f(x;))](3)
+Effectively, the adversarial term favors label
+smoothness in the embedding neighborhood, and
+is a hyperparameter that controls the trade-off
+between standard errors and robust errors.
+We found that virtual adversarial training is su-
+perior to conventional adversarial training, espe-
+cially when labels might be noisy. E.g., BERT pre-
+training uses the masked words as self-supervised
+labels, but in many cases, they could be replaced by
+other words to form completely legitimate text. Em-
+pirically, we veriﬁed that this is indeed the case, as
+pre-training beneﬁts from larger . We set= 10
+for pre-training, and = 1 for ﬁne-tuning in all
+our experiments.
+Compared to standard training, adversarial train-
+ing is rather expensive due to the inner maximiza-
+tion. Zhu et al. (2019) adopted the free adversar-
+ial training idea in Shafahi et al. (2019) for accel-
+eration, by reusing the backward pass for gradi-
+ent computation to carry out the inner ascent step
+4Algorithm 1 ALUM
+Input:T: the total number of iterations, X=
+f(x1;y1);:::;(xn;yn)g: the dataset, f(x;):
+the machine learning model parametrized by ,
+2: the variance of the random initialization of
+perturbation ,: perturbation bound, K: the
+number of iterations for perturbation estima-
+tion,: the step size for updating perturbation,
+: the global learning rate, : the smoothing
+proportion of adversarial training in the aug-
+mented learning objective, : the projection
+operation.
+1:fort= 1;::;T do
+2: for(x;y)2Xdo
+3:N(0;2I)
+4: form= 1;::;K do
+5: gadv rl(f(x;);f(x+;))
+6:  kk1(+gadv)
+7: end for
+8:g rl(f(x;);y)
++rl(f(x;);f(x+;))
+9:  g
+10: end for
+11:end for
+Output:
+and outer descent step simultaneously. Inspired
+by ERNIE (Sun et al., 2019) and other continual
+pre-training approaches, we instead adopt a curricu-
+lum learning approach: ﬁrst train the model using
+the standard objective (1); and then continue the
+training with virtual adversarial training (3).
+Jiang et al. (2019) also incorporated a momen-
+tum term using the Bregman proximate point
+method, which can be quite costly in training time.
+We found that our curriculum learning approach
+largely rendered this unnecessary and simpliﬁed
+our algorithm without using this term.
+Algorithm 1 shows the details of ALUM. Line
+4-6 runKprojected gradient steps to ﬁnd the per-
+turbationthat maximizes the adversarial loss (vi-
+olation of local smoothness). Note that a larger K
+leads to better approximation (Madry et al., 2017;
+Qin et al., 2019), but it is more expensive. To attain
+a good trade-off between speed and performance,
+we setK= 1in all our experiments.
+3.4 Generalization vs. Robustness
+Empirically, we found that by applying adversarial
+pre-training using ALUM, we were able to improve
+both generalization and robustness for a wide rangeof NLP tasks, as seen in Section 4. This is very
+interesting as prior work often ﬁnds that adversarial
+training hurts generalization, even with theoretical
+justiﬁcation (Raghunathan et al., 2019, 2020; Min
+et al., 2020).
+We hypothesize that adversarial pre-training
+might be the key for reconciling this apparent in-
+congruence, as prior work on the conﬂict between
+generalization and robustness generally focuses on
+the supervised learning setting. Interestingly, some
+nascent results in reconciling the two also leverage
+unlabeled data, such as self-training (Raghunathan
+et al., 2020). Additionally, we hypothesize that
+by perturbing the embedding space rather than the
+input space, adversarial training in NLP might in-
+advertently bias toward on-manifold perturbation
+than regular perturbation, which helps generaliza-
+tion (Stutz et al., 2019). We leave the theoretical
+analysis of all these connections to future work.
+4 Experiments
+In this section, we present a comprehensive study
+of adversarial training on large neural language
+models. We show that ALUM substantially im-
+proves both generalization and robustness in a wide
+range of NLP tasks, for both the standard BERT
+model and the extremely well-trained RoBERTa
+model. We also show that ALUM can be applied to
+adversarial pre-training and ﬁne-tuning alike and
+attain further gain by combining the two.
+4.1 Datasets
+Pre-training: For BERT pre-training, we use
+Wikipedia (English Wikipedia dump2; 13GB).
+For continual pre-training of RoBERTa, we use
+Wikipedia (13GB), OPENWEBTEXT (public Red-
+dit content (Gokaslan and Cohen); 38GB), STO-
+RIES (a subset of CommonCrawl (Trinh and Le,
+2018); 31GB).
+NLP application benchmarks: To assess the
+impact of adversarial training on generalization,
+we use standard benchmarks such as GLUE (Wang
+et al., 2018) and SQuAD (v1.1 and v2.0) (Ra-
+jpurkar et al., 2016, 2018), as well as three named
+entity recognition (NER) tasks in the biomedical
+domain. To evaluate the impact of adversarial
+training on robustness, we use ANLI (Nie et al.,
+2019), Adversarial SQuAD (Jia and Liang, 2017),
+and HELLASWAG (Hampel, 1974). To assess
+the combination of adversarial pre-training and
+2https://dumps.wikimedia.org/enwiki/
+5ﬁne-tuning, we follow Jiang et al. (2019) and use
+MNLI (Williams et al., 2018) (from GLUE), ANLI,
+SWAG (Zellers et al., 2018), SNLI (Bowman et al.,
+2015), SciTail (Khot et al., 2018). These bench-
+marks cover a wide range of NLP tasks such as
+named entity recognition, textual entailment, and
+machine reading comprehension, spanning classi-
+ﬁcation, ranking, and regression. For details, see
+Appendix A.
+4.2 Implementation Details
+We perform three types of adversarial training in
+our experiments: pre-training from scratch, con-
+tinual pre-training on a well-trained model, and
+task-speciﬁc ﬁne-tuning.
+We pre-train BERT models from scratch us-
+ing Wikipedia3. The training code is based on
+Megatron, implemented in PyTorch (Shoeybi et al.,
+2019)4. We use ADAM (Kingma and Ba, 2014) for
+the optimizer with a standard learning rate schedule
+that increases linearly from zero to the peak rate
+of110 4in ﬁrst one percent of steps, and then
+decays linearly to zero in the remaining 99% of
+steps. Following Devlin et al. (2018), training is
+done for one million steps with batch size of 256.
+We set the perturbation size = 110 5, the step
+size= 110 3, and the variance for initializ-
+ing perturbation = 110 5. We set= 10
+for heightened regularization in virtual adversarial
+training, and set K= 1for training efﬁciency (i.e.,
+one projected gradient step). The training takes 10
+days on one DGX-2 machine with 16 V100 GPUs.
+For continual pre-training of RoBERTa (Liu
+et al., 2019c), we use RoBERTa’s default train-
+ing parameters, except a smaller learning rate
+(410 5), and run for 100K training steps with a
+batch size of 256 on the union of Wikipedia, OPEN-
+WEBTEXT, and STORIES (total size 82GB). The
+code is based on FairSeq5. The training takes 7
+days on two DGX-2 machines.
+For ﬁne-tuning with or without adversarial train-
+ing, we use the MT-DNN open-sourced toolkit (Liu
+et al., 2020, 2015)6. We follow Jiang et al. (2019)
+for head-to-head comparison, which uses ADAM
+(Kingma and Ba, 2014) and RADAM (Liu et al.,
+2019a) as our optimizers, with peak learning rates
+off510 6;810 6;110 5;210 5g, and
+batch sizes of 16, 32 or 64, depending on the tasks.
+3BookCorpus is no longer publicly available.
+4https://github.com/NVIDIA/Megatron-LM
+5https://github.com/pytorch/fairseq
+6https://github.com/namisan/mt-dnnThe dropout rate is set to 0:1for all the task-speciﬁc
+layers, except 0:3for MNLI and 0:05for CoLA. To
+avoid gradient exploding, the gradient is clipped to
+keep the norm within 1. All the texts are tokenized
+using WordPiece and chopped to spans up to 512
+tokens. We conduct ﬁne-tuning for up to 10 epochs
+and pick the best model using the dev set.
+4.3 Improving Generalization
+In this subsection, we study the impact of adver-
+sarial pre-training on generalization, by comparing
+the performance of pre-trained models in various
+downstream applications. First, we study the sce-
+nario of pre-training from scratch, by comparing
+three BERT models:
+BERT BASE is the standard BERT base model
+trained using the same setting as Devlin et al.
+(2018) (i.e., 1M steps with a batch size of
+256).
+BERT+ BASE is similar to BERT BASE , except
+that it is trained with 1.6M steps, which takes
+roughly the same amount of time as that of ad-
+versarial pre-training (see ALUM BERT-BASE
+below).
+ALUM BERT-BASE is a BERT model trained
+using the same setting as BERT BASE, except
+that ALUM is used in the last 500K steps.
+Each adversarial training step takes approxi-
+mately 1.5 times longer than a step in standard
+training7.
+ModelSQuAD v1.1/v2.0 MNLI
+m/mm
+F1/EM F1/EM Acc
+BERT BASE 88.5/81.0 76.5/72.9 84.5/84.4
+BERT+ BASE 89.6/82.4 77.8/74.0 85.0/84.8
+ALUM BERT-BASE 90.8/83.7 80.2/76.6 85.8/86.1
+Table 1: Comparison of standard and adversar-
+ial pre-training on SQuAD (v1.1 and v2.0) and
+MNLI (in-domain and out-domain). BERT BASE and
+ALUM BERT-BASE both use 1M pre-training steps, and
+BERT+ BASE use 1.6M steps.
+Table 1 compares these pre-trained models on
+three standard benchmarks (SQuAD v1.1 (Ra-
+jpurkar et al., 2016) and v2.0 (Rajpurkar et al.,
+7With K=1 in Algorithm 1, ALUM requires two more
+forward passes and one more backward pass compared to
+standard training.
+6
+Figure 1: Comparison of the standard and adversarial
+pre-training on the MNLI development set.
+Model BC2GM NCBI JNLPBA
+F1 F1 F1
+BERT BASE 79.7 84.6 75.7
+ALUM BERT-BASE 81.1 86.9 76.5
+Table 2: Comparison of standard and adversarial pre-
+training on biomedical NER. Scores are entity-level F1.
+2018), and MNLI from GLUE (Wang et al., 2018)),
+using the same standard ﬁne-tuning setting (with-
+out adversarial training). The standard BERT mod-
+els trained using only the Wikipedia data attain sim-
+ilar results as in Devlin et al. (2018), thus provide
+a good baseline for comparison. ALUM BERT-BASE
+consistently outperforms the standard BERT mod-
+els across all the datasets, even adjusting for the
+slightly longer trainng time. E.g., on SQuAD v1.1,
+ALUM BERT-BASE gains 2.3% points in F1 over
+BERT BASE and 1.2% points over BERT+ BASE . Fig-
+ure 1 shows ALUM at work on the development
+set of MNLI. Once adversarial training is applied
+in the middle (after ﬁrst 500K steps), ALUM starts
+outperforming BERT and the gap is widening.
+We also assess the impact of adversarial pre-
+training in the biomedical domain, which is sub-
+stantially different from the Wikipedia corpus used
+in pre-training. Table 2 shows the results on stan-
+dard biomedical name entity recognition (NER)
+datasets: BC2GM (Smith et al., 2008), NCBI (Do-
+gan et al., 2014), JNLPBA (Collier and Kim, 2004).
+Interestingly, ALUM still outperforms the standard
+BERT model on all three tasks, even though the
+application domain is substantially different from
+the pre-training one.
+Next, we assess the impact of adversarial train-
+ing in the continual pre-training setting. We use our
+pre-training dataset (Wikipedia, OPENWEBTEXT,ModelMNLI-m/mm SST-2
+Acc Acc
+RoBERTa LARGE 90.2/90.2 96.4
+RoBERTa+ LARGE 90.3/90.2 96.3
+Table 3: RoBERTa is an extremlly well-trained model:
+standard continual pre-training without adversarial
+training fails to improve generalization performance in
+downstream tasks. (Scores are accuracy.)
+STORIES; 82GB)8, and run 100K steps in all our
+continual pre-training experiments. We choose the
+RoBERTa models as the baseline, which use the
+same neural model as BERT, but were pre-trained
+on an order of magnitude more text (160GB vs
+13GB). They are the state-of-the-art pre-trained lan-
+guage models, outperforming the standard BERT
+models in many NLP tasks.
+RoBERTa models are extremely well-trained.
+Standard continual pre-training fails to attain
+any gains in downstream applications such as
+MNLI (Williams et al., 2018) and SST (Socher
+et al., 2013) from GLUE (Wang et al., 2018), as
+shown in Table 3. On the other hand, ALUM
+is able to attain further gain from continual pre-
+training of RoBERTa, as shown in Table 4. E.g.,
+ALUM ROBERT A-BASE outperforms RoBERTa BASE
+by +0.5%, and ALUM ROBERT A-LARGE outperforms
+RoBERTa LARGE by +0.7% on the MNLI develop-
+ment set. This is rather remarkable, as by contrast
+standard continual pre-training is unable to attain
+any gain.
+4.4 Improving Robustness
+In this subsection, we assess the impact of ad-
+versarial pre-training on the model’s robustness
+against adversarial attacks, using three standard
+adversarial NLP benchmarks: ANLI (Nie et al.,
+2019), HELLASWAG (Zellers et al., 2019) and ad-
+versarial SQuAD (Jia and Liang, 2017). On ANLI,
+we follow the experimental setting of Nie et al.
+(2019) to enable a head-to-head comparison, which
+combines four datasets (ANLI, MNLI, SNLI and
+FEVER (Thorne et al., 2018)) for ﬁne-tuning.
+Adversarial pre-training substantially improves
+model robustness, as shown in Table 5 and Ta-
+ble 6. In all three adversarial datasets, ALUM
+consistently outperformed the standard pre-training
+counterparts, for BERT and RoBERTa alike. For
+8This is a subset of the data (160GB) used in RoBERTa
+pre-training.
+7Model MNLI-m SST-2 QNLI CoLA RTE MRPC QQP STS-B
+RoBERTa BASE 87.6 94.8 92.8 63.6 78.7 90.2 91.9 91.2
+ALUM ROBERT A-BASE 88.1 95.3 93.1 63.6 80.2 90.9 92.0 91.1
+RoBERTa LARGE 90.2 96.4 94.7 67.8 86.6 90.9 92.2 92.4
+ALUM ROBERT A-LARGE 90.9 96.6 95.1 68.2 87.3 91.1 92.2 92.1
+Table 4: Comparison of standard and adversarial pre-training on the GLUE development set. Results for
+ALUM ROBERT A-BASE and ALUM ROBERT A-LARGE are averaged over ﬁve runs. Results of RoBERTa BASE and
+RoBERTa LARGE are taken from Liu et al. (2019c).
+MethodDev Test
+R1 R2 R3 All R1 R2 R3 All
+MNLI + SNLI + ANLI + FEVER
+BERT BASE 55.7 46.3 43.4 48.2 55.1 45.0 43.1 47.4
+BERT+ BASE 57.5 47.3 43.0 48.9 57.7 43.7 43.0 47.8
+ALUM BERT-BASE 62.0 48.6 48.1 52.6 61.3 45.9 44.3 50.1
+BERT LARGE (Nie et al., 2019) 57.4 48.3 43.5 49.3 - - - 44.2
+XLNet LARGE (Nie et al., 2019) 67.6 50.7 48.3 55.1 - - - 52.0
+RoBERTa LARGE (Nie et al., 2019) 73.8 48.9 44.4 53.7 - - - 49.7
+ALUM ROBERT A-LARGE 73.3 53.4 48.2 57.7 72.3 52.1 48.4 57.0
+Table 5: Comparison of standard and adversarial pre-training on the adversarial dataset ANLI. R1, R2 and R3 are
+rounds with increasing difﬁculty. Note that Nie et al. (2019) did not represent results for individual rounds, as
+signiﬁed by “-”.
+MethodAdversarial SQuAD HELLASWAG
+AddSent AddOneSent Dev Test
+EM/F1 EM/F1 Accuracy Accuracy
+BERT BASE 48.9/54.0 59.0/64.8 39.5 -
+BERT+ BASE 50.1/56.2 60.5/65.7 40.3 -
+ALUM BERT-BASE 54.6/60.4 63.2/69.8 44.0 -
+RoBERTa LARGE 72.3/66.0 79.3/72.9 85.0 85.2
+ALUM ROBERT A-LARGE 75.5/69.4 81.4/75.0 86.2 85.6
+Table 6: Comparison of standard and adversarial pre-training on adversarial datasets Adversarial SQuAD and HEL-
+LASWAG. The test result on HELLASWAG is taken from the ofﬁcial leaderboard: rowanzellers.com/hellaswag;
+we couldn’t get results for BERT base models as the organizers restrict the number of submissions.
+example, on ANLI, ALUM ROBERT A-LARGE gains
+7.3% points in test accuracy over RoBERTa LARGE ,
+outperforms XLNet (Yang et al., 2019) by 5.0%
+points, creating a new state-of-the-art result. The
+gains on Adversarial SQuAD and HELLASWAG
+are equally signiﬁcant. For example, for Ad-
+versarial SQuAD, ALUM BERT-BASE outperforms
+BERT BASE by +6.4% F1 in the AddSent set-
+ting and +5.0% F1 in the AddOneSent setting.
+Against RoBERTa LARGE , ALUM ROBERT A-LARGE
+gains +3.4% F1 in AddSent and +2.1% F1 in Ad-
+dOneSent.4.5 Combining Adversarial Pre-Training and
+Fine-tuning
+Adversarial training has been shown to be ef-
+fective in task-speciﬁc ﬁne-tuning (Jiang et al.,
+2019; Zhu et al., 2019). In this subsection,
+we explore combining adversarial pre-training
+with adversarial ﬁne-tuning. Speciﬁcally, we use
+RoBERTa LARGE as the base model, and compare it
+with ALUM ROBERT A-LARGE , which uses adversar-
+ial continual pre-training but standard ﬁne-tuning,
+and ALUM RoBERTA-LARGE-SMART , which uses ad-
+versarial training in both continual pre-training and
+8
+(a) Results on MNLI
+(b) Results on ANLI
+Figure 2: Combining adversarial pre-training and ﬁne-
+tuning attaining the best results on the development sets
+of MNLI and ANLI, two representative GLUE tasks.
+Model Dev Test
+SNLI Dataset (Accuracy%)
+GPT (Radford et al., 2018) - 89.9
+BERT LARGE 91.7 91.0
+MT-DNN LARGE (Liu et al., 2019b) 92.2 91.6
+ALUM ROBERT A-LARGE 93.1 93.0
+ALUM ROBERT A-LARGE -SMART 93.6 93.4
+SciTail Dataset (Accuracy%)
+GPT (Radford et al., 2018) - 88.3
+BERT LARGE (Liu et al., 2019b) 95.7 94.4
+MT-DNN LARGE (Liu et al., 2019b) 96.3 95.0
+ALUM ROBERT A-LARGE 97.4 96.3
+ALUM ROBERT A-LARGE -SMART 98.2 96.8
+Table 7: Combining adversarial pre-training and ﬁne-
+tuning attains the best results on SNLI and SciTail.
+ﬁne-tuning. Figure 2 shows the results on the
+development sets of MNLI and ANLI, two rep-Model Dev Test
+SWAG Dataset (Accuracy%)
+GPT (Radford et al., 2018) - 78.0
+BERT LARGE (Devlin et al., 2018) - 86.3
+Human(Zellers et al., 2018) 88.0 88.0
+RoBERTa LARGE (Liu et al., 2019c) - 89.9
+ALUM ROBERT A-LARGE 90.7 91.0
+ALUM ROBERT A-LARGE -SMART 91.2 -
+HELLASWAG Dataset (Accuracy%)
+GPT (Zellers et al., 2019) 41.9 41.7
+BERT LARGE (Zellers et al., 2019) 46.7 47.3
+RoBERTa LARGE (Liu et al., 2019c) - 85.2
+ALUM ROBERT A-LARGE 86.2 85.6
+ALUM ROBERT A-LARGE -SMART 86.9 -
+Human 95.7 95.6
+Table 8: Combining adversarial pre-training and ﬁne-
+tuning attains the best results on SWAG and HEL-
+LASWAG.
+resentative GLUE tasks. Combining adversarial
+pre-training and ﬁne-tuning attains the best results,
+and substantially outperforms RoBERTa LARGE .
+E.g., on ANLI, ALUM RoBERTa-SMART outperforms
+ALUM ROBERT A-LARGE by +1.1% points in accu-
+racy, and outperforms RoBERTa LARGE by +5.1%
+points. On SNLI, SciTail, SWAG, and HEL-
+LASWAG, we observe similar gains by combining
+adversarial pre-training and ﬁne-tuning, attaining
+new state-of-the-art results on these tasks. See ta-
+ble 7 and 8.
+5 Conclusion
+We propose ALUM, a general adversarial train-
+ing algorithm, and present the ﬁrst comprehen-
+sive study of adversarial training in large neural
+language models. We show that adversarial pre-
+training can signiﬁcantly improves both generaliza-
+tion and robustness, which provides a promising
+direction for reconciling their conﬂicts as observed
+in prior work. ALUM substantially improved ac-
+curacy for BERT and RoBERTa in a wide range of
+NLP tasks, and can be combined with adversarial
+ﬁne-tuning for further gain.
+Future directions include: further study on the
+role of adversarial pre-training in improving gen-
+eralization and robustness; speed up adversarial
+training; apply ALUM to other domains.
+9Acknowledgments
+We thank Haoming Jiang, Tuo Zhao, Zhe Gan,
+Keivn Duh, Yangfeng Ji, Greg Yang, Pengchuan
+Zhang, Lei Zhang, Furu Wei, Li Dong, Masayuki
+Asahara, and Lis Pereira for valuable discussions
+and comments, Microsoft Research Technology
+Engineering team for setting up GPU machines.
+References
+Hangbo Bao, Li Dong, Furu Wei, Wenhui Wang, Nan
+Yang, Xiaodong Liu, Yu Wang, Songhao Piao, Jian-
+feng Gao, Ming Zhou, and Hsiao-Wuen Hon. 2020.
+Unilmv2: Pseudo-masked language models for uni-
+ﬁed language model pre-training. arXiv preprint
+arXiv:2002.12804 .
+Roy Bar-Haim, Ido Dagan, Bill Dolan, Lisa Ferro, and
+Danilo Giampiccolo. 2006. The second PASCAL
+recognising textual entailment challenge. In Pro-
+ceedings of the Second PASCAL Challenges Work-
+shop on Recognising Textual Entailment .
+Luisa Bentivogli, Ido Dagan, Hoa Trang Dang, Danilo
+Giampiccolo, and Bernardo Magnini. 2009. The
+ﬁfth pascal recognizing textual entailment challenge.
+InIn Proc Text Analysis Conference (TACâ ˘A´Z09.
+Samuel R. Bowman, Gabor Angeli, Christopher Potts,
+and Christopher D. Manning. 2015. A large anno-
+tated corpus for learning natural language inference.
+InProceedings of the 2015 Conference on Empirical
+Methods in Natural Language Processing (EMNLP) .
+Association for Computational Linguistics.
+Daniel Cer, Mona Diab, Eneko Agirre, Inigo Lopez-
+Gazpio, and Lucia Specia. 2017. Semeval-2017
+task 1: Semantic textual similarity-multilingual and
+cross-lingual focused evaluation. arXiv preprint
+arXiv:1708.00055 .
+Yong Cheng, Lu Jiang, and Wolfgang Macherey. 2019.
+Robust neural machine translation with doubly ad-
+versarial inputs. In Proceedings of the 57th Annual
+Meeting of the Association for Computational Lin-
+guistics , pages 4324–4333, Florence, Italy. Associa-
+tion for Computational Linguistics.
+Kevin Clark, Minh-Thang Luong, Quoc V . Le, and
+Christopher D. Manning. 2020. ELECTRA: Pre-
+training text encoders as discriminators rather than
+generators. In ICLR .
+Nigel Collier and Jin-Dong Kim. 2004. Introduc-
+tion to the bio-entity recognition task at JNLPBA.
+InProceedings of the International Joint Workshop
+on Natural Language Processing in Biomedicine
+and its Applications (NLPBA/BioNLP) , pages 73–78,
+Geneva, Switzerland. COLING.
+Ido Dagan, Oren Glickman, and Bernardo Magnini.
+2006. The pascal recognising textual entailmentchallenge. In Proceedings of the First Inter-
+national Conference on Machine Learning Chal-
+lenges: Evaluating Predictive Uncertainty Visual
+Object Classiﬁcation, and Recognizing Textual En-
+tailment , MLCW’05, pages 177–190, Berlin, Hei-
+delberg. Springer-Verlag.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2018. Bert: Pre-training of deep
+bidirectional transformers for language understand-
+ing. arXiv preprint arXiv:1810.04805 .
+Rezarta Dogan, Robert Leaman, and Zhiyong lu. 2014.
+Ncbi disease corpus: A resource for disease name
+recognition and concept normalization. Journal of
+biomedical informatics , 47.
+William B Dolan and Chris Brockett. 2005. Automati-
+cally constructing a corpus of sentential paraphrases.
+InProceedings of the Third International Workshop
+on Paraphrasing (IWP2005) .
+Li Dong, Nan Yang, Wenhui Wang, Furu Wei,
+Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming
+Zhou, and Hsiao-Wuen Hon. 2019. Uniﬁed
+language model pre-training for natural language
+understanding and generation. arXiv preprint
+arXiv:1905.03197 .
+Danilo Giampiccolo, Bernardo Magnini, Ido Dagan,
+and Bill Dolan. 2007. The third PASCAL recogniz-
+ing textual entailment challenge. In Proceedings of
+the ACL-PASCAL Workshop on Textual Entailment
+and Paraphrasing , pages 1–9, Prague. Association
+for Computational Linguistics.
+Aaron Gokaslan and Vanya Cohen. Openwebtext cor-
+pus.
+Ian J Goodfellow, Jonathon Shlens, and Christian
+Szegedy. 2014. Explaining and harnessing adversar-
+ial examples. arXiv preprint arXiv:1412.6572 .
+Frank R Hampel. 1974. The inﬂuence curve and its
+role in robust estimation. Journal of the american
+statistical association , 69(346):383–393.
+Sepp Hochreiter and Jürgen Schmidhuber. 1997.
+Long short-term memory. Neural computation ,
+9(8):1735–1780.
+Yu-Lun Hsieh, Minhao Cheng, Da-Cheng Juan, Wei
+Wei, Wen-Lian Hsu, and Cho-Jui Hsieh. 2019. On
+the robustness of self-attentive models. In Proceed-
+ings of the 57th Annual Meeting of the Association
+for Computational Linguistics , pages 1520–1529.
+Robin Jia and Percy Liang. 2017. Adversarial exam-
+ples for evaluating reading comprehension systems.
+arXiv preprint arXiv:1707.07328 .
+Haoming Jiang, Pengcheng He, Weizhu Chen, Xi-
+aodong Liu, Jianfeng Gao, and Tuo Zhao. 2019.
+Smart: Robust and efﬁcient ﬁne-tuning for pre-
+trained natural language models through princi-
+pled regularized optimization. arXiv preprint
+arXiv:1911.03437 .
+10Di Jin, Zhijing Jin, Joey Tianyi Zhou, and Peter
+Szolovits. 2019. Is bert really robust? natural lan-
+guage attack on text classiﬁcation and entailment.
+arXiv preprint arXiv:1907.11932 .
+Tushar Khot, Ashish Sabharwal, and Peter Clark. 2018.
+SciTail: A textual entailment dataset from science
+question answering. In AAAI .
+Diederik Kingma and Jimmy Ba. 2014. Adam: A
+method for stochastic optimization. arXiv preprint
+arXiv:1412.6980 .
+Taku Kudo and John Richardson. 2018. Sentencepiece:
+A simple and language independent subword tok-
+enizer and detokenizer for neural text processing.
+arXiv preprint arXiv:1808.06226 .
+Hector Levesque, Ernest Davis, and Leora Morgen-
+stern. 2012. The winograd schema challenge. In
+Thirteenth International Conference on the Princi-
+ples of Knowledge Representation and Reasoning .
+Liyuan Liu, Haoming Jiang, Pengcheng He, Weizhu
+Chen, Xiaodong Liu, Jianfeng Gao, and Jiawei Han.
+2019a. On the variance of the adaptive learning rate
+and beyond. arXiv preprint arXiv:1908.03265 .
+Xiaodong Liu, Jianfeng Gao, Xiaodong He, Li Deng,
+Kevin Duh, and Ye-Yi Wang. 2015. Representation
+learning using multi-task deep neural networks for
+semantic classiﬁcation and information retrieval. In
+Proceedings of the 2015 Conference of the North
+American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies ,
+pages 912–921.
+Xiaodong Liu, Pengcheng He, Weizhu Chen, and Jian-
+feng Gao. 2019b. Multi-task deep neural networks
+for natural language understanding. In Proceedings
+of the 57th Annual Meeting of the Association for
+Computational Linguistics , pages 4487–4496, Flo-
+rence, Italy. Association for Computational Linguis-
+tics.
+Xiaodong Liu, Yu Wang, Jianshu Ji, Hao Cheng,
+Xueyun Zhu, Emmanuel Awa, Pengcheng He,
+Weizhu Chen, Hoifung Poon, Guihong Cao, and
+Jianfeng Gao. 2020. The microsoft toolkit of multi-
+task deep neural networks for natural language un-
+derstanding. arXiv preprint arXiv:2002.07972 .
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Man-
+dar Joshi, Danqi Chen, Omer Levy, Mike Lewis,
+Luke Zettlemoyer, and Veselin Stoyanov. 2019c.
+Roberta: A robustly optimized bert pretraining ap-
+proach. arXiv preprint arXiv:1907.11692 .
+Aleksander Madry, Aleksandar Makelov, Ludwig
+Schmidt, Dimitris Tsipras, and Adrian Vladu. 2017.
+Towards deep learning models resistant to adversar-
+ial attacks. arXiv preprint arXiv:1706.06083 .
+Yifei Min, Lin Chen, and Amin Karbasi. 2020. The
+curious case of adversarially robust models: More
+data can help, double descend, or hurt generalization.
+arXiv preprint arXiv:2002.11080 .Shervin Minaee, Nal Kalchbrenner, Erik Cambria,
+Narjes Nikzad, Meysam Chenaghlu, and Jianfeng
+Gao. 2020a. Deep learning based text classiﬁ-
+cation: A comprehensive review. arXiv preprint
+arXiv:2004.03705 .
+Shervin Minaee, Nal Kalchbrenner, Erik Cambria,
+Narjes Nikzad, Meysam Chenaghlu, and Jianfeng
+Gao. 2020b. Deep learning based text classiﬁ-
+cation: a comprehensive review. arXiv preprint
+arXiv:2004.03705 .
+Takeru Miyato, Shin-ichi Maeda, Masanori Koyama,
+and Shin Ishii. 2018. Virtual adversarial training:
+a regularization method for supervised and semi-
+supervised learning. IEEE transactions on pat-
+tern analysis and machine intelligence , 41(8):1979–
+1993.
+Yixin Nie, Adina Williams, Emily Dinan, Mohit
+Bansal, Jason Weston, and Douwe Kiela. 2019. Ad-
+versarial nli: A new benchmark for natural language
+understanding. arXiv preprint arXiv:1910.14599 .
+Chongli Qin, James Martens, Sven Gowal, Dilip Kr-
+ishnan, Alhussein Fawzi, Soham De, Robert Stan-
+forth, Pushmeet Kohli, et al. 2019. Adversarial ro-
+bustness through local linearization. arXiv preprint
+arXiv:1907.02610 .
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan,
+Dario Amodei, and Ilya Sutskever. 2018. Language
+models are unsupervised multitask learners.
+Aditi Raghunathan, Sang Michael Xie, Fanny Yang,
+John Duchi, and Percy Liang. 2020. Understanding
+and mitigating the tradeoff between robustness and
+accuracy. arXiv preprint arXiv:2002.10716 .
+Aditi Raghunathan, Sang Michael Xie, Fanny Yang,
+John C Duchi, and Percy Liang. 2019. Adversar-
+ial training can hurt generalization. arXiv preprint
+arXiv:1906.06032 .
+Pranav Rajpurkar, Robin Jia, and Percy Liang. 2018.
+Know what you don’t know: Unanswerable ques-
+tions for squad. arXiv preprint arXiv:1806.03822 .
+Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and
+Percy Liang. 2016. SQuAD: 100,000+ questions for
+machine comprehension of text. In Proceedings of
+the 2016 Conference on Empirical Methods in Natu-
+ral Language Processing , pages 2383–2392, Austin,
+Texas. Association for Computational Linguistics.
+Rico Sennrich, Barry Haddow, and Alexandra Birch.
+2015. Neural machine translation of rare words with
+subword units. arXiv preprint arXiv:1508.07909 .
+Ali Shafahi, Mahyar Najibi, Amin Ghiasi, Zheng
+Xu, John Dickerson, Christoph Studer, Larry S
+Davis, Gavin Taylor, and Tom Goldstein. 2019.
+Adversarial training for free! arXiv preprint
+arXiv:1904.12843 .
+11Mohammad Shoeybi, Mostofa Patwary, Raul Puri,
+Patrick LeGresley, Jared Casper, and Bryan Catan-
+zaro. 2019. Megatron-lm: Training multi-billion
+parameter language models using gpu model paral-
+lelism. arXiv preprint arXiv:1909.08053 .
+Larry Smith, Lorraine Tanabe, Rie Ando, Cheng-
+Ju Kuo, I-Fang Chung, Chun-Nan Hsu, Yu-Shi
+Lin, Roman Klinger, Christoph Friedrich, Kuzman
+Ganchev, Manabu Torii, Hongfang Liu, Barry Had-
+dow, Craig Struble, Richard Povinelli, Andreas Vla-
+chos, William Baumgartner Jr, Lawrence Hunter,
+Bob Carpenter, and W. Wilbur. 2008. Overview of
+biocreative ii gene mention recognition. Genome bi-
+ology , 9 Suppl 2:S2.
+Richard Socher, Alex Perelygin, Jean Wu, Jason
+Chuang, Christopher D Manning, Andrew Ng, and
+Christopher Potts. 2013. Recursive deep models
+for semantic compositionality over a sentiment tree-
+bank. In Proceedings of the 2013 conference on
+empirical methods in natural language processing ,
+pages 1631–1642.
+David Stutz, Matthias Hein, and Bernt Schiele. 2019.
+Disentangling adversarial robustness and generaliza-
+tion. In Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition , pages
+6976–6987.
+Yu Sun, Shuohuan Wang, Yukun Li, Shikun Feng, Hao
+Tian, Hua Wu, and Haifeng Wang. 2019. Ernie 2.0:
+A continual pre-training framework for language un-
+derstanding. arXiv preprint arXiv:1907.12412 .
+Wilson L Taylor. 1953. â ˘AIJcloze procedureâ ˘A˙I: A
+new tool for measuring readability. Journalism
+quarterly , 30(4):415–433.
+James Thorne, Andreas Vlachos, Christos
+Christodoulopoulos, and Arpit Mittal. 2018.
+Fever: a large-scale dataset for fact extraction and
+veriﬁcation. arXiv preprint arXiv:1803.05355 .
+Trieu H Trinh and Quoc V Le. 2018. A simple
+method for commonsense reasoning. arXiv preprint
+arXiv:1806.02847 .
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz
+Kaiser, and Illia Polosukhin. 2017. Attention is all
+you need. In Advances in neural information pro-
+cessing systems , pages 5998–6008.
+Alex Wang, Amanpreet Singh, Julian Michael, Felix
+Hill, Omer Levy, and Samuel R Bowman. 2018.
+Glue: A multi-task benchmark and analysis platform
+for natural language understanding. arXiv preprint
+arXiv:1804.07461 .
+Dilin Wang, Chengyue Gong, and Qiang Liu. 2019.
+Improving neural language modeling via adversarial
+training. In International Conference on Machine
+Learning , pages 6555–6565.Alex Warstadt, Amanpreet Singh, and Samuel R Bow-
+man. 2018. Neural network acceptability judgments.
+arXiv preprint arXiv:1805.12471 .
+Adina Williams, Nikita Nangia, and Samuel Bowman.
+2018. A broad-coverage challenge corpus for sen-
+tence understanding through inference. In Proceed-
+ings of the 2018 Conference of the North American
+Chapter of the Association for Computational Lin-
+guistics: Human Language Technologies, Volume
+1 (Long Papers) , pages 1112–1122. Association for
+Computational Linguistics.
+Zhilin Yang, Zihang Dai, Yiming Yang, Jaime Car-
+bonell, Ruslan Salakhutdinov, and Quoc V Le.
+2019. Xlnet: Generalized autoregressive pretrain-
+ing for language understanding. arXiv preprint
+arXiv:1906.08237 .
+Rowan Zellers, Yonatan Bisk, Roy Schwartz, and
+Yejin Choi. 2018. Swag: A large-scale adversarial
+dataset for grounded commonsense inference. arXiv
+preprint arXiv:1808.05326 .
+Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali
+Farhadi, and Yejin Choi. 2019. Hellaswag: Can a
+machine really ﬁnish your sentence? In Proceed-
+ings of the 57th Annual Meeting of the Association
+for Computational Linguistics .
+Chen Zhu, Yu Cheng, Zhe Gan, Siqi Sun, Thomas
+Goldstein, and Jingjing Liu. 2019. Freelb: En-
+hanced adversarial training for language understand-
+ing. arXiv preprint arXiv:1909.11764 .
+12A NLP Application Benchmarks
+GLUE . The General Language Understanding
+Evaluation (GLUE) benchmark is a collection of
+nine natural language understanding (NLU) tasks.
+As shown in Table 9, it includes question an-
+swering (Rajpurkar et al., 2016), linguistic accept-
+ability (Warstadt et al., 2018), sentiment analy-
+sis (Socher et al., 2013), text similarity (Cer et al.,
+2017), paraphrase detection (Dolan and Brockett,
+2005), and natural language inference (NLI) (Da-
+gan et al., 2006; Bar-Haim et al., 2006; Giampic-
+colo et al., 2007; Bentivogli et al., 2009; Levesque
+et al., 2012; Williams et al., 2018). The diversity of
+the tasks makes GLUE very suitable for evaluating
+the generalization and robustness of NLU models.
+SNLI . The Stanford Natural Language Inference
+(SNLI) dataset contains 570k human annotated sen-
+tence pairs, in which the premises are drawn from
+the captions of the Flickr30 corpus and hypothe-
+ses are manually annotated (Bowman et al., 2015).
+This is the most widely used entailment dataset for
+NLI.
+SciTail . This is a textual entailment dataset de-
+rived from a science question answering (SciQ)
+dataset (Khot et al., 2018). The task involves as-
+sessing whether a given premise entails a given
+hypothesis. In contrast to other entailment datasets
+mentioned previously, the hypotheses in SciTail
+are created from science questions while the cor-
+responding answer candidates and premises come
+from relevant web sentences retrieved from a large
+corpus. As a result, these sentences are linguis-
+tically challenging and the lexical similarity of
+premise and hypothesis is often high, thus mak-
+ing SciTail particularly difﬁcult.
+ANLI . The Adversarial Natural Language In-
+ference (ANLI, Nie et al. (2019)) is a new large-
+scale NLI benchmark dataset, collected via an it-
+erative, adversarial human-and-model-in-the-loop
+procedure. Speciﬁcally, the instances are chosen to
+be difﬁcult for the state-of-the-art models such as
+BERT and RoBERTa.
+SWAG . It is a large-scale adversarial dataset
+for the task of grounded commonsense inference,
+which uniﬁes natural language inference and phys-
+ically grounded reasoning (Zellers et al., 2018).
+SWAG consists of 113k multiple choice questions
+about grounded situations.
+HELLASWAG . It is similar to SWAG but more
+challenging (Zellers et al., 2019). For each query in
+HELLASWAG, it also has 4 choices and the goalis to ﬁnd the best choice among them.
+SQuAD v1.1/v2.0 . Stanford Question Answer-
+ing Dataset (SQuAD) v1.1 and v2.0 (Rajpurkar
+et al., 2016, 2018) are popular machine reading
+comprehension benchmarks. Their passages come
+from approximately 500 Wikipedia articles and the
+questions and answers are obtained by crowdsourc-
+ing. The SQuAD v2.0 dataset includes unanswer-
+able questions about the same paragraphs.
+BC2GM . The Gene Mention Task at the Biocre-
+ative II workshop (Smith et al., 2008) provides an
+annotated dataset for gene name entity recognition.
+NCBI . The NCBI disease corpus (Dogan et al.,
+2014) contains annotations of disease mentions
+from a collection of PubMed abstracts.
+JNLPBA . JNLBA is a biomedical entity recogni-
+tion shared task (Collier and Kim, 2004). It is one
+of the largest datasets covering a large fraction of
+major taxonomies in molecular biology.
+13Corpus Task #Train #Dev #Test #Label Metrics
+Single-Sentence Classiﬁcation (GLUE)
+CoLA Acceptability 8.5k 1k 1k 2 Matthews corr
+SST Sentiment 67k 872 1.8k 2 Accuracy
+Pairwise Text Classiﬁcation (GLUE)
+MNLI NLI 393k 20k 20k 3 Accuracy
+RTE NLI 2.5k 276 3k 2 Accuracy
+WNLI NLI 634 71 146 2 Accuracy
+QQP Paraphrase 364k 40k 391k 2 Accuracy/F1
+MRPC Paraphrase 3.7k 408 1.7k 2 Accuracy/F1
+QNLI QA/NLI 108k 5.7k 5.7k 2 Accuracy
+Text Similarity (GLUE)
+STS-B Similarity 7k 1.5k 1.4k 1 Pearson/Spearman corr
+Pairwise Text Classiﬁcation
+SNLI NLI 549k 9.8k 9.8k 3 Accuracy
+SciTail NLI 23.5k 1.3k 2.1k 2 Accuracy
+ANLI NLI 163k 3.2k 3.2k 3 Accuracy
+Span Classiﬁcation
+SQuAD v1.1 MRC 87.6k 10.5k 9.5k - Exact Match (EM)/F1
+SQuAD v2.0 MRC 130.3k 11.9k 8.9k - Exact Match (EM)/F1
+Ranking
+SWAG Multiple choice 73.5k 20k 20k - Accuracy
+HELLASWAG Multiple choice 34k 10 10k - Accuracy
+Biomedical Domain
+BC2GM NER 12.6k 2.5k 5k - F1/Precision/Recall
+NCBI NER 5.4k 923 940 - F1/Precision/Recall
+JNLPBA NER 14.7k 3.9k 3.9k - F1/Precision/Recall
+Table 9: Summary information of the NLP application benchmarks.

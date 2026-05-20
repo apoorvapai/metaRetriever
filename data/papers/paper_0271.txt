@@ -1,0 +1,940 @@
+Title: Simple and Effective Multi-Paragraph Reading Comprehension
+
+Simple and Effective Multi-Paragraph Reading Comprehension
+Christopher Clark
+University of Washington
+csquared@cs.washington.eduMatt Gardner
+Allen Institute for Artiﬁcial Intelligence
+mattg@allenai.org
+Abstract
+We consider the problem of adapting neural
+paragraph-level question answering models to
+the case where entire documents are given as
+input. Our proposed solution trains models
+to produce well calibrated conﬁdence scores
+for their results on individual paragraphs. We
+sample multiple paragraphs from the doc-
+uments during training, and use a shared-
+normalization training objective that encour-
+ages the model to produce globally correct out-
+put. We combine this method with a state-
+of-the-art pipeline for training models on doc-
+ument QA data. Experiments demonstrate
+strong performance on several document QA
+datasets. Overall, we are able to achieve a
+score of 71.3 F1 on the web portion of Triv-
+iaQA, a large improvement from the 56.7 F1
+of the previous best system.
+1 Introduction
+Teaching machines to answer arbitrary user-
+generated questions is a long-term goal of natural
+language processing. For a wide range of ques-
+tions, existing information retrieval methods are
+capable of locating documents that are likely to
+contain the answer. However, automatically ex-
+tracting the answer from those texts remains an
+open challenge. The recent success of neural mod-
+els at answering questions given a related para-
+graph (Wang et al., 2017b; Tan et al., 2017) sug-
+gests neural models have the potential to be a key
+part of a solution to this problem. Training and
+testing neural models that take entire documents as
+input is extremely computationally expensive, so
+typically this requires adapting a paragraph-level
+model to process document-level input.
+There are two basic approaches to this task.
+Pipelined approaches select a single paragraph
+Work completed while interning at the Allen Institute
+for Artiﬁcial Intelligencefrom the input documents, which is then passed to
+the paragraph model to extract an answer (Joshi
+et al., 2017; Wang et al., 2017a). Conﬁdence
+based methods apply the model to multiple para-
+graphs and returns the answer with the highest
+conﬁdence (Chen et al., 2017). Conﬁdence meth-
+ods have the advantage of being robust to errors
+in the (usually less sophisticated) paragraph selec-
+tion step, however they require a model that can
+produce accurate conﬁdence scores for each para-
+graph. As we shall show, naively trained models
+often struggle to meet this requirement.
+In this paper we start by proposing an improved
+pipelined method which achieves state-of-the-art
+results. Then we introduce a method for training
+models to produce accurate per-paragraph conﬁ-
+dence scores, and we show how combining this
+method with multiple paragraph selection further
+increases performance.
+Our pipelined method focuses on addressing the
+challenges that come with training on document-
+level data. We propose a TF-IDF heuristic to select
+which paragraphs to train and test on. Since anno-
+tating entire documents is very expensive, data of
+this sort is typically distantly supervised, mean-
+ing only the answer text, not the answer spans,
+are known. To handle the noise this creates, we
+use a summed objective function that marginal-
+izes the model’s output over all locations the an-
+swer text occurs. We apply this approach with
+a model design that integrates some recent ideas
+in reading comprehension models, including self-
+attention (Cheng et al., 2016) and bi-directional at-
+tention (Seo et al., 2016).
+Our conﬁdence method extends this approach
+to better handle the multi-paragraph setting. Pre-
+vious approaches trained the model on questions
+paired with paragraphs that are known a priori to
+contain the answer. This has several downsides:
+the model is not trained to produce low conﬁdencearXiv:1710.10723v2  [cs.CL]  7 Nov 2017
+scores for paragraphs that do not contain an an-
+swer, and the training objective does not require
+conﬁdence scores to be comparable between para-
+graphs. We resolve these problems by sampling
+paragraphs from the context documents, includ-
+ing paragraphs that do not contain an answer, to
+train on. We then use a shared-normalization ob-
+jective where paragraphs are processed indepen-
+dently, but the probability of an answer candidate
+is marginalized over all paragraphs sampled from
+the same document. This requires the model to
+produce globally correct output even though each
+paragraph is processed independently.
+We evaluate our work on TriviaQA web (Joshi
+et al., 2017), a dataset of questions paired with
+web documents that contain the answer. We
+achieve 71.3 F1 on the test set, a 15 point abso-
+lute gain over prior work. We additionally perform
+an ablation study on our pipelined method, and
+we show the effectiveness of our multi-paragraph
+methods on TriviaQA unﬁltered and a modiﬁed
+version of SQuAD (Rajpurkar et al., 2016) where
+only the correct document, not the correct para-
+graph, is known. We also build a demonstration
+of our method by combining our model with a re-
+implementation of the retrieval mechanism used
+in TriviaQA to build a prototype end-to-end gen-
+eral question answering system1. We release our
+code2to facilitate future work in this ﬁeld.
+2 Pipelined Method
+In this section we propose an approach to train-
+ing pipelined question answering systems, where a
+single paragraph is heuristically extracted from the
+context document(s) and passed to a paragraph-
+level QA model. We suggest using a TF-IDF
+based paragraph selection method and argue that
+a summed objective function should be used to
+handle noisy supervision. We also propose a re-
+ﬁned model that incorporates some recent model-
+ing ideas for reading comprehension systems.
+2.1 Paragraph Selection
+Our paragraph selection method chooses the para-
+graph that has the smallest TF-IDF cosine dis-
+tance with the question. Document frequencies
+are computed using just the paragraphs within the
+relevant documents, not the entire corpus. The
+advantage of this approach is that if a question
+word is prevalent in the context, for example if
+1documentqa.allenai.org
+2github.com/allenai/document-qathe word “tiger” is prevalent in the document(s)
+for the question “What is the largest living sub-
+species of the tiger?”, greater weight will be given
+to question words that are less common, such as
+“largest” or “sub-species”. Relative to selecting
+the ﬁrst paragraph in the document, this improves
+the chance of the selected paragraph containing
+the correct answer from 83.1% to 85.1% on Triv-
+iaQA web. We also expect this approach to do a
+better job of selecting paragraphs that relate to the
+question since it is explicitly selecting paragraphs
+that contain question words.
+2.2 Handling Noisy Labels
+Question: Which British general was killed at Khartoum
+in 1885?
+Answer: Gordon
+Context: In February 1885 Gordon returned to the Sudan
+to evacuate Egyptian forces. Khartoum came under siege
+the next month and rebels broke into the city, killing Gor-
+don and the other defenders. The British public reacted to
+his death by acclaiming ‘Gordon of Khartoum’, a saint.
+However, historians have suggested that Gordon deﬁed
+orders and refused to evacuate...
+Figure 1: Noisy supervision causes many spans of text
+that contain the answer, but are not situated in a con-
+text that relates to the question, to be labelled as correct
+answer spans (highlighted in red). This risks distract-
+ing the model from learning from more relevant spans
+(highlighted in green).
+In a distantly supervised setup we label all text
+spans that match the answer text as being correct.
+This can lead to training the model to select un-
+wanted answer spans. Figure 1 contains an exam-
+ple. To handle this difﬁculty, we use a summed
+objective function similar to the one from Kadlec
+et al. (2016), that optimizes the sum of the proba-
+bilities of all answer spans. The models we con-
+sider here work by independently predicting the
+start and end token of the answer span, so we take
+this approach for both predictions. Thus the ob-
+jective for the span start boundaries becomes:
+ logP
+k2Aesk
+Pn
+i=1esi
+whereAis the set of tokens that start an answer
+span,nis the number of context tokens, and siis
+a scalar score computed by the model for span i.
+This optimizes the negative log-likelihood of se-
+lecting any correct start token. This objective is
+agnostic to how the model distributes probability
+mass across the possible answer spans, thus the
+model can “choose” to focus on only the more rel-
+evant spans.
+2.3 Model
+Figure 2: High level outline of our model.
+We use a model with the following layers
+(shown in Figure 2):
+Embedding: We embed words using pre-
+trained word vectors. We also embed the char-
+acters in each word into size 20 vectors which
+are learned, and run a convolution neural network
+followed by max-pooling to get character-derived
+embeddings for each word. The character-level
+and word-level embeddings are then concatenated
+and passed to the next layer. We do not update the
+word embeddings during training.
+Pre-Process: A shared bi-directional
+GRU (Cho et al., 2014) is used to map the
+question and passage embeddings to context-
+aware embeddings.
+Attention: The bi-directional attention mech-
+anism from the Bi-Directional Attention Flow
+(BiDAF) model (Seo et al., 2016) is used to build
+a query-aware context representation. Let hibethe vector for context word i,qjbe the vector for
+question word j, andnqandncbe the lengths of
+the question and context respectively. We com-
+pute attention between context word iand ques-
+tion wordjas:
+aij=w1hi+w2qj+w3(hiqj)
+where w1,w2, and w3are learned vectors and 
+is element-wise multiplication. We then compute
+an attended vector cifor each context token as:
+pij=eaij
+Pnq
+j=1eaij
+ci=nqX
+j=1qjpij
+We also compute a query-to-context vector qc:
+mi= max
+1jnqaij
+pi=emi
+Pnc
+i=1emi
+qc=ncX
+i=1hipi
+The ﬁnal vector computed for each token is built
+by concatenating hi,ci,hici, and qcci. In
+our model we subsequently pass the result through
+a linear layer with ReLU activations.
+Self-Attention: Next we use a layer of residual
+self-attention. The input is passed through another
+bi-directional GRU. Then we apply the same at-
+tention mechanism, only now between the passage
+and itself. In this case we do not use query-to-
+context attention and we set aij= infifi=j.
+As before, we pass the concatenated output
+through a linear layer with ReLU activations. This
+layer is applied residually, so this output is addi-
+tionally summed with the input.
+Prediction: In the last layer of our model a bi-
+directional GRU is applied, followed by a linear
+layer that computes answer start scores for each
+token. The hidden states of that layer are con-
+catenated with the input and fed into a second bi-
+directional GRU and linear layer to predict answer
+end scores. The softmax operation is applied to
+the start and end scores to produce start and end
+probabilities, and we optimize the negative log-
+likelihood of selecting correct start and end tokens.
+Dropout: We also employ variational dropout,
+where a randomly selected set of hidden units
+are set to zero across all time steps during train-
+ing (Gal and Ghahramani, 2016). We dropout the
+input to all the GRUs, including the word embed-
+dings, as well as the input to the attention mecha-
+nisms, at a rate of 0.2.
+3 Conﬁdence Method
+We adapt this model to the multi-paragraph setting
+by using the un-normalized and un-exponentiated
+(i.e., before the softmax operator is applied) score
+given to each span as a measure of the model’s
+conﬁdence. For the boundary-based models we
+use here, a span’s score is the sum of the start and
+end score given to its start and end token. At test
+time we run the model on each paragraph and se-
+lect the answer span with the highest conﬁdence.
+This is the approach taken by Chen et al. (2017).
+Applying this approach without altering how
+the model is trained is, however, a gamble; the
+training objective does not require these conﬁ-
+dence scores to be comparable between para-
+graphs. Our experiments in Section 5 show that in
+practice these models can be very poor at provid-
+ing good conﬁdence scores. Table 1 shows some
+qualitative examples of this phenomenon.
+We hypothesize that there are two key reasons a
+model’s conﬁdence scores might not be well cal-
+ibrated. First, for models trained with the soft-
+max objective, the pre-softmax scores for all spans
+can be arbitrarily increased or decreased by a con-
+stant value without changing the resulting softmax
+probability distribution. As a result, nothing pre-
+vents models from producing scores that are arbi-
+trarily all larger or all smaller for one paragraph
+than another. Second, if the model only sees para-
+graphs that contain answers, it might become too
+conﬁdent in heuristics or patterns that are only ef-
+fective when it is known a priori that an answer
+exists. For example, in Table 1 we observe that the
+model will assign high conﬁdence values to spans
+that strongly match the category of the answer,
+even if the question words do not match the con-
+text. This might work passably well if an answer
+is present, but can lead to highly over-conﬁdent
+extractions in other cases. Similar kinds of errors
+have been observed when distractor sentences are
+added to the context (Jia and Liang, 2017).
+We experiment with four approaches to training
+models to produce comparable conﬁdence scores,
+shown in the follow subsections. In all cases we
+will sample paragraphs that do not contain an an-
+swer as additional training points.3.1 Shared-Normalization
+In this approach all paragraphs are processed in-
+dependently as usual. However, a modiﬁed objec-
+tive function is used where the normalization fac-
+tor in the softmax operation is shared between all
+paragraphs from the same context. Therefore, the
+probability that token afrom paragraph pstarts an
+answer span is computed as:
+esap
+P
+j2PPnj
+i=1esij
+wherePis the set of paragraphs that are from the
+same context as p, andsijis the score given to to-
+kenifrom paragraph j. We train on this objective
+by including multiple paragraphs from the same
+context in each mini-batch.
+This is similar to simply feeding the model mul-
+tiple paragraphs from each context concatenated
+together, except that each paragraph is processed
+independently until the normalization step. The
+key idea is that this will force the model to produce
+scores that are comparable between paragraphs,
+even though it does not have access to information
+about the other paragraphs being considered.
+3.2 Merge
+As an alternative to the previous method, we ex-
+periment with concatenating all paragraphs sam-
+pled from the same context together during train-
+ing. A paragraph separator token with a learned
+embedding is added before each paragraph. Our
+motive is to test whether simply exposing the
+model to more text will teach the model to be more
+adept at ignoring irrelevant text.
+3.3 No-Answer Option
+We also experiment with allowing the model to se-
+lect a special “no-answer” option for each para-
+graph. First, note that the independent-bounds ob-
+jective can be re-written as:
+ logesa
+Pn
+i=1esi
+ log 
+egb
+Pn
+j=1egj!
+=
+ log 
+esagb
+Pn
+i=1Pn
+j=1esigj!
+wheresjandgjare the scores for the start and end
+bounds produced by the model for token j, anda
+andbare the correct start and end tokens. We have
+the model compute another score, z, to represent
+Question Low Conﬁdence Correct Extraction High Conﬁdence Incorrect Extraction
+When is the Members
+Debate held?Immediately after Decision Time a “Mem-
+bers Debate” is held, which lasts for 45 min-
+utes......majority of the Scottish electorate voted for
+it in a referendum to be held on 1 March
+1979 that represented at least...
+How many tree species
+are in the rainforest?...plant species is the highest on Earth with
+one 2001 study ﬁnding a quarter square kilo-
+meter (62 acres) of Ecuadorian rainforest
+supports more than 1,100 tree speciesThe affected region was approximately
+1,160,000 square miles (3,000,000 km2) of
+rainforest, compared to 734,000 square miles
+Who was Warsz?....In actuality, Warsz was a 12th/13th century
+nobleman who owned a village located at the
+modern....One of the most famous people born in War-
+saw was Maria Sklodowska - Curie , who
+achieved international...
+How much did the ini-
+tial LM weight in kg?The initial LM model weighed approximately
+33,300 pounds ( 15,000 kg), and...The module was 11.42 feet (3.48 m) tall,
+and weighed approximately 12,250 pounds
+(5,560 kg)
+What do the auricles
+do?...many species of lobates have four auricles,
+gelatinous projections edged with cilia that
+produce water currents that help direct
+microscopic prey toward the mouth ...The Cestida are ribbon - shaped planktonic
+animals, with the mouth and aboral organ
+aligned in the middle of opposite edges of
+the ribbon
+Table 1: Examples from SQuAD where a paragraph-level model was less conﬁdent in a correct extraction from
+one paragraph (left) than in an incorrect extraction from another (right). Even if the passage has no correct answer,
+the model still assigns high conﬁdence to phrases that match the category the question is asking about. Because
+the conﬁdence scores are not well-calibrated, this conﬁdence is often higher than the conﬁdence assigned to the
+correct answer span.
+the weight given to a “no-answer” possibility. Our
+revised objective function becomes:
+ log 
+(1 )ez+esagb
+ez+Pn
+i=1Pn
+j=1esigj!
+whereis 1 if an answer exists and 0 otherwise. If
+there are multiple answer spans we use the same
+objective, except the numerator includes the sum-
+mation over all answer start and end tokens.
+We compute zby adding an extra layer at the
+end of our model. We compute a soft attention
+over the span start scores, pi=esiPn
+j=1esj, and then
+take the weighted sum of the hidden states from
+the GRU used to generate those scores, hi, giving
+v1=Pn
+i=1hipi. We compute a second vector,
+v2in the same way using the end scores. Finally,
+a step of learned attention is performed on the out-
+put of the Self-Attention layer that computes:
+ai=whi
+pi=eai
+Pn
+j=1eaj
+v3=nX
+i=1hipi
+where wis a learned weight vector and hiis the
+vector for token i.
+We concatenate these three vectors and use
+them as input to a two layer network with an 80 di-
+mensional hidden layer and ReLU activations that
+produceszas its only output.3.4 Sigmoid
+As a ﬁnal baseline, we consider training models
+with the sigmoid loss objective function. That is,
+we compute a start/end probability for each token
+in the context by applying the sigmoid function to
+the start/end scores of each token. A cross entropy
+loss is used on each individual probability. The in-
+tuition is that, since the scores are being evaluated
+independently of one another, they will be compa-
+rable between different paragraphs.
+4 Experimental Setup
+4.1 Datasets
+We evaluate our approach on three datasets: Triv-
+iaQA unﬁltered (Joshi et al., 2017), a dataset of
+questions from trivia databases paired with docu-
+ments found by completing a web search of the
+questions; TriviaQA web, a dataset derived from
+TriviaQA unﬁltered by treating each question-
+document pair where the document contains the
+question answer as an individual training point;
+and SQuAD (Rajpurkar et al., 2016), a collection
+of Wikipedia articles and crowdsourced questions.
+4.2 Preprocessing
+We note that for TriviaQA web we do not sub-
+sample as was done by Joshi et al. (2017), in-
+stead training on the full 530k question-document
+training pairs. We also observed that the metrics
+for TriviaQA are computed after applying a small
+amount of text normalization (stripping punctua-
+tion, removing articles, ect.) to both the ground
+truth text and the predicted text. As a result, some
+spans of text that would have been considered an
+exact match after normalization were not marked
+as answer spans during preprocessing, which only
+detected exact string matches. We ﬁx this issue
+by labeling all spans of text that would have been
+considered an exact match by the ofﬁcial evalua-
+tion script as an answer span.
+In TriviaQA, documents often contain many
+small paragraphs, so we merge paragraphs to-
+gether as needed to get paragraphs of up to a tar-
+get size. We use a maximum size of 400 unless
+stated otherwise. Paragraph separator tokens with
+learned embeddings are added between merged
+paragraphs to preserve formatting information.
+4.3 Sampling
+Our conﬁdence-based approaches are all trained
+by sampling paragraphs, including paragraphs
+that do not contain an answer, during training.
+For SQuAD and TriviaQA web we take the top
+four paragraphs ranked by TF-IDF score for each
+question-document pair. We then sample two dif-
+ferent paragraphs from this set each epoch. Since
+we observe that the higher-ranked paragraphs are
+much more likely to contain the context needed to
+answer the question, we sample the highest ranked
+paragraph that contains an answer twice as often
+as the others. For the merge and shared-norm ap-
+proaches, we additionally require that at least one
+of the paragraphs contains an answer span.
+For TriviaQA unﬁltered, where we have multi-
+ple documents for each question, we ﬁnd it bene-
+ﬁcial to use a more sophisticated paragraph rank-
+ing function. In particular, we use a linear func-
+tion with ﬁve features: the TF-IDF cosine dis-
+tance, whether the paragraph was the ﬁrst in its
+document, how many tokens occur before it, and
+the number of case insensitive and case sensitive
+matches with question words. The function is
+trained on the distantly supervised objective of se-
+lecting paragraphs that contain at least one answer
+span. We select the top 16 paragraphs for each
+question and sample pairs of paragraphs as before.
+4.4 Implementation
+We train the model with the Adadelta opti-
+mizer (Zeiler, 2012) with a batch size 60 for Triv-
+iaQA and 45 for SQuAD. At test time we select
+the most probable answer span of length less thanModel EM F1
+baseline (Joshi et al., 2017) 41.08 47.40
+BiDAF 50.21 56.86
+BiDAF + TF-IDF 53.41 59.18
+BiDAF + sum 56.22 61.48
+BiDAF + TF-IDF + sum 57.20 62.44
+our model + TF-IDF + sum 61.10 66.04
+Table 2: Results on TriviaQA web using our pipelined
+method. We signiﬁcantly improve upon the baseline by
+combining the preprocessing procedures, TF-IDF para-
+graph selection, the sum objective, and our model de-
+sign.
+or equal to 8 for TriviaQA and 17 for SQuAD.
+The GloVe 300 dimensional word vectors released
+by Pennington et al. (2014) are used for word em-
+beddings. On SQuAD, we use a dimensionality
+of size 100 for the GRUs and of size 200 for the
+linear layers employed after each attention mech-
+anism. We ﬁnd for TriviaQA, likely because there
+is more data, using a larger dimensionality of 140
+for each GRU and 280 for the linear layers is bene-
+ﬁcial. During training, we maintain an exponential
+moving average of the weights with a decay rate of
+0.999. We use the weight averages at test time.
+5 Results
+5.1 TriviaQA Web
+First, we do an ablation study on TriviaQA web
+to show the effects of our proposed methods for
+our pipeline model. We start with an implementa-
+tion of the baseline from (Joshi et al., 2017). Their
+system selects paragraphs by taking the ﬁrst 400
+tokens of each document, uses BiDAF (Seo et al.,
+2016) as the paragraph model, and selects a ran-
+dom answer span from each paragraph each epoch
+to be used in BiDAF’s cross entropy loss function
+during training. Paragraphs of size 800 are used
+at test time. As shown in Table 2, our implemen-
+tation of this approach outperforms the results re-
+ported by Joshi et al. (2017) signiﬁcantly, likely
+because we are not subsampling the data. We
+ﬁnd both TF-IDF ranking and the sum objective to
+be effective; even without changing the model we
+achieve state-of-the-art results. Using our reﬁned
+model increases the gain by another 4 points.
+Next we show the results of our conﬁdence-
+based approaches. In this setting we group each
+document’s text into paragraphs of at most 400 to-
+kens and rank them using our TF-IDF heuristic.
+Then we measure the performance of our proposed
+1 3 5 7 911 13 15
+Number of Paragraphs0.620.640.660.680.70F1 ScoreTriviaQA Web F1 vs. Number of Paragraphs
+none
+sigmoid
+merge
+no-answer
+shared-norm
+13579111315
+Number of Paragraphs0.740.760.780.800.820.84F1 ScoreTriviaQA Web Verified F1 vs. Number of Paragraphs
+none
+sigmoid
+merge
+no-answer
+shared-normFigure 3: Results on TriviaQA web (left) and veriﬁed TriviaQA web (right) when applying our models to multiple
+paragraphs from each document. The shared-norm, merge, and no-answer training methods improve the model’s
+ability to utilize more text, with the shared-norm method being signiﬁcantly ahead of the others on the veriﬁed set
+and tied with the merge approach on the general set.
+Model All Veriﬁed
+EM F1 EM F1
+baseline (Joshi et al., 2017) 40.74 47.06 49.54 55.80
+MEMEN* (Pan et al., 2017) 43.16 46.90 49.28 55.83
+Mnemonic Reader (Hu et al., 2017) 46.94 52.85 54.45 59.46
+Reading Twice for NLU (Weissenborn et al., 2017a) 50.56 56.73 63.20 67.97
+S-Norm (ours) 66.37 71.32 79.97 83.70
+*Results on the dev set
+Table 3: Published TriviaQA results. We advance the state of the art by about 15 points both test sets.
+approaches as the model is used to independently
+process an increasing number of these paragraphs
+and the model’s most conﬁdent answer is returned.
+We additionally measure performance on the ver-
+iﬁed portion of TriviaQA, a small subset of the
+question-document pairs in TriviaQA web where
+humans have manually veriﬁed that the document
+contains sufﬁcient context to answer the question.
+The results are shown in Figure 3.
+On these datasets even the model trained with-
+out any of the proposed training methods (“none”)
+improves as it is allowed to use more text, show-
+ing it does a passable job at focusing on the cor-
+rect paragraph. The no-answer option training ap-
+proach lead to a signiﬁcant improvement, and the
+shared-norm and merge approach are even better.
+On the veriﬁed set, the shared-norm approach is
+solidly ahead of the other options. This suggests
+the shared-norm model is better at extracting an-
+swers when it is clearly stated in the text, but worse
+at guessing the answer in other cases.
+We use the shared-norm approach for evalua-
+tion on the TriviaQA test set. We found that in-
+creasing the paragraph size to 800 at test time,
+and re-training the model on paragraphs of size
+600, was slightly beneﬁcial, allowing our model toreach 66.04 EM and 70.98 F1 on the dev set. We
+submitted this model to be evaluated on the Triv-
+iaQA test set and achieved 66.37 EM and 71.32
+F1, ﬁrmly ahead of prior work, as shown in Ta-
+ble 3. Note that human annotators have estimated
+that only 75.4% of the question-document pairs
+contain sufﬁcient evidence to answer the ques-
+tion (Joshi et al., 2017), which suggests we are ap-
+proaching the upper bound for this task. However,
+the score of 83.7 F1 on the veriﬁed set suggests
+that there is still room for improvement.
+5.2 TriviaQA Unﬁltered
+Next we apply our conﬁdence methods to Trivi-
+aQA unﬁltered. This dataset is of particular inter-
+est because the system is not told which document
+contains the answer, so it provides a plausible sim-
+ulation of attempting to answer a question using
+a document retrieval system. We show the same
+graph as before for this dataset in Figure 4. On
+this dataset it is more important to train the model
+to produce well calibrated conﬁdence scores. Note
+the base model starts to lose performance as more
+paragraphs are used, showing that errors are be-
+ing caused by the model being overly conﬁdent in
+incorrect extractions.
+0 5 10 15 20 25 30
+Number of Paragraphs0.560.580.600.620.640.66F1 ScoreUnfiltered TriviaQA F1 vs. Number of Paragraphs
+none
+sigmoid
+merge
+no-answer
+shared-normFigure 4: Results for our conﬁdence methods on Triv-
+iaQA unﬁltered. Here we see a more dramatic differ-
+ence between these models. The shared-norm approach
+is the strongest, while the base model starts to lose per-
+formance as more paragraphs are used.
+Dev Test
+Model EM F1 EM F1
+none 71.60 80.78 72.14 81.05
+sigmoid 70.28 79.05 - -
+merge 71.20 80.26 - -
+no-answer 71.51 80.71 - -
+shared-norm 71.16 80.23 - -
+Table 4: Results on the standard SQuAD dataset. The
+test scores place our model as 8th on the SQuAD leader
+board among non-ensemble models3. Training with the
+proposed multi-paragraph approaches only leads to a
+marginal drop in performance in this setting.
+5.3 SQuAD
+We additionally evaluate our model on SQuAD.
+SQuAD questions were not built to be answered
+independently of their context paragraph, which
+makes it unclear how effective of an evaluation
+tool they can be for document-level question an-
+swering. To assess this we manually label 500
+random questions from the training set. We cat-
+egorize questions as:
+1. Context-independent, meaning it can be un-
+derstood independently of the paragraph.
+2. Document-dependent, meaning it can be un-
+derstood given the article’s title. For exam-
+ple, “What individual is the school named af-
+ter?” for the document “Harvard University”.
+3. Paragraph-dependent, meaning it can only be
+understood given its paragraph. For example,
+“What was the ﬁrst step in the reforms?”.
+3as of 10/23/2017
+1 3 5 7 9 11 13 15
+Number of Paragraphs0.5500.5750.6000.6250.6500.6750.7000.725F1 ScoreSQuAD F1 vs. Number of Paragraphs
+none
+sigmoid
+merge
+no-answer
+shared-normFigure 5: Results for our conﬁdence methods on
+document-level SQuAD. The base model does poorly
+in this case, rapidly losing performance once more than
+two paragraphs are used. While all our approaches had
+some beneﬁt, the shared-norm model is the strongest,
+and is the only one to not lose performance as large
+numbers of paragraphs are used.
+We ﬁnd 67.4% of the questions to be context-
+independent, 22.6% to be document-dependent,
+and the remaining 10% to be paragraph-
+dependent. The many document-dependent ques-
+tions stem from the fact that questions are fre-
+quently about the subject of the document, so
+the article’s title is often sufﬁcient to resolve co-
+references or ambiguities that appear in the ques-
+tion. Since a reasonably high fraction of the ques-
+tions can be understood given the document they
+are from, and to isolate our analysis from the re-
+trieval mechanism used, we choose to evaluate on
+the document-level. We build documents by con-
+catenating all the paragraphs in SQuAD from the
+same article together into a single document.
+The performance of our models given the cor-
+rect paragraph (i.e., in the standard SQuAD set-
+ting), is shown in Table 4. Our paragraph-level
+model is competitive on this task, and our vari-
+ations to handle the multi-paragraph setting only
+cause a minor loss of performance.
+We graph the document-level performance in
+Figure 5. For SQuAD, we ﬁnd it crucial to em-
+ploy one of the suggested conﬁdence training tech-
+niques. The base model starts to drop in perfor-
+mance once more than two paragraphs are used.
+However, the shared-norm approach is able to
+reach a peak performance of 72.37 F1 and 64.08
+EM given 15 paragraphs. Given our estimate that
+10% of the questions are ambiguous if the para-
+graph is unknown, our approach appears to have
+adapted to the document-level task very well.
+Finally, we compare the shared-norm model
+with the document-level result reported by Chen
+et al. (2017). We re-evaluate our model using the
+documents used by Chen et al. (2017), which con-
+sist of the same Wikipedia articles SQuAD was
+built from, but downloaded at different dates. The
+advantage of this dataset is that it does not allow
+the model to know a priori which paragraphs were
+ﬁltered out during the construction of SQuAD.
+The disadvantage is that some of the articles have
+been edited since the questions were written, so
+some questions may no longer be answerable. Our
+model achieves 59.14 EM and 67.34 F1 on this
+dataset, which signiﬁcantly outperforms the 49.7
+EM reported by Chen et al. (2017).
+5.4 Discussion
+We found that models that have only been trained
+on answer-containing paragraphs can perform
+very poorly in the multi-paragraph setting. The
+results were particularly bad for SQuAD, we think
+this is partly because the paragraphs are shorter,
+so the model had less exposure to irrelevant text.
+In general, we found the shared-norm approach to
+be the most effective way to resolve this problem.
+The no-answer and merge approaches were mod-
+erately effective, but we note that they do not re-
+solve the scaling problem inherent to the softmax
+objective we discussed in Section 3, which might
+be why they lagged behind. The sigmoid objective
+function reduces the paragraph-level performance
+considerably, especially on the TriviaQA datasets.
+We suspect this is because it is vulnerable to label
+noise, as discussed in Section 2.2.
+6 Related Work
+Reading Comprehension Datasets. The state of
+the art in reading comprehension has been rapidly
+advanced by neural models, in no small part due
+to the introduction of many large datasets. The
+ﬁrst large scale datasets for training neural reading
+comprehension models used a Cloze-style task,
+where systems must predict a held out word from
+a piece of text (Hermann et al., 2015; Hill et al.,
+2015). Additional datasets including SQuAD (Ra-
+jpurkar et al., 2016), WikiReading (Hewlett et al.,
+2016), MS Marco (Nguyen et al., 2016) and Triv-
+iaQA (Joshi et al., 2017) provided more realis-
+tic questions. Another dataset of trivia questions,
+Quasar-T (Dhingra et al., 2017), was introduced
+recently that uses ClueWeb09 (Callan et al., 2009)
+as its source for documents. In this work we
+choose to focus on SQuAD and TriviaQA.
+Neural Reading Comprehension. Neuralreading comprehension systems typically use
+some form of attention (Wang and Jiang, 2016), al-
+though alternative architectures exist (Chen et al.,
+2017; Weissenborn et al., 2017b). Our model
+follows this approach, but includes some re-
+cent advances such as variational dropout (Gal
+and Ghahramani, 2016) and bi-directional atten-
+tion (Seo et al., 2016). Self-attention has been
+used in several prior works (Cheng et al., 2016;
+Wang et al., 2017b; Pan et al., 2017). Our
+approach to allowing a reading comprehension
+model to produce a per-paragraph no-answer score
+is related to the approach used in the BiDAF-
+T (Min et al., 2017) model to produce per-sentence
+classiﬁcation scores, although we use an attention-
+based method instead of max-pooling.
+Open QA. Open question answering has been
+the subject of much research, especially spurred
+by the TREC question answering track (V oorhees
+et al., 1999). Knowledge bases can be used,
+such as in (Berant et al., 2013), although the re-
+sulting systems are limited by the quality of the
+knowledge base. Systems that try to answer ques-
+tions using natural language resources such as
+YodaQA (Baudi ˇs, 2015) typically use pipelined
+methods to retrieve related text, build answer can-
+didates, and pick a ﬁnal output.
+Neural Open QA. Open question answering
+with neural models was considered by Chen et al.
+(2017), where researchers trained a model on
+SQuAD and combined it with a retrieval engine
+for Wikipedia articles. Our work differs because
+we focus on explicitly addressing the problem of
+applying the model to multiple paragraphs. A
+pipelined approach to QA was recently proposed
+by Wang et al. (2017a), where a ranker model is
+used to select a paragraph for the reading compre-
+hension model to process.
+7 Conclusion
+We have shown that, when using a paragraph-level
+QA model across multiple paragraphs, our train-
+ing method of sampling non-answer containing
+paragraphs while using a shared-norm objective
+function can be very beneﬁcial. Combining this
+with our suggestions for paragraph selection, us-
+ing the summed training objective, and our model
+design allows us to advance the state of the art
+on TriviaQA by a large stride. As shown by our
+demo, this work can be directly applied to build-
+ing deep learning powered open question answer-
+ing systems.
+References
+Petr Baudi ˇs. 2015. YodaQA: A Modular Question An-
+swering System Pipeline. In POSTER 2015-19th In-
+ternational Student Conference on Electrical Engi-
+neering . pages 1156–1165.
+Jonathan Berant, Andrew Chou, Roy Frostig, and Percy
+Liang. 2013. Semantic Parsing on Freebase from
+Question-Answer Pairs. In EMNLP .
+Jamie Callan, Mark Hoy, Changkuk Yoo, and Le Zhao.
+2009. Clueweb09 Data Set.
+Danqi Chen, Adam Fisch, Jason Weston, and An-
+toine Bordes. 2017. Reading Wikipedia to An-
+swer Open-Domain Questions. arXiv preprint
+arXiv:1704.00051 .
+Jianpeng Cheng, Li Dong, and Mirella Lapata. 2016.
+Long Short-Term Memory-Networks for Machine
+Reading. arXiv preprint arXiv:1601.06733 .
+Kyunghyun Cho, Bart Van Merri ¨enboer, Caglar Gul-
+cehre, Dzmitry Bahdanau, Fethi Bougares, Holger
+Schwenk, and Yoshua Bengio. 2014. Learning
+phrase representations using rnn encoder-decoder
+for statistical machine translation. arXiv preprint
+arXiv:1406.1078 .
+Bhuwan Dhingra, Kathryn Mazaitis, and William W
+Cohen. 2017. Quasar: Datasets for Question An-
+swering by Search and Reading. arXiv preprint
+arXiv:1707.03904 .
+Yarin Gal and Zoubin Ghahramani. 2016. A Theoreti-
+cally Grounded Application of Dropout in Recurrent
+Neural Networks. In Advances in neural informa-
+tion processing systems .
+Karl Moritz Hermann, Tomas Kocisky, Edward
+Grefenstette, Lasse Espeholt, Will Kay, Mustafa Su-
+leyman, and Phil Blunsom. 2015. Teaching Ma-
+chines to Read and Comprehend. In Advances in
+Neural Information Processing Systems .
+Daniel Hewlett, Alexandre Lacoste, Llion Jones, Illia
+Polosukhin, Andrew Fandrianto, Jay Han, Matthew
+Kelcey, and David Berthelot. 2016. Wikireading:
+A Novel Large-scale Language Understanding Task
+over Wikipedia. arXiv preprint arXiv:1608.03542 .
+Felix Hill, Antoine Bordes, Sumit Chopra, and Jason
+Weston. 2015. The Goldilocks Principle: Reading
+Children’s Books with Explicit Memory Represen-
+tations. arXiv preprint arXiv:1511.02301 .
+Minghao Hu, Yuxing Peng, and Xipeng Qiu. 2017.
+Mnemonic Reader: Machine Comprehension with
+Iterative Aligning and Multi-hop Answer Pointing .
+Robin Jia and Percy Liang. 2017. Adversarial Ex-
+amples for Evaluating Reading Comprehension Sys-
+tems. arXiv preprint arXiv:1707.07328 .Mandar Joshi, Eunsol Choi, Daniel S Weld, and Luke
+Zettlemoyer. 2017. TriviaQA: A Large Scale Dis-
+tantly Supervised Challenge Dataset for Reading
+Comprehension. arXiv preprint arXiv:1705.03551
+.
+Rudolf Kadlec, Martin Schmid, Ondrej Bajgar, and
+Jan Kleindienst. 2016. Text understanding with
+the attention sum reader network. arXiv preprint
+arXiv:1603.01547 .
+Sewon Min, Minjoon Seo, and Hannaneh Hajishirzi.
+2017. Question Answering through Transfer Learn-
+ing from Large Fine-grained Supervision Data.
+arXiv preprint arXiv:1702.02171 .
+Tri Nguyen, Mir Rosenberg, Xia Song, Jianfeng Gao,
+Saurabh Tiwary, Rangan Majumder, and Li Deng.
+2016. MS MARCO: A Human Generated MAchine
+Reading COmprehension Dataset. arXiv preprint
+arXiv:1611.09268 .
+Boyuan Pan, Hao Li, Zhou Zhao, Bin Cao, Deng Cai,
+and Xiaofei He. 2017. MEMEN: Multi-layer Em-
+bedding with Memory Networks for Machine Com-
+prehension. arXiv preprint arXiv:1707.09098 .
+Jeffrey Pennington, Richard Socher, and Christo-
+pher D. Manning. 2014. GloVe: Global Vectors for
+Word Representation. In Empirical Methods in Nat-
+ural Language Processing (EMNLP) .
+Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and
+Percy Liang. 2016. SQuAD: 100,000+ Questions
+for Machine Comprehension of Text. arXiv preprint
+arXiv:1606.05250 .
+Min Joon Seo, Aniruddha Kembhavi, Ali Farhadi,
+and Hannaneh Hajishirzi. 2016. Bidirectional At-
+tention Flow for Machine Comprehension. CoRR
+abs/1611.01603.
+Chuanqi Tan, Furu Wei, Nan Yang, Weifeng Lv, and
+Ming Zhou. 2017. S-net: From answer extraction to
+answer generation for machine reading comprehen-
+sion. arXiv preprint arXiv:1706.04815 .
+Ellen M V oorhees et al. 1999. The TREC-8 Question
+Answering Track Report. In Trec.
+Shuohang Wang and Jing Jiang. 2016. Machine
+Comprehension Using Match-LSTM and Answer
+Pointer. arXiv preprint arXiv:1608.07905 .
+Shuohang Wang, Mo Yu, Xiaoxiao Guo, Zhiguo Wang,
+Tim Klinger, Wei Zhang, Shiyu Chang, Gerald
+Tesauro, Bowen Zhou, and Jing Jiang. 2017a. R:
+Reinforced Reader-Ranker for Open-Domain Ques-
+tion Answering. arXiv preprint arXiv:1709.00023
+.
+Wenhui Wang, Nan Yang, Furu Wei, Baobao Chang,
+and Ming Zhou. 2017b. Gated self-matching net-
+works for reading comprehension and question an-
+swering. In Proceedings of the 55th Annual Meet-
+ing of the Association for Computational Linguistics
+(Volume 1: Long Papers) . volume 1, pages 189–198.
+Dirk Weissenborn, Tom Koisk, and Chris Dyer.
+2017a. Dynamic Integration of Background Knowl-
+edge in Neural NLU Systems. arXiv preprint
+arXiv:1706.02596 .
+Dirk Weissenborn, Georg Wiese, and Laura Seiffe.
+2017b. FastQA: A Simple and Efﬁcient Neural Ar-
+chitecture for Question Answering. arXiv preprint
+arXiv:1703.04816 .
+Matthew D Zeiler. 2012. Adadelta: an adaptive learn-
+ing rate method. arXiv preprint arXiv:1212.5701 .

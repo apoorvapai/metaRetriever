@@ -1,0 +1,2599 @@
+Title: Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Han Xu1Yao Ma2Haochen Liu3Debayan Deb4Hui Liu5Jiliang Tang6Anil K. Jain7
+Abstract
+Deep neural networks (DNN) have achieved un-
+precedented success in numerous machine learn-
+ing tasks in various domains. However, the exis-
+tence of adversarial examples has raised concerns
+about applying deep learning to safety-critical ap-
+plications. As a result, we have witnessed increas-
+ing interests in studying attack and defense mech-
+anisms for DNN models on different data types,
+such as images, graphs and text. Thus, it is neces-
+sary to provide a systematic and comprehensive
+overview of the main threats of attacks and the
+success of corresponding countermeasures. In this
+survey, we review the state of the art algorithms
+for generating adversarial examples and the coun-
+termeasures against adversarial examples, for the
+three popular data types, i.e., images, graphs and
+text.
+1. Introduction
+Deep neural networks have become increasingly popular
+and successful in many machine learning tasks. They have
+been deployed in different recognition problems in the do-
+mains of images, graphs, text and speech, with remark-
+able success. In the image recognition domain, they are
+able to recognize objects with near-human level accuracy
+(Krizhevsky et al., 2012; He et al., 2016). They are also
+used in speech recognition (Hinton et al., 2012), natural lan-
+guage processing (Hochreiter & Schmidhuber, 1997) and
+for playing games (Silver et al., 2016a).
+Because of these accomplishments, deep learning tech-
+niques are also applied in safety-critical tasks. For example,
+in autonomous vehicles, deep convolutional neural networks
+1Michigan State University, fxuhan1@msu.edug
+2Michigan State University, fmayao4@msu.edug
+3Michigan State University, fliuhaoc1@msu.edu g
+4Michigan State University, fdebdebay@msu.edu g
+5Michigan State University, fliuhui7@msu.edug
+6Michigan State University, ftangjili@msu.edug
+7Michigan State University, fjain@egr.msu.edug(CNNs) are used to recognize road signs (Cire s ¸An et al.,
+2012). The machine learning technique used here is re-
+quired to be highly accurate, stable and reliable. But, what
+if the CNN model fails to recognize the “STOP” sign by the
+roadside and the vehicle keeps going? It will be a dangerous
+situation. Similarly, in ﬁnancial fraud detection systems,
+companies frequently use graph convolutional networks
+(GCNs) (Kipf & Welling, 2016) to decide whether their
+customers are trustworthy or not. If there are fraudsters
+disguising their personal identity information to evade the
+company’s detection, it will cause a huge loss to the com-
+pany. Therefore, the safety issues of deep neural networks
+have become a major concern.
+In recent years, many works (Szegedy et al., 2013; Good-
+fellow et al., 2014b; He et al., 2016) have shown that DNN
+models are vulnerable to adversarial examples, which can
+be formally deﬁned as – “Adversarial examples are inputs
+to machine learning models that an attacker intentionally
+designed to cause the model to make mistakes. ” In the image
+classiﬁcation domain, these adversarial examples are inten-
+tionally synthesized images which look almost exactly the
+same as the original images (see ﬁgure 2), but can mislead
+the classiﬁer to provide wrong prediction outputs. For a
+well-trained DNN image classiﬁer on the MNIST dataset,
+almost all the digit samples can be attacked by an impercep-
+tible perturbation, added on the original image. Meanwhile,
+in other application domains involving graphs, text or audio,
+similar adversarial attacking schemes also exist to confuse
+deep learning models. For example, perturbing only a cou-
+ple of edges can mislead graph neural networks (Z ¨ugner
+et al., 2018), and inserting typos to a sentence can fool text
+classiﬁcation or dialogue systems (Ebrahimi et al., 2017).
+As a result, the existence of adversarial examples in all ap-
+plication ﬁelds has cautioned researchers against directly
+adopting DNNs in safety-critical machine learning tasks.
+To deal with the threat of adversarial examples, studies
+have been published with the aim of ﬁnding countermea-
+sures to protect deep neural networks. These approaches
+can be roughly categorized to three main types: (a) Gradi-
+ent Masking (Papernot et al., 2016b; Athalye et al., 2018):
+since most attacking algorithms are based on the gradient
+information of the classiﬁers, masking or obfuscating the
+gradients will confuse the attack mechanisms. (b) Robust
+Optimization (Madry et al., 2017; Kurakin et al., 2016b):arXiv:1909.08072v2  [cs.LG]  9 Oct 2019
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+these studies show how to train a robust classiﬁer that can
+correctly classify the adversarial examples. (c) Adversary
+Detection (Carlini & Wagner, 2017a; Xu et al., 2017): the
+approaches attempt to check whether a sample is benign or
+adversarial before feeding it to the deep learning models.
+It can be seen as a method of guarding against adversarial
+examples. These methods improve DNN’s resistance to
+adversarial examples.
+In addition to building safe and reliable DNN models, study-
+ing adversarial examples and their countermeasures is also
+beneﬁcial for us to understand the nature of DNNs and con-
+sequently improve them. For example, adversarial perturba-
+tions are perceptually indistinguishable to human eyes but
+can evade DNN’s detection. This suggests that the DNN’s
+predictive approach does not align with human reasoning.
+There are works (Goodfellow et al., 2014b; Ilyas et al., 2019)
+to explain and interpret the existence of adversarial exam-
+ples of DNNs, which can help us gain more insight into
+DNN models.
+In this review, we aim to summarize and discuss the main
+studies dealing with adversarial examples and their counter-
+measures. We provide a systematic and comprehensive re-
+view on the start-of-the-art algorithms from images, graphs
+and text domain, which gives an overview of the main tech-
+niques and contributions to adversarial attacks and defenses.
+The main structure of this survey is as follows:
+In Section 2, we introduce some important deﬁnitions and
+concepts which are frequently used in adversarial attacks
+and their defenses. It also gives a basic taxonomy of the
+types of attacks and defenses. In Section 3 and Section
+4, we discuss main attack and defense techniques in the
+image classiﬁcation scenario. We use Section 5 to brieﬂy
+introduce some studies which try to explain the phenomenon
+of adversarial examples. Section 6 and Section 7 review the
+studies in graph and text data, respectively.
+2. Deﬁnitions and Notations
+In this section, we give a brief introduction to the key com-
+ponents of model attacks and defenses. We hope that our
+explanations can help our audience to understand the main
+components of the related works on adversarial attacks and
+their countermeasures. By answering the following ques-
+tions, we deﬁne the main terminology:
+Adversary’s Goal (2.1.1)
+What is the goal or purpose of the attacker? Does
+he want to misguide the classiﬁer’s decision on one
+sample, or inﬂuence the overall performance of the
+classiﬁer?
+Adversary’s Knowledge (2.1.2)
+What information is available to the attacker? Does
+he know the classiﬁer’s structure, its parameters or thetraining set used for classiﬁer training?
+Victim Models (2.1.3)
+What kind of deep learning models do adversaries usu-
+ally attack? Why are adversaries interested in attacking
+these models?
+Security Evaluation (2.2)
+How can we evaluate the safety of a victim model when
+faced with adversarial examples? What is the relation-
+ship and difference between these security metrics and
+other model goodness metrics, such as accuracy or
+risks?
+2.1. Threat Model
+2.1.1. A DVERSARY ’SGOAL
+Poisoning Attack vs Evasion Attack
+Poisoning attacks refer to the attacking algorithms that
+allow an attacker to insert/modify several fake samples
+into the training database of a DNN algorithm. These
+fake samples can cause failures of the trained classi-
+ﬁer. They can result in the poor accuracy (Biggio et al.,
+2012), or wrong prediction on some given test samples
+(Z¨ugner et al., 2018). This type of attacks frequently
+appears in the situation where the adversary has ac-
+cess to the training database. For example, web-based
+repositories and “honeypots” often collect malware ex-
+amples for training, which provides an opportunity for
+adversaries to poison the data.
+In evasion attacks, the classiﬁers are ﬁxed and usually
+have good performance on benign testing samples. The
+adversaries do not have authority to change the classi-
+ﬁer or its parameters, but they craft some fake samples
+that the classiﬁer cannot recognize. In other words,
+the adversaries generate some fraudulent examples to
+evade detection by the classiﬁer. For example, in au-
+tonomous driving vehicles, sticking a few pieces of
+tapes on the stop signs can confuse the vehicle’s road
+sign recognizer (Eykholt et al., 2017).
+Targeted Attack vs Non-Targeted Attack
+In targeted attack, when the victim sample (x;y)is
+given, where xis feature vector and y2 Y is the
+ground truth label of x, the adversary aims to induce
+the classiﬁer to give a speciﬁc label t2Y to the per-
+turbed sample x0. For example, a fraudster is likely to
+attack a ﬁnancial company’s credit evaluation model
+to disguise himself as a highly credible client of this
+company.
+If there is no speciﬁed target label tfor the victim
+samplex, the attack is called non-targeted attack. The
+adversary only wants the classiﬁer to predict incor-
+rectly.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+2.1.2. A DVERSARY ’SKNOWLEDGE
+White-Box Attack
+In a white-box setting, the adversary has access to all
+the information of the target neural network, including
+its architecture, parameters, gradients, etc. The adver-
+sary can make full use of the network information to
+carefully craft adversarial examples. White-box attacks
+have been extensively studied because the disclosure
+of model architecture and parameters helps people un-
+derstand the weakness of DNN models clearly and it
+can be analyzed mathematically. As stated by (Tram `er
+et al., 2017), security against white-box attacks is the
+property that we desire ML models to have.
+Black-Box Attack
+In a black-box attack setting, the inner conﬁguration of
+DNN models is unavailable to adversaries. Adversaries
+can only feed the input data and query the outputs of
+the models. They usually attack the models by keeping
+feeding samples to the box and observing the output
+to exploit the model’s input-output relationship, and
+identity its weakness. Compared to white-box attacks,
+black-box attacks are more practical in applications
+because model designers usually do not open source
+their model parameters for proprietary reasons.
+Semi-white (Gray) Box Attack
+In a semi-white box or gray box attack setting, the
+attacker trains a generative model for producing ad-
+versarial examples in a white-box setting. Once the
+generative model is trained, the attacker does not need
+victim model anymore, and can craft adversarial exam-
+ples in a black-box setting.
+2.1.3. V ICTIM MODELS
+We brieﬂy summarize the machine learning models which
+are susceptible to adversarial examples, and some popular
+deep learning architectures used in image, graph and text
+data domains. In our review, we mainly discuss studies of
+adversarial examples for deep neural networks.
+AConventional Machine Learning Models
+For conventional machine learning tools, there is a
+long history of studying safety issues. Biggio et al.
+(2013) attack SVM classiﬁers and fully-connected shal-
+low neural networks for the MNIST dataset. Barreno
+et al. (2010) examine the security of SpamBayes, a
+Bayesian method based spam detection software. In
+(Dalvi et al., 2004), the security of Naive Bayes clas-
+siﬁers is checked. Many of these ideas and strategies
+have been adopted in the study of adversarial attacks
+in deep neural networks.BDeep Neural Networks
+Different from traditional machine learning techniques
+which require domain knowledge and manual feature
+engineering, DNNs are end-to-end learning algorithms.
+The models use raw data directly as input to the model,
+and learn objects’ underlying structures and attributes.
+The end-to-end architecture of DNNs makes it easy
+for adversaries to exploit their weakness, and generate
+high-quality deceptive inputs (adversarial examples).
+Moreover, because of the implicit nature of DNNs,
+some of their properties are still not well understood or
+interpretable. Therefore, studying the security issues of
+DNN models is necessary. Next, we’ll brieﬂy introduce
+some popular victim deep learning models which are
+used as “benchmark” models in attack/defense studies.
+(a)Fully-Connected Neural Networks
+Fully-connected neural networks (FC) are com-
+posed of layers of artiﬁcial neurons. In each layer,
+the neurons take the input from previous layers,
+process it with the activation function and send it
+to the next layer; the input of ﬁrst layer is sample
+x, and the (softmax) output of last layer is the
+scoreF(x). Anm-layer fully connected neural
+network can be formed as:
+z(0)=x;z(l+1)=(Wlzl+bl):
+One thing to note is that, the back-propagation
+algorithm helps calculate@F(x;)
+@, which makes
+gradient descent effective in learning parameters.
+In adversarial learning, back-propagation also fa-
+cilitates the calculation of the term:@F(x;)
+@x, rep-
+resenting the output’s response to a change in
+input. This term is widely used in the studies to
+craft adversarial examples.
+(b)Convolutional Neural Networks
+In computer vision tasks, Convolutional Neural
+Networks (Krizhevsky et al., 2012) is one of the
+most widely used models. CNN models aggregate
+the local features from the image to learn the rep-
+resentations of image objects. CNN models can
+be viewed as a sparse-version of fully connected
+neural networks: most of the weights between
+layers are zero. Its training algorithm or gradi-
+ents calculation can also be inherited from fully
+connected neural networks.
+(c)Graph Convolutional Networks
+The work of (Kipf & Welling, 2016) introduces
+the graph convolutional networks, which later
+became a popular node classiﬁcation model for
+graph data. The idea of graph convolutional net-
+works is similar to CNN: it aggregates the infor-
+mation from neighbor nodes to learn represen-
+tations for each node v, and outputs the score
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+F(v;X)for prediction:
+H(0)=X;H(l+1)=(^AH(l)Wl):
+whereXdenotes the input graph’s feature ma-
+trix, and ^Adepends on graph degree matrix and
+adjacency matrix.
+(d)Recurrent Neural Networks
+Recurrent Neural Networks are very useful for
+tackling sequential data. As a result, they are
+widely used in natural language processing. The
+RNN models, especially LSTM(Hochreiter &
+Schmidhuber, 1997), are able to store the pre-
+vious time information in memory, and exploit
+useful information from previous sequence for
+next-step prediction.
+2.2. Security Evaluation
+We also need to evaluate the model’s resistance to adversar-
+ial examples. “Robustness” and “Adversarial Risk” are two
+terms used to describe this resistance of DNN models to one
+single sample, and the total population, respectively.
+2.2.1. R OBUSTNESS
+Deﬁnition 1. (minimal perturbation) : Given the classiﬁer
+Fand data (x;y), the adversarial perturbation has the least
+norm (the most unnoticeable perturbation):
+min= arg min
+jjjjsubject toF(x+)6=y:
+Here,jjjj usually refers to lpnorm.
+Deﬁnition 2. (robustness) : The norm of minimal perturba-
+tion:
+r(x;F) =jjminjj:
+Deﬁnition 3. (global robustness) : The expectation of ro-
+bustness over the whole population D:
+(F) =E
+xDr(x;F):
+The minimal perturbation can ﬁnd the adversarial example
+which is most similar to xunder the model F. Therefore, the
+largerr(x;F)or(F)is, the adversary needs to sacriﬁce
+more similarity to generate adversarial samples, implying
+that the classiﬁer Fis more robust or safe.
+2.2.2. A DVERSARIAL RISK(LOSS)
+Deﬁnition 4. (Most-Adversarial Example) Given the clas-
+siﬁerFand datax, the sample xadvwith the largest loss
+value inx’s-neighbor ball:
+xadv= arg max
+x0L(x0;F)subject tojjx0 xjj:Deﬁnition 5. (Adversarial Loss) : The loss value for the
+most-adversarial example:
+Ladv(x) =L(xadv) = max
+jjx0 xjj<L(;x0;y)
+Deﬁnition 6. (global adversarial loss) : The expectation of
+the loss value on xadvover the data distribution D:
+Radv(F) =E
+xDmax
+jjx0 xjj<L(;x0;y) (1)
+The most-adversarial example is the point where the model
+is most likely to be fooled in the neighborhood of x. A
+lower loss valueLadvindicates a more robust model F.
+2.2.3. A DVERSARIAL RISK VS RISK
+The deﬁnition of Adversarial Risk is drawn from the deﬁni-
+tion of classiﬁer risk (empirical risk):
+R(F) =E
+xDL(;x;y )
+Risk studies a classiﬁer’s performance on samples from nat-
+ural distributionD. Whereas, adversarial risk from Equation
+(1) studies a classiﬁer’s performance on adversarial example
+x0. It is important to note that x0may not necessarily follow
+the distributionD. Thus, the studies on adversarial examples
+are different from these on model generalization. Moreover,
+a number of studies reported the relation between these two
+properties (Tsipras et al., 2018; Su et al., 2018; Stutz et al.,
+2019; Zhang et al., 2019b). From our clariﬁcation, we hope
+that our audience get the difference and relation between
+risk and adversarial risk, and the importance of studying
+adversarial countermeasures.
+2.3. Notations
+With the aforementioned deﬁnitions, Table 1 lists the nota-
+tions which will be used in the subsequent sections.
+3. Generating Adversarial Examples
+In this section, we introduce main methods for generating
+adversarial examples in the image classiﬁcation domain.
+Studying adversarial examples in the image domain is con-
+sidered to be essential because: (a) perceptual similarity be-
+tween fake and benign images is intuitive to observers, and
+(b) image data and image classiﬁers have simpler structure
+than other domains, like graph or audio. Thus, many stud-
+ies concentrate on attacking image classiﬁers as a standard
+case. In this section, we assume that the image classiﬁers
+refer to fully connected neural networks and Convolutional
+Neural Networks (Krizhevsky et al., 2012). The most com-
+mon datasets used in these studies include (1) handwritten
+letter images dataset MNIST, (2) CIFAR10 object dataset
+and (3) ImageNet (Deng et al., 2009). Next, we go through
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Notations Description
+x Victim data sample
+x0Perturbed data sample
+ Perturbation
+B(x)lp-distance neighbor ball around xwith ra-
+dius
+D Natural data distribution
+jjjjplpnorm
+y Samplex’s ground truth label
+t Target label t
+Y Set of possible labels. Usually we assume
+there aremlabels
+C Classiﬁer whose output is a label: C(x) =
+y
+F DNN model which outputs a score vector:
+F(x)2[0;1]m
+Z Logits: last layer outputs before softmax:
+F(x) =softmax (Z(x))
+ Activation function used in neural networks
+ Parameters of the model F
+L Loss function for training. We simplify
+L(F(x);y)in the formL(;x;y ).
+Table 1. Notations.
+some main methods used to generate adversarial image ex-
+amples for evasion attack (white-box, black-box, grey-box,
+physical-world attack), and poisoning attack settings. Note
+that we also summarize all the attack methods in Table A in
+the Appendix A.
+3.1. White-box Attacks
+Generally, in a white-box attack setting, when the classi-
+ﬁerC(modelF) and the victim sample (x;y)are given
+to the attacker, his goal is to synthesize a fake image x0
+perceptually similar to original image xbut it can mislead
+the classiﬁer Cto give wrong prediction results. It can be
+formulated as:
+ﬁndx0satisfyingjjx0 xjj
+such thatC(x0) =t6=y
+wherejjjj measures the dissimilarity between x0andx,
+which is usually lpnorm. Next, we will go through main
+methods to realize this formulation.
+3.1.1. B IGGIO ’SATTACK
+In (Biggio et al., 2013), adversarial examples are generated
+on the MNIST dataset targeting conventional machine learn-
+ing classiﬁers like SVMs and 3-layer fully-connected neural
+networks.
+It optimizes the discriminant function to mislead the classi-
+ﬁer. For example, on the MNIST dataset, for a linear SVM
+Figure 1. Biggio’s attack on SVM classiﬁer for letter recognition.
+(Image Credit: (Biggio et al., 2013))
+classiﬁer, its discriminant function g(x) =hw;xi+b, will
+mark a sample xwith positive value g(x)>0to be in class
+“3”, andxwithg(x)0to be in class “not 3”. An example
+of this attack is shown in ﬁgure 1.
+Suppose we have a sample xwhich is correctly classiﬁed to
+be “3”. For this model, Biggio’s attack crafts a new example
+x0to minimize the discriminant value g(x0)while keeping
+jjx0 xjj1small. Ifg(x0)is negative, the sample is classiﬁed
+as “not 3”, but x0is still close to x, so the classiﬁer is fooled.
+The studies about adversarial examples for conventional
+machine learning models (Dalvi et al., 2004; Biggio et al.,
+2012; 2013) have inspired investigations on safety issues of
+deep learning models.
+3.1.2. S ZEGEDY ’SL-BFGS A TTACK
+The work of (Szegedy et al., 2013) is the ﬁrst to attack
+deep neural network image classiﬁers. They formulate their
+optimization problem as a search for minimal distorted ad-
+versarial example x0, with the objective:
+minimizejjx x0jj2
+2
+subject toC(x0) =tandx02[0;1]m(2)
+The problem is approximately solved by introducing the
+loss function, which results in the following objective:
+minimizecjjx x0jj2
+2+L(;x0;t)
+subject tox02[0;1]m
+In the optimization objective of this problem, the ﬁrst term
+imposes the similarity between x0andx. The second term
+encourages the algorithm to ﬁnd x0which has a small loss
+value to label t, so the classiﬁer Cis very likely to predict x0
+ast. By continuously changing the value of constant c, they
+can ﬁnd anx0which has minimum distance to x, and at the
+same time fool the classiﬁer C. To solve this problem, they
+implement the L-BFGS (Liu & Nocedal, 1989) algorithm.
+3.1.3. F AST GRADIENT SIGNMETHOD
+In (Goodfellow et al., 2014b), an one-step method is intro-
+duced to fast generate adversarial examples. The formula-
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Figure 2. By adding an unnoticeable perturbation, “panda” is clas-
+siﬁed as “gibbon”. (Image Credit: (Goodfellow et al., 2014b))
+tion is:
+x0=x+sign(rxL(;x;y ))non-target
+x0=x sign(rxL(;x;t )) target on t
+For a targeted attack setting, this formulation can be seen as
+a one-step of gradient descent to solve the problem:
+minimizeL(;x0;t)
+subject tojjx0 xjj1andx02[0;1]m(3)
+The objective function in (3) searches the point which has
+the minimum loss value to label tinx’s-neighbor ball,
+which is the location where model Fis most likely to predict
+it to the target class t. In this way, the one-step generated
+samplex0is also likely to fool the model. An example of
+FGSM-generated samples on ImageNet is shown in Figure
+2.
+Compared to the iterative attack in Section 3.1.2, FGSM is
+fast in generating adversarial examples, because it only in-
+volves calculating one back-propagation step. Thus, FGSM
+addresses the demands of tasks that need to generate a large
+amount of adversarial examples. For example, adversarial
+training (Kurakin et al., 2016a), uses FGSM to produce
+adversarial samples for all instances in the training set.
+3.1.4. D EEPFOOL
+In (Moosavi-Dezfooli et al., 2016), the authors study a clas-
+siﬁerF’s decision boundary around data point x. They try
+to ﬁnd a path such that xcan go beyond the decision bound-
+ary, as shown in ﬁgure 3, so that the classiﬁer will give a
+different prediction for x. For example, to attack x0(true
+label is digit 4) to digit class 3, the decision boundary is
+described asF3=fz:F(x)4 F(x)3= 0g. We denote
+f(x) =F(x)4 F(x)3for short. In each attacking step, it
+linearizes the decision boundary hyperplane using Taylor ex-
+pansionF0
+3=fx:f(x)f(x0)+hrxf(x0)(x x0)i=
+0g, and calculates the orthogonal vector !fromx0to plane
+F0
+3. This vector !can be the perturbation that makes x0
+go beyond the decision boundary F3. By moving along
+the vector!, the algorithm is able to ﬁnd the adversarial
+examplex0
+0that is classiﬁed to class 3.
+(𝑥#′,3)(𝑥#,4)Figure 3. Decision Boundaries: the hyperplane F1(F2orF3)
+separates the data points belonging to class 4 and class 1 (class
+2 or 3). The sample x0crosses the decision boundary F3, so the
+perturbed data x0
+0is classiﬁed as class 3. (Image Credit: (Moosavi-
+Dezfooli et al., 2016))
+The experiments of DeepFool (Moosavi-Dezfooli et al.,
+2016) show that for common DNN image classiﬁers, almost
+all test samples are very close to their decision boundary.
+For a well-trained LeNet classiﬁer on MNIST dataset, over
+90% of test samples can be attacked by small perturbations
+whosel1norm is below 0.1 where the total range is [0;1].
+This suggests that the DNN classiﬁers are not robust to small
+perturbations.
+3.1.5. J ACOBIAN -BASED SALIENCY MAPATTACK
+Jacobian-based Saliency Map Attack (JSMA) (Papernot
+et al., 2016a) introduced a method based on calculating the
+Jacobian matrix of the score function F. It can be viewed
+as a greedy attack algorithm by iteratively manipulating the
+pixel which is the most inﬂuential to the model output.
+The authors used the Jacobian matrix JF(x) =@F(x)
+@x=
+f@Fj(x)
+@xigijto modelF(x)’s change in response to the
+change of its input x. For a targeted attack setting where
+the adversary aims to craft an x0that is classiﬁed to the
+target classt, they repeatedly search and manipulate pixel
+xiwhose increase (decrease) will cause Ft(x)to increase
+or decreaseP
+j6=tFj(x). As a result, for x, the model will
+give it the largest score to label t.
+3.1.6. B ASIC ITERATIVE METHOD (BIM) / P ROJECTED
+GRADIENT DESCENT (PGD) A TTACK
+The Basic Iterative Method was ﬁrst introduced by (Kurakin
+et al., 2016a) and (Kurakin et al., 2016b). It is an iterative
+version of the one-step attack FGSM in Section 3.1.3. In a
+non-targeted setting, it gives an iterative formulation to craft
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+x0:
+x0=x
+xt+1=Clipx;(xt+sign(rxL(;xt;y)))
+Here,Clip denotes the function to project its argument to
+the surface of x’s-neighbor ball B(x) :fx0:jjx0 
+xjj1g. The step size is usually set to be relatively
+small (e.g. 1 unit of pixel change for each pixel), and step
+numbers guarantee that the perturbation can reach the border
+(e.g.step ==+ 10 ). This iterative attacking method
+is also known as Projected Gradient Method (PGD) if the
+algorithm is added by a random initialization on x, used in
+work (Madry et al., 2017).
+This BIM (or PGD) attack heuristically searches the sam-
+plesx0which have the largest loss value in the l1ball
+around the original sample x. These adversarial examples
+are called “most-adversarial” examples: they are the sample
+points which are most aggressive and most-likely to fool
+the classiﬁers, when the perturbation intensity (its lpnorm)
+is limited. Finding these adversarial examples is helpful to
+ﬁnd the weaknesses of deep learning models.
+3.1.7. C ARLINI & W AGNER ’SATTACK
+Carlini and Wagner’s attack (Carlini & Wagner, 2017b)
+counterattacks the defense strategy (Papernot et al., 2016b)
+which were shown to be successful against FGSM and L-
+BFGS attacks. C&W’s attack aims to solve the same prob-
+lem as deﬁned in L-BFGS attack (section 3.1.2), namely
+trying to ﬁnd the minimally-distorted perturbation (Equation
+2).
+The authors address the problem (2) by instead solving:
+minimizejjx x0jj2
+2+cf(x0;t)
+subject tox02[0;1]m
+wherefis deﬁned as f(x0;t) = (max i6=tZ(x0)i 
+Z(x0)t)+. Minimizing f(x0;t)encourages the algorithm
+to ﬁnd anx0that has larger score for class tthan any other
+label, so that the classiﬁer will predict x0as classt. Next,
+by applying a line search on constant c, we can ﬁnd the x0
+that has the least distance to x.
+The function f(x;y)can also be viewed as a loss function
+for data (x;y): it penalizes the situation where there are
+some labels iwith scores Z(x)ilarger thanZ(x)y. It can
+also be called margin loss function.
+The only difference between this formulation and the one
+in L-BFGS attack (section 3.1.2) is that C&W’s attack uses
+margin loss f(x;t)instead of cross entropy loss L(x;t).
+The beneﬁt of using margin loss is that when C(x0) =t,
+the margin loss value f(x0;t) = 0 , the algorithm will di-
+rectly minimize the distance from x0tox. This procedure ismore efﬁcient for ﬁnding the minimally distorted adversarial
+example.
+The authors claim their attack is one of the strongest attacks,
+breaking many defense strategies which were shown to be
+successful. Thus, their attacking method can be used as a
+benchmark to examine the safety of DNN classiﬁers or the
+quality of other adversarial examples.
+3.1.8. G ROUND TRUTH ATTACK
+Attacks and defenses keep improving to defeat each other.
+In order to end this stalemate, the work of (Carlini et al.,
+2017) tries to ﬁnd the “provable strongest attack”. It can be
+seen as a method to ﬁnd the theoretical minimally-distorted
+adversarial examples.
+This attack is based on Reluplex (Katz et al., 2017), an al-
+gorithm for verifying the properties of neural networks. It
+encodes the model parameters Fand data (x;y)as the sub-
+jects of a linear-like programming system, and then solves
+the system to check whether there exists an eligible sample
+x0inx’s neighbor B(x)that can fool the model. If we
+keep reducing the radius of search region B(x)until the
+system determines that there does not exist such an x0that
+can fool the model, the last found adversarial example is
+called the ground truth adversarial example, because it has
+been proved to have least dissimilarity with x.
+The ground-truth attack is the ﬁrst work to seriously calcu-
+late the exact robustness (minimal perturbation) of classi-
+ﬁers. However, this method involves using a SMT solver (a
+complex algorithm to check the satisﬁability of a series of
+theories), which will make it slow and not scalable to large
+networks. More recent works (Tjeng et al., 2017; Xiao et al.,
+2018c) have improved the efﬁciency of the ground-truth
+attack.
+3.1.9. O THERlpATTACKS
+Previous studies are mostly focused on l2orl1norm-
+constrained perturbations. However, there are other papers
+which consider other types of lpattacks.
+(a)One-pixel Attack . In (Su et al., 2019), it studies a similar
+problem as in Section 3.1.2, but constrains the perturbation’s
+l0norm. Constraining l0norm of the perturbation x0 xwill
+limit the number of pixels that are allowed to be changed.
+It shows that: on CIFAR10 dataset, for a well-trained CNN
+classiﬁer (e.g. VGG16, which has 85.5% accuracy on test
+data), most of the testing samples (63.5%) can be attacked
+by changing the value of only one pixel in a non-targeted
+setting. This also demonstrates the poor robustness of deep
+learning models.
+(b)EAD: Elastic-Net Attack . In (Chen et al., 2018), it also
+studies a similar problem as in Section 3.1.2, but constrains
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+the perturbations l1andl2norm together. As shown in their
+experimental work (Sharma & Chen, 2017), some strong
+defense models that aim to reject l1andl2norm attacks
+(Madry et al., 2017) are still vulnerable to the l1-based
+Elastic-Net attack.
+3.1.10. U NIVERSAL ATTACK
+Previous methods only consider one speciﬁc targeted victim
+samplex. However, the work (Moosavi-Dezfooli et al.,
+2017a) devises an algorithm that successfully misleads a
+classiﬁer’s decision on almost all testing images. They try
+to ﬁnd a perturbation satisfying:
+1.jjjjp
+2.P
+xD(x)(C(x+)6=C(x))1 
+This formulation aims to ﬁnd a perturbation such that the
+classiﬁer gives wrong decisions on most of the samples.
+In their experiments, for example, they successfully ﬁnd a
+perturbation that can attack 85.4% of the test samples in the
+ILSVRC 2012 (Russakovsky et al., 2015) dataset under a
+ResNet-152 (He et al., 2016) classiﬁer.
+The existence of “universal” adversarial examples reveals
+a DNN classiﬁer’s inherent weakness on all of the input
+samples. As claimed in (Moosavi-Dezfooli et al., 2017a), it
+may suggest the property of geometric correlation among
+the high-dimensional decision boundary of classiﬁers.
+3.1.11. S PATIALLY TRANSFORMED ATTACK
+Traditional adversarial attack algorithms directly modify the
+pixel value of an image, which changes the image’s color
+intensity. The work (Xiao et al., 2018b) devises another
+method, called a Spatially Transformed Attack. They per-
+turb the image by doing slight spatial transformation: they
+translate, rotate and distort the local image features slightly.
+The perturbation is small enough to evade human inspection
+but it can fool the classiﬁers. One example is in ﬁgure (4).
+Classified as ‘5’Classified as ‘3’
+Figure 4. The top part of digit “5”’ is perturbed to be “thicker”. For
+the image which was correctly classiﬁed as “5”, after distortion is
+now classiﬁed as “3”.
+3.1.12. U NRESTRICTED ADVERSARIAL EXAMPLES
+Previous attack methods only consider adding unnoticeable
+perturbations into images. However, the work (Song et al.,2018) introduces a method to generate unrestricted adversar-
+ial examples. These samples do not necessarily look exactly
+the same as the victim samples, but are still legitimate sam-
+ples for human eyes and can fool the classiﬁer. Previous
+successful defense strategies that target perturbation-based
+attacks fail to recognize them.
+In order to attack a given classiﬁer C, Song et al. pre-
+trained an Auxiliary Classiﬁer Generative Adversarial Net-
+work (AC-GAN), (Odena et al., 2017), so they can generate
+one legitimate sample xfrom a noise vector z0from classy.
+Then, to craft an adversarial example, they will ﬁnd a noise
+vectorznearz0, but require that the output of AC-GAN
+generatorG(z)be wrongly classiﬁed by victim model C.
+Becausezis nearz0in the latent space of the AC-GAN,
+its output should belong to the same class y. In this way,
+the generated sample G(z)is different from x, misleading
+classiﬁerF, but it is still a legitimate sample.
+3.2. Physical World Attack
+All the previously introduced attack methods are applied
+digitally, where the adversary supplies input images directly
+to the machine learning model. However, this is not always
+the case for some scenarios, like those that use cameras,
+microphones or other sensors to receive the signals as input.
+In this case, can we still attack these systems by generating
+physical-world adversarial objects? Recent works show
+that such attacks do exist. For example, in (Eykholt et al.,
+2017), stickers are attached to road signs that can severely
+threaten autonomous cars’ sign recognizer. These kinds of
+adversarial objects are more destructive for deep learning
+models because they can directly challenge many practical
+applications of DNNs, such as face recognition, autonomous
+vehicle, etc.
+3.2.1. E XPLORING ADVERSARIAL EXAMPLES IN
+PHYSICAL WORLD
+In (Kurakin et al., 2016b), authors explore the feasibility of
+crafting physical adversarial objects, by checking whether
+the generated adversarial images (FGSM, BIM) are “robust”
+under natural transformation (such as changing viewpoint,
+lighting etc.). Here, “robust” means the crafted images
+remain adversarial after the transformation. To apply the
+transformation, they print out the crafted images, and let test
+subjects use cellphones to take photos of these printouts. In
+this process, the shooting angle or lighting environment are
+not constrained, so the acquired photos are transformed sam-
+ples from previously generated adversarial examples. The
+experimental results demonstrate that after transformation, a
+large portion of these adversarial examples, especially those
+generated by FGSM, remain adversarial to the classiﬁer.
+These results suggest the possibility of physical adversarial
+objects which can fool the sensor under different environ-
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+ments.
+3.2.2. E YKHOLT ’SATTACK ON ROAD SIGNS
+The work (Eykholt et al., 2017), shown in ﬁgure 5, crafts
+physical adversarial objects by “contaminating” road signs
+to mislead road sign recognizers. They achieve the attack
+by putting stickers on the stop sign in the desired positions.
+The approach consists of: (1) Implement l1-norm based
+attack (those attacks that constrain jjx0 xjj1) on digital
+images of road signs to roughly ﬁnd the region to perturb
+(l1attacks render sparse perturbation, which helps to ﬁnd
+the attack location). These regions will later be the location
+of stickers. (2) Concentrate on the regions found in step 1,
+and use anl2-norm based attack to generate the color for
+the stickers. (3) Print out the perturbation found in steps 1
+and 2, and stick them on road sign. The perturbed stop sign
+can confuse an autonomous vehicle from any distance and
+viewpoint.
+Figure 5. The attacker puts some stickers on a road sign to confuse
+an autonomous vehicle’s road sign recognizer from any viewpoint.
+(Image Credit: (Eykholt et al., 2017))
+3.2.3. A THALYE ’S3D A DVERSARIAL OBJECT
+The work (Athalye et al., 2017) reported the ﬁrst work which
+successfully crafted physical 3D adversarial objects. As
+shown in ﬁgure 6, the authors use 3D-printing to manu-
+facture an “adversarial” turtle. To achieve the goal, they
+implement a 3D rendering technique. Given a textured 3D
+object, they ﬁrst optimize the object’s texture such that the
+rendering images are adversarial from any viewpoint. In
+this process, they also ensure that the perturbation remains
+adversarial under different environments: camera distance,
+lighting conditions, rotation and background. After ﬁnding
+the perturbation on 3D rendering, they print an instance of
+the 3D object.
+3.3. Black-Box Attacks
+3.3.1. S UBSTITUTE MODEL
+The work of (Papernot et al., 2017) was the ﬁrst to intro-
+duce an effective algorithm to attack DNN classiﬁers, under
+Figure 6. The image classiﬁer fails to correctly recognize the ad-
+versarial object, but the original object can be correctly predicted
+with 100% accuracy. (Image Credit: (Athalye et al., 2017))
+the condition that the adversary has no access to the classi-
+ﬁer’s parameters or training set (black-box). An adversary
+can only feed input xto obtain the output label yfrom the
+classiﬁer. Additionally, the adversary may have only par-
+tial knowledge about: (a) the classiﬁer’s data domain (e.g.
+handwritten digits, photographs, human faces) and (b) the
+architecture of the classiﬁer (e.g., CNNs, RNNs).
+The work Papernot et al. (2017) exploits the “transferability”
+(section 5.3) property of adversarial examples: a sample x0
+can attackF1, it is also likely to attack F2, which has similar
+structures to F1. Thus, the authors introduce a method to
+train a substitute model F0to imitate the target victim clas-
+siﬁerF, and then craft the adversarial example by attacking
+substitute model F0. The main steps are as follows:
+1. Synthesize Substitute Training Dataset
+Make a “replica” training set. For example, to attack
+a victim classiﬁer for the hand-written digits recogni-
+tion task, make an initial substitute training set by: (a)
+requiring samples from test set; or (b) handcrafting
+samples.
+2. Train the Substitute Model
+Feed the substitute training dataset Xinto the victim
+classiﬁer to obtain their labels Y. Choose one substi-
+tute DNN model to train on (X;Y )to getF0. Based
+on the attacker’s knowledge, the chosen DNN should
+have similar structures to the victim model.
+3. Augment Dataset
+Augment the dataset (X;Y )and retrain the substitute
+modelF0iteratively. This procedure helps to increase
+the diversity of the replica training set and improve the
+accuracy of substitute model F0.
+4. Attack the Substitute Model
+Utilize the previously introduced attack methods, such
+as FGSM, to attack the model F0. The generated ad-
+versarial examples are also very likely to mislead the
+target model F, by the property of “transferability”.
+What kind of attack algorithm should we choose to attack
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+substitute model? The success of the substitute model black-
+box attack is based on the “transferability” property of adver-
+sarial examples. Thus, during black-box attack, we choose
+attacks that have high transferability, like FGSM, PGD and
+momentum-based iterative attacks (Dong et al., 2018).
+3.3.2. ZOO: Z EROTH ORDER OPTIMIZATION BASED
+BLACK -BOXATTACK
+Different from the work in section 3.3.1 where an adversary
+can only obtain the label information from the classiﬁer,
+it assumes that the attacker has access to the prediction
+conﬁdence (score) from the victim classiﬁer’s output(Chen
+et al., 2017). In this case, there is no need to build the
+substitute training set and substitute model. Chen et al. give
+an algorithm to “scrape” the gradient information around
+victim sample xby observing the changes in the prediction
+conﬁdenceF(x)as the pixel values of xare tuned.
+The equation 4 shows for each index iof samplex, we add
+(or subtract) xibyh. Ifhis small enough, we can scrape
+the gradient information from the output of F()by:
+@F(x)
+@xiF(x+hei) F(x hei)
+2h(4)
+Utilizing the approximate gradient, we can apply the attack
+formulations introduced in Section 3.1.3 and Section 3.1.7.
+The success rate of ZOO is higher than substitute model
+(Section 3.3.1) because it can utilize the information of
+prediction conﬁdence, instead of solely the predicted labels.
+3.3.3. Q UERY -EFFICIENT BLACK -BOXATTACK
+Previously introduced black-box attacks require lots of in-
+put queries to the classiﬁer, which may be prohibitive in
+practical applications. There are some studies on improving
+the efﬁciency of generating black-box adversarial examples
+via a limited number of queries. For example, a more efﬁ-
+cient way is introduced to estimate the gradient information
+from model outputs (Ilyas et al., 2018). It uses Natural
+Evolutional Strategies (Wierstra et al., 2014) to sample the
+model’s output based on the queries around x, and estimate
+the expectation of gradient of Fonx. This procedure re-
+quires fewer queries to the model. Moreover, a genetic
+algorithm is applied to search the neighbors of a benign
+image for adversarial examples (Alzantot et al., 2018).
+3.4. Semi-white (Grey) box Attack
+In (Xiao et al., 2018a), a semi-white box attack framework is
+introduced. It ﬁrst trained a Generative Adversarial Network
+(GAN) (Goodfellow et al., 2014a), targeting the model of
+interest. The attacker can then craft adversarial examples
+directly from the generative network. The advantage of
+the GAN-based attack is that it accelerates the process of
+producing adversarial examples, and makes more naturaland more undetectable samples. Later, in (Deb et al., 2019),
+GAN is used to generate adversarial faces to evade the face
+recognition software. Their crafted face images appear to
+be more natural and have barely distinguishable difference
+from target face images.
+3.5. Poisoning attacks
+The attacks we have discussed so far are evasion attacks,
+which are launched after the classiﬁcation model is trained.
+Some works instead craft adversarial examples before train-
+ing. These adversarial examples are inserted into the train-
+ing set in order to undermine the overall accuracy of the
+learned classiﬁer, or inﬂuence its prediction on certain test
+examples. This process is called a poisoning attack.
+Usually, the adversary in a poisoning attack setting has
+knowledge about the architecture of the model which is
+later trained on the poisoned dataset. Poisoning attacks
+frequently applied to attack graph neural network, because
+of the GNN’s speciﬁc transductive learning procedure. Here,
+we introduce studies that craft image poisoning attacks.
+3.5.1. B IGGIO ’SPOISONING ATTACK ON SVM
+The work of (Biggio et al., 2012) introduced a method to
+poison the training set in order to reduce SVM model’s
+accuracy. In their setting, they try to ﬁgure out a poison
+samplexcwhich, when inserted into the training set, will
+result in the learned SVM model Fxchaving a large total
+loss on the whole validation set. They achieve this by using
+incremental learning techniques for SVMs (Cauwenberghs
+& Poggio, 2001), which can model the inﬂuence of training
+samples on the learned SVM model.
+A poisoning attack based on procedure above is quite suc-
+cessful for SVM models. However, for deep learning mod-
+els, it is not easy to explicitly ﬁgure out the inﬂuence of
+training samples on the trained model. Below we introduce
+some approaches for applying poisoning attacks on DNN
+models.
+3.5.2. K OH’SMODEL EXPLANATION
+In (Koh & Liang, 2017), a method is introduced to interpret
+deep neural networks: how would the model’s predictions
+change if a training sample were modiﬁed? Their model
+can explicitly quantify the change in the ﬁnal loss with-
+out retraining the model when only one training sample is
+modiﬁed. This work can be naturally adopted to poisoning
+attacks by ﬁnding those training samples that have large
+inﬂuence on model’s prediction.
+3.5.3. P OISON FROGS
+In (Shafahi et al., 2018a), a method is introduced to insert
+an adversarial image with true label to the training set, in
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+order to cause the trained model to wrongly classify a target
+test sample. In this work, given a target test sample xtwith
+the true label yt, the attacker ﬁrst uses a base sample xb
+from classyb. Then, it solves the objective to ﬁnd x0:
+x0= arg min
+xjjZ(x) Z(xt)jj2
+2+jjx xbjj2
+2:
+After inserting the poison sample x0into the training set,
+the new model trained on Xtrain +fxg0will classify x0as
+classyb, because of the small distance between x0andxb.
+Using a new trained model to predict xt, the objective of
+x0forces the score vector of xtandx0to be close. Thus, x0
+andxtwill have the same prediction outcome. In this way,
+the new trained model will predict the target sample xtas
+classyb.
+4. Countermeasures Against Adversarial
+Examples
+In order to protect the security of deep learning models, dif-
+ferent strategies have been considered as countermeasures
+against adversarial examples. There are basically three main
+categories of these countermeasures:
+1. Gradient Masking/Obfuscation
+Since most attack algorithms are based on the gradient
+information of the classiﬁer, masking or hiding the
+gradients will confound the adversaries.
+2. Robust Optimization
+Re-learning a DNN classiﬁer’s parameters can increase
+its robustness. The trained classiﬁer will correctly clas-
+sify the subsequently generated adversarial examples.
+3. Adversarial Examples Detection
+It studies the distribution of natural/benign examples,
+detects adversarial examples and disallows their input
+into the classiﬁer
+4.1. Gradient Masking/Obfuscation
+Gradient masking/obfuscation refers to the strategy where a
+defender deliberately hides the gradient information of the
+model, in order to confuse the adversaries, since most attack
+algorithms are based on the classiﬁer’s gradient information.
+4.1.1. D EFENSIVE DISTILLATION
+“Distillation”, ﬁrst introduced by (Hinton et al., 2015), is a
+training technique to reduce the size of DNN architectures.
+It fulﬁlls its goal by training a smaller-size DNN model on
+the logits (outputs of the last layer before softmax).
+In (Papernot et al., 2016b), it reformulates the procedure of
+distillation to train a DNN model that can resist adversarial
+examples, such as FGSM, Szegedy’s L-BFGS Attack or
+DeepFool. It designs the training process as:(1)Train a network Fon the given training set (X;Y )by
+setting the temperature1of the softmax to T.
+(2)Compute the scores (after softmax) given by F(X)
+again and evaluate the scores at temperature T.
+(3)Train another network F0
+Tusing softmax at tempera-
+tureTon the dataset with soft labels (X;F (X)). We
+refer the model F0
+Tas the distilled model .
+(4)Use the distilled network F0
+Twith softmax at temper-
+ature 1, which is denoted as F0
+1during prediction on
+test dataXtest(or adversarial examples),
+In Carlini & Wagner (2017b), it explains why this algorithm
+works: When we train a distilled network F0
+Tat temperature
+T and test it at temperature 1, we effectively cause the inputs
+to the softmax to become larger by a factor of T. Let us
+sayT= 100 , the logitsZ()for samplexand its neighbor
+pointsx0will be 100 times larger. It will lead to the softmax
+functionF1() =softmax (Z();1)outputting a score vector
+like(;;:::; 1 (m 1);;:::; ), where the target output
+class has a score extremely close to 1, and all other classes
+have scores close to 0. In practice, the value of is so small
+that its 32-bit ﬂoating-point value for computer is rounded
+to 0. In this way, the computer cannot ﬁnd the gradient of
+score function F0
+1, which inhibits the gradient-based attacks.
+4.1.2. S HATTERED GRADIENTS
+Some studies(Buckman et al., 2018; Guo et al., 2017) try to
+protect the model by preprocessing the input data. They add
+a non-smooth or non-differentiable preprocessor g()and
+then train a DNN model fong(X). The trained classiﬁer
+f(g())is not differentiable in term of x, causing the failure
+of adversarial attacks.
+For example, Thermometer Encoding (Buckman et al., 2018)
+uses a preprocessor to discretize an image’s pixel value xi
+into al-dimensional vector (xi). (e.g. when l= 10 ,
+(0:66) = 1111110000 ). The vector (xi)acts as a “ther-
+mometer” to record the pixel xi’s value. A DNN model is
+later trained on these vectors. The work in (Guo et al., 2017)
+studies a number of image processing tools, such as image
+cropping, compressing or total-variance minimization, to de-
+termine whether these techniques help to protect the model
+against adversarial examples. All these approaches block
+up the smooth connection between the model’s output and
+the original input samples, so the attacker cannot easily ﬁnd
+the gradient@F(x)
+@xfor attacking.
+1Note that the softmax function at a temperature Tmeans:
+softmax (x;T)i=exi=T
+P
+jexj=T, wherei= 0;2;:::;K 1
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+4.1.3. S TOCHASTIC /RANDOMIZED GRADIENTS
+Some defense strategies try to randomize the DNN model in
+order to confound the adversary. For instance, we train a set
+of classiﬁers s=fFt:t= 1;2;:::;kg. During evaluation
+on datax, we randomly select one classiﬁer from the set s
+and predict the label y. Because the adversary has no idea
+which classiﬁer is used by the prediction model, the attack
+success rate will be reduced.
+Some examples of this strategy include the work in (Dhillon
+et al., 2018) that randomly drops some neurons of each layer
+of the DNN model, and the work in (Xie et al., 2017a) that
+resizes the input images to a random size and pads zeros
+around the input image.
+4.1.4. E XPLODING & V ANISHING GRADIENTS
+Both PixelDefend (Song et al., 2017) and Defense-GAN
+(Samangouei et al., 2018) suggest using generative mod-
+els to project a potential adversarial example onto the be-
+nign data manifold before classifying them. While PixelDe-
+fend uses PixelCNN generative model (Van den Oord et al.,
+2016), Defense-GAN utilizes a GAN architecture (Goodfel-
+low et al., 2014a). The generative models can be viewed as
+a puriﬁer that transforms adversarial examples into benign
+examples.
+Both of these methods add a generative network before
+the classiﬁer DNN, which will cause the ﬁnal classiﬁcation
+model to be an extremely deep neural network. The un-
+derlying reason that these defenses succeed is because: the
+cumulative product of partial derivatives from each layer
+will cause the gradient@L(x)
+@xto be extremely small or irregu-
+larly large, which prevents the attacker accurately estimating
+the location of adversarial examples.
+4.1.5. G RADIENT MASKING /OBFUSCATION METHODS
+ARE NOT SAFE
+The work in (Carlini & Wagner, 2017b) shows that the
+method of “Defensive Distillation” (section 4.1.1) is still
+vulnerable to their adversarial examples. The work in (Atha-
+lye et al., 2018) devises different attacking algorithms to
+break gradient masking/obfuscation defending strategies
+(Section (4.1.2), Section (4.1.3), Section (4.1.4)). The main
+weakness of the gradient masking strategy is that: it can
+only “confound” the adversaries, but it cannot eliminate the
+existence of adversarial examples.
+4.2. Robust Optimization
+Robust optimization methods aim to improve the classiﬁer’s
+robustness (Section (2.2)) by changing DNN model’s man-
+ner of learning. They study how to learn model parameters
+that can give promising predictions on potential adversar-ial examples. In this ﬁeld, the works majorly focus on:
+(1) learning model parameters to minimize the average
+adversarial loss: (Section 2.2.2)
+= arg min
+2E
+xDmax
+jjx0 xjjL(;x0;y) (5)
+or (2) learning model parameters to maximize the average
+minimal perturbation distance : (Section 2.2.1)
+= arg max
+2E
+xDmin
+C(x0)6=yjjx0 xjj: (6)
+Typically, a robust optimization algorithm should have a
+prior knowledge of its potential threat or potential attack
+(adversarial spaceD). Then, the defenders build classiﬁers
+which are safe against this speciﬁc attack. For most of
+the related works (Goodfellow et al., 2014b; Kurakin et al.,
+2016b; Madry et al., 2017), they aim to defend against ad-
+versarial examples generated from small lp(speciﬁcally l1
+andl2) norm perturbation. Even though there is a chance
+that these defenses are still vulnerable to attacks from other
+mechanisms, (e.g. (Xiao et al., 2018b)), studying the secu-
+rity againstlpattack is fundamental and can be generalized
+to other attacks.
+In this section, we concentrate on defense approaches using
+robustness optimization against lpattacks. We categorize
+the related works into three groups: (a) regularization meth-
+ods, (b) adversarial (re)training and (c) certiﬁed defenses.
+4.2.1. R EGULARIZATION METHODS
+Some early studies on defending against adversarial exam-
+ples focus on exploiting certain properties that a robust DNN
+should have in order to resist adversarial examples. For ex-
+ample, in (Szegedy et al., 2013), it suggests that a robust
+model should be stable when its inputs are distorted, so they
+turn to constrain the Lipschitz constant to impose this “sta-
+bility” of model output. Training on these regularizations
+can sometimes heuristically help the model be more robust.
+1. Penalize Layers’ Lipschitz Constant
+When ﬁrst claimed the vulnerability of DNN models
+to adversarial examples, authors in (Szegedy et al.,
+2013) suggested that adding regularization terms on the
+parameters during training can force the trained model
+to be stable. It suggested constraining the Lipschitz
+constantLkbetween any two layers:
+8x;;jjhk(x;Wk) hk(x+;Wk)jjLkjjjj;
+so that the outcome of each layer will not be easily
+inﬂuenced by the small distortion of its input. The work
+(Cisse et al., 2017) formalized this idea, by claiming
+that the model’s adversarial risk (5) is right dependent
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+on this instability Lk:
+E
+xDLadv(x)E
+xDL(x)
++E
+xD[ max
+jjx0 xjjjL(F(x0);y) L(F(x);y)j]
+E
+xDL(x) +pKY
+k=1Lk
+wherepis the Lipschitz constant of the loss function.
+This formula states that during the training process,
+penalizing the large instability for each hidden layer
+can help to decrease the adversarial risk of the model,
+and consequently increase the robustness of model.
+The idea of constraining instability also appears in the
+work (Miyato et al., 2015) for semi-supervised, and
+unsupervised defenses.
+2. Penalize Layers’ Partial Derivative
+The work in (Gu & Rigazio, 2014) introduced a Deep
+Contractive Network algorithm to regularize the train-
+ing. It was inspired by the Contractive Autoencoder
+(Rifai et al., 2011), which was introduced to denoise
+the encoded representation learning. The Deep Con-
+tractive Network suggests adding a penalty on the par-
+tial derivatives at each layer into the standard back-
+propagation framework, so that the change of the input
+data will not cause large change on the output of each
+layer. Thus, it becomes difﬁcult for the classiﬁer to
+give different predictions on perturbed data samples.
+4.2.2. A DVERSARIAL (RE)TRAINING
+(i) Adversarial Training with FGSM
+The work in (Goodfellow et al., 2014b) is the ﬁrst to
+suggest feeding generated adversarial examples into
+the training process. By adding the adversarial exam-
+ples with true label (x0;y)into the training set, the
+training set will tell the classiﬁer that x0belongs to
+classy, so that the trained model will correctly predict
+the label of future adversarial examples.
+In the work (Goodfellow et al., 2014b), they use non-
+targeted FGSM (Section (3.1.3)) to generate adversar-
+ial examples x0for the training dataset:
+x0=x+sign(rxL(;x;y ));
+By training on benign samples augmented with adver-
+sarial examples, they increase the robustness against
+adversarial examples generated by FGSM.
+The training strategy of this method is changed in (Ku-
+rakin et al., 2016b) so that the model can be scaled
+to larger dataset such as ImageNet. They suggest that
+using batch normalization (Ioffe & Szegedy, 2015)Algorithm 1 Adversarial Training with FGSM by batches
+Randomly initialize network F
+repeat
+1. Read minibatch B=fx1;:::;xmgfrom training set
+2. Generatekadversarial examples fx1
+adv;:::xk
+advgfor
+corresponding benign examples using current state of
+the network F.
+3. UpdateB0=fx1
+adv;:::;xk
+adv;xk+1;:::;xmg
+Do one training step of network Fusing minibatch B0
+until training converged
+should improve the efﬁciency of adversarial training.
+We give a short sketch of their algorithm in Algorithm
+(1).
+The trained classiﬁer has good robustness on FGSM
+attacks, but it is still vulnerable to iterative attacks.
+Later, the work in (Tram `er et al., 2017) argues that
+this defense is also vulnerable to single-step attacks.
+Adversarial training with FGSM will cause gradient
+obfuscation (Section (4.1)), where there is an extreme
+non-smoothness of the trained classiﬁer Fnear the test
+samplex.
+(ii) Adversarial Training with PGD
+The work in (Madry et al., 2017) suggests using Pro-
+jected Gradient Descent attack (Section (3.1.6)) for
+adversarial training, instead of using single-step at-
+tacks like FGSM. The PGD attacks (Section (3.1.6))
+can be seen as a heuristic method to ﬁnd the “most
+adversarial” example in the l1ball around x: B(x):
+xadv= arg max
+x02B(x)L(x0;F) (7)
+Here, the most-adversarial example xadvis the loca-
+tion where the classiﬁer Fis most likely to be mis-
+Loss function around 𝑥Zoom the Loss function around 𝑥
+Figure 7. Illustration of gradient masking for adversarial training
+via FGSM. It plots the loss function of the trained classiﬁer around
+xon the grids of gradient direction and another randomly chosen
+direction. We can see that the gradient poorly approximates the
+global loss. (Image Credit: (Tram `er et al., 2017))
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+led. When training the DNN model on these most-
+adversarial examples, it actually solves the problem
+of learning model parameters that minimize the ad-
+versarial loss (5). If the trained model has small loss
+value on these most-adversarial examples, the model
+is safe at everywhere in x’s neighbor ball B(x). One
+thing to note is: this method trains the model only on
+adversarial examples, instead of a mix of benign and
+adversarial examples. The training algorithm is shown
+in Algorithm (2).
+The trained model under this method demonstrates
+good robustness against both single-step and iterative
+attacks on MNIST and CIFAR10 datasets. However,
+this method involves an iterative attack for all the train-
+ing samples. Thus, the time complexity of this adver-
+sarial training will be k(usingk-step PGD) times as
+large as that for natural training, and as a consequence,
+it is hard to scale to large datasets such as ImageNet.
+(iii) Ensemble Adversarial Training
+The work in (Tram `er et al., 2017) introduced an adver-
+sarial training method which can protect CNN models
+against single-step attacks and can be also applied to
+large datasets such as ImageNet.
+The main approach is to augment the classiﬁer’s train-
+ing set with adversarial examples crafted from other
+pre-trained classiﬁers. For example, if we aim to train a
+robust classiﬁer F, we can ﬁrst pre-train classiﬁers F1,
+F2, andF3as references. These models have different
+hyperparameters with model F. Then, for each sample
+x, we use a single-step attack FGSM to craft adversar-
+ial examples on F1,F2andF3to getx1
+adv,x2
+adv,x3
+adv.
+Because of the transferability property (section 5.3) of
+the single-step attacks across different models, x1
+adv,
+x2
+adv,x3
+advare also likely to mislead the classiﬁer F. It
+means that these samples are a good approximation for
+the “most adversarial” example (7) for model Fonx.
+Training on these samples together will approximately
+minimize the adversarial loss in (5).
+This ensemble adversarial training algorithm is more
+efﬁcient than these in Section (i) and Section (ii), since
+it decouples the process of model training and gener-
+Algorithm 2 Adversarial Training with PGD
+Randomly initialize network F
+repeat
+1. Read minibatch B=fx1;:::;xmgfrom training set
+2. Generate madversarial examples fx1
+adv;:::xm
+advg
+by PGD attack using current state of the network F.
+3. UpdateB0=fx1
+adv;:::;xm
+advg
+Do one training step of network Fusing minibatch B0
+until training convergedAlgorithm 3 Free Adversarial Training
+Randomly initialize network F
+repeat
+1. Read minibatch B=fx1;:::;xmgfrom training set
+2. fori= 1:::m do
+(a) Update model parameter 
+g E(x;y)2B[rL(x+;y; )]
+gadv rxL(x+;y; )
+  g
+(b) Generate adversarial examples
+ +sign(gadv)
+ clip(; ;)
+3. Update minibatch Bwith adversarial examples x+
+until training converged
+ating adversarial examples. The experimental results
+show that this method can provide robustness against
+single-step and black-box attacks on the ImageNet
+dataset.
+(iv) Accelerate Adversarial Training
+While it is one of the most promising and reliable de-
+fense strategies, adversarial training with PGD attack
+(Madry et al., 2017) is generally slow and computation-
+ally costly.
+The work in (Shafahi et al., 2019) proposes a free adver-
+sarial training algorithm which improves the efﬁciency
+by reusing the backward pass calculations. In this algo-
+rithm, the gradient of the loss to input:@L(x+;)
+@xand
+the gradient of the loss to model parameters:@L(x+;)
+@
+can be computed together in one back propagation iter-
+ation, by sharing the same components of chain rule.
+Thus, the adversarial training process is highly acceler-
+ated. The free adversarial training algorithm is shown
+in Algorithm (3).
+The work in (Zhang et al., 2019a) argues that when the
+model parameters are ﬁxed, the PGD-generated adver-
+sarial example is only coupled with the weights of the
+ﬁrst layer of DNN. It is based on solving a Pontrya-
+gin’s Maximal Principle (Pontryagin, 2018). There-
+fore, the work in (Zhang et al., 2019a) develops an
+algorithm You Only Propagate Once (YOPO) to reuse
+the gradient of the loss to the model’s ﬁrst layer out-
+put@L(x+;)
+@Z1(x)during generating PGD attacks. In this
+way, YOPO avoids a large amount of times to access
+the gradient and therefore it reduces the computational
+cost.
+4.2.3. P ROVABLE DEFENSES
+Adversarial training has been shown to be effective in pro-
+tecting models against adversarial examples. However, this
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+is still no formal guarantee about the safety of the trained
+classiﬁers. We will never know whether there are more ag-
+gressive attacks that can break those defenses, so directly ap-
+plying these adversarial training algorithms in safety-critical
+tasks would be irresponsible.
+As we mentioned in Section (3.1.8), the work (Carlini et al.,
+2017) was the ﬁrst to introduce a Reluplex algorithm to
+seriously verify the robustness of DNN models: when the
+modelFis given, the algorithm ﬁgures out the exact value
+of minimal perturbation distance r(x;F). This is to say, the
+classiﬁer is safe against any perturbations with norm less
+thanr(x;F). If we apply Reluplex on the whole test set,
+we can tell what percentage of samples are absolutely safe
+against perturbations less than norm r0. In this way, we
+gain conﬁdence and reduce the expected risk when building
+DNN models.
+The method of Reluplex seeks to ﬁnd the exact value of
+r(x;F)that can verify the model F’s robustness on x. Al-
+ternately, works such as (Raghunathan et al., 2018a; Wong
+& Kolter, 2017; Hein & Andriushchenko, 2017) try to
+ﬁnd trainable “certiﬁcates” C(x;F)to verify the model
+robustness. For example, in (Hein & Andriushchenko,
+2017), a certiﬁcate C(x;F)is calculated for model Fonx,
+which is a lower bound of minimal perturbation distance:
+C(x;F)r(x;F). As shown in Figure (8), the model
+must be safe against any perturbation with norm limited by
+C(x;F). Moreover, these certiﬁcates are trainable. Training
+to optimize these certiﬁcates will grant good robustness to
+the classiﬁer. In this section, we’ll brieﬂy introduce some
+methods to design these certiﬁcates.
+(i) Lower Bound of Minimal Perturbation
+The work in (Hein & Andriushchenko, 2017) derives
+a lower boundC(x;F)for the minimal perturbation
+distance ofFonxbased on Cross-Lipschitz Theorem :
+max
+>0minfmin
+i6=yZy(x) Zi(x)
+maxx02B(x)jjrZy(x0) rZi(x0)jj; g
+The detailed derivation can be found in (Hein & An-
+driushchenko, 2017). Note that the formulation of
+C(x;F)only depends on Fandx, and it is easy to
+calculate for a neural network with one hidden layer.
+The modelFthus can be proved to be safe in the re-
+gion within distance C(x;F). Training to maximize
+this lower bound will make the classiﬁer more robust.
+(ii) Upper Bound of Adversarial Loss
+The works in (Raghunathan et al., 2018a; Wong &
+Kolter, 2017) aim to solve the same problem. They try
+to ﬁnd an upper bound U(x;F)which is larger than
+adversarial lossLadv(x;F):
+Ladv(x) = max
+x0fmax
+i6=yZi(x0) Zy(x0)g
+subject tox02B(x)(8)
+𝑟(𝑥,𝐹)𝐶(𝑥,𝐹)Figure 8. The derived certiﬁcate C(x;F)is a lower bound of mini-
+mal perturbation distance (x;F). The model is safe in C(x;F)
+ball.
+Recall that in Section (2.2.2), we introduced the func-
+tionmaxi6=yZi(x0) Zy(x0)as a type of loss function
+called margin loss .
+The certiﬁcateU(x;F)acts in this way: if U(x;F)<
+0, then adversarial loss L(x;F)<0. Thus, the classi-
+ﬁer always gives the largest score to the true label yin
+the regionB(x), and the model is safe in this region.
+To increase the model’s robustness, we should learn
+parameters that have the smallest Uvalue, so that more
+and more data samples will have negative Uvalues.
+The work (Raghunathan et al., 2018a) uses integra-
+tion inequalities to derive the certiﬁcate and use semi-
+deﬁnite programming (SDP) (Vandenberghe & Boyd,
+1996) to solve the certiﬁcate. In contrast, the work
+(Wong & Kolter, 2017) transforms the problem (8) into
+a linear programming problem and solves the prob-
+lem via training an alternative neural network. Both
+methods only consider neural networks with one hid-
+den layer. There are also studies (Raghunathan et al.,
+2018b; Wong et al., 2018) that improved the efﬁciency
+and scalability of these algorithms.
+Furthermore, the work in (Sinha et al., 2017) com-
+bines adversarial training and provable defense to-
+gether. They train the classiﬁer by feeding adversarial
+examples which are sampled from the distribution of
+worst-case perturbation, and derive the certiﬁcates by
+studying the Lagrangian duality of adversarial loss.
+4.3. Adversarial Example Detection
+Adversarial example detection is another main approach to
+protect DNN classiﬁers. Instead of predicting the model’s
+input directly, these methods ﬁrst distinguish whether the
+input is benign or adversarial. Then, if it can detect that
+the input is adversarial, the DNN classiﬁer will refuse to
+predict its label. In (Carlini & Wagner, 2017a), it sorts the
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+threat models into 3 categories that the detection techniques
+should deal with:
+1.A Zero-Knowledge Adversary only has access to the
+classiﬁerF’s parameters, and has no knowledge of the
+detection model D.
+2.A Perfect-Knowledge Adversary is aware of the model
+F, and the detection scheme Dand its parameters.
+3.A Limited-Knowledge Adversary is aware of the model
+Fand the detection scheme D, but it does not have
+access toD’s parameters. That is, this adversary does
+not know the model’s training set.
+In all these threat settings, the detection tools are required
+to correctly classify the adversarial examples, and have low
+possibility of misclassifying benign examples. Next, we
+will go through some main methods for adversarial example
+detection.
+4.3.1. A NAUXILIARY MODEL TO CLASSIFY
+ADVERSARIAL EXAMPLES
+Some works focus on designin auxiliary models that aim
+to distinguish adversarial examples from benign examples.
+The work in (Grosse et al., 2017) trains a DNN model with
+jYj=K+1labels, with an additional label for all adversar-
+ial examples, so that network will assign adversarial exam-
+ples into the K+ 1class. Similarly, the work (Gong et al.,
+2017) trains a binary classiﬁcation model to discriminate all
+adversarial examples apart from benign samples, and then
+trains a classiﬁer on recognized benign samples. The work
+in (Metzen et al., 2017a) proposes a detection method to
+construct an auxiliary neural network Dwhich takes inputs
+from the values of hidden nodes Hof the natural trained
+classiﬁer. The trained detection classiﬁer D:H! [0;1]is
+a binary classiﬁcation model that distinguishes adversarial
+examples from benign ones by the hidden layers.
+4.3.2. U SING STATISTICS TO DISTINGUISH
+ADVERSARIAL EXAMPLES
+Some early works heuristically study the differences in the
+statistical properties of adversarial examples and benign
+examples. For example, in (Hendrycks & Gimpel, 2016),
+adversarial examples are found to place a higher weight on
+the larger (later) principle components where the natural
+images have larger weight on early principle components.
+Thus, they can split them by PCA.
+In (Grosse et al., 2017), it uses a statistical test: Maximum
+Mean Discrepancy (MMD) test (Gretton et al., 2012), which
+is used to test whether two datasets are drawn from the same
+distribution. They use this testing tool to test whether a
+group of data points are benign or adversarial.4.3.3. C HECKING THE PREDICTION CONSISTENCY
+Other studies focus on checking the consistency of the sam-
+plex’s prediction outcome. They usually manipulate the
+model parameters or the input examples themselves, to
+check whether the outputs of the classiﬁer have signiﬁcant
+changes. These are based on the belief that the classiﬁer
+will have stable predictions on natural examples under these
+manipulations.
+The work in (Feinman et al., 2017) randomizes the classiﬁer
+using Dropout (Srivastava et al., 2014). If these classiﬁers
+give very different prediction outcomes on xafter random-
+ization, this sample xis very likely to be an adversarial
+one.
+The work in (Xu et al., 2017) manipulates the input sam-
+ple itself to check the consistency. For each input sample
+x, it reduces the color depth of the image (e.g. one 8-bit
+grayscale image with 256 possible values for each pixel be-
+comes a 7-bit with 128 possible values), as shown in Figure
+9. It hypothesizes that for natural images, reducing the color
+Figure 9. Images from MNIST and CIFAR10. From left to right,
+the color depth is reduced from 8-bit, 7-bit,...,2-bit,1-bit. (Image
+Credit: (Xu et al., 2017))
+depth will not change the prediction result, but the predic-
+tion on adversarial examples will change. In this way, they
+can detect adversarial examples. Similar to reducing the
+color depth, the work (Feinman et al., 2017) also introduced
+other feature squeezing methods such as spatial smoothing.
+4.3.4. S OME ATTACKS WHICH EVADE ADVERSARIAL
+DETECTION
+The work in (Carlini & Wagner, 2017a) bypassed 10 of the
+detection methods which fall into the three categories above.
+The feature squeezing methods were broken by (Sharma
+& Chen, 2018), which introduced a “stronger” adversarial
+attack.
+The authors in (Carlini & Wagner, 2017a) claim that the
+properties which are intrinsic to adversarial examples are
+not very easy to ﬁnd. They also gave several suggestions on
+future detection works:
+1.Randomization can increase the required attacking distortion.
+2.Defenses that directly manipulate on raw pixel values are
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+ineffective.
+3.Evaluation should be down on multiple datasets besides
+MNIST.
+4. Report false positive and true positive rates for detection.
+5.Use a strong attack and simply focusing on white-box attacks
+is risky.
+5. Explanations for the Existence of
+Adversarial Examples
+In addition to crafting adversarial examples and defending
+them, explaining the reason behind these phenomena is also
+important. In this section, we brieﬂy introduce the recent
+works and hypotheses on the key questions of adversarial
+learning. We hope our introduction will give our audience
+a basic view on the existing ideas and solutions for these
+questions.
+5.1. Why Do Adversarial Examples Exist?
+Some original works such as (Szegedy et al., 2013), state
+that the existence of adversarial examples is due to the fact
+that DNN models do not generalize well in low probability
+space of data. The generalization issue may be caused by
+the high complexity of DNN model structures.
+However, even linear models are also vulnerable to adver-
+sarial attacks (Goodfellow et al., 2014b). Furthermore, in
+the work (Madry et al., 2017), they implement experiments
+to show that an increase in model capacity will improve the
+model robustness.
+Some insight can be gained about the existence of adver-
+sarial examples by studying the model’s decision boundary.
+The adversarial examples are almost always close to de-
+cision boundary of a natural trained model, which may be
+because the decision boundary is too ﬂat (Fawzi et al., 2016),
+too curved (Moosavi-Dezfooli et al., 2017b), or inﬂexible
+(Fawzi et al., 2018).
+Studying the reason behind the existence of adversarial
+examples is important because it can guide us in designing
+more robust models, and help us to understand existing deep
+learning models. However, there is still no consensus on
+this problem.
+5.2. Can We Build an Optimal Classiﬁer?
+Many recent works hypothesize that it might be impossible
+to build optimally robust classiﬁer. For example, the work
+in (Shafahi et al., 2018b) claims that adversarial examples
+are inevitable because the distribution of data in each class
+is not well-concentrated, which leaves room for adversarial
+examples. In this vein, the work (Schmidt et al., 2018)
+claims that to improve the robustness of a trained model,
+it is necessary to collect more data. Moreover, the workin (Tsipras et al., 2018) suggests that even if we can build
+models with high robustness, it must take cost of some
+accuracy.
+5.3. What is Transferability?
+Transferability is one of the key properties of adversarial
+examples. It means that the adversarial examples generated
+to target one victim model also have a high probability of
+misleading other models.
+Some works compare the transferability between different
+attacking algorithms. In (Kurakin et al., 2016a), they claim
+that in ImageNet, single step attacks (FGSM) are more likely
+to transfer between models than iterative attacks (BIM) un-
+der same perturbation intensity.
+The property of transferability is frequently utilized in at-
+tacking techniques in black-box setting (Papernot et al.,
+2017). If the model parameters are veiled to attackers, they
+can turn to attack other substitute models and enjoy the
+transferability of their generated samples. The property of
+transferability is also utilized by defending methods as in
+(Hendrycks & Gimpel, 2016): since the adversarial exam-
+ples for model Aare also likely to be adversarial for model
+B, adversarial training using adversarial examples from B
+will help defend A.
+6. Graph Adversarial Examples
+Adversarial examples also exist in graph-structured data
+(Z¨ugner et al., 2018; Dai et al., 2018). Attackers usually
+slightly modify the graph structure and node features, in
+an effort to cause the graph neural networks (GNNs) to
+give wrong prediction for node classiﬁcation or graph clas-
+siﬁcation tasks. These adversarial attacks therefore raise
+concerns on the security of applying GNN models. For
+example, a bank needs to build a reliable credit evaluation
+system where their model should not be easily attacked by
+malicious manipulations.
+There are some distinct differences between attacking graph
+models and attacking traditional image classiﬁers:
+Non-Independence Samples of the graph-structured
+data are not independent: changing one’s feature or
+connection will inﬂuence the prediction on others.
+Poisoning Attacks Graph neural networks are usually
+performed in a transductive learning setting for node
+classiﬁcation: the test data are also used to trained the
+classiﬁer. This means that we modify the test data, the
+trained classiﬁer is also changed.
+Discreteness When modifying the graph structure, the
+search space for adversarial example is discrete. Previ-
+ous gradient methods to ﬁnd adversarial examples may
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+be invalid in this case.
+Below are the methods used by some successful works to
+attack and defend graph neural networks.
+6.1. Deﬁnitions for Graphs and Graph Models
+In this section, the notations and deﬁnitions of the graph
+structured data and graph neural network models are deﬁned
+below. A graph can be represented as G=fV;Eg, where
+Vis a set ofNnodes andEis a set ofMedges. The edges
+describe the connections between the nodes, which can
+also be expressed by an adjacency matrix A2f0;1gNN.
+Furthermore, a graph Gis called an attributed graph if each
+node inVis associated with a d-dimensional attribute vector
+xv2Rd. The attributes for all the nodes in the graph can
+be summarized as a matrix X2RNd, thei-th row of
+which represents the attribute vector for node vi.
+The goal of node classiﬁcation is to learn a function g:
+V!Y that maps each node to one class in Y, based on a
+group of labeled nodes in G. One of the most successful
+node classiﬁcation models is Graph Convolutional Network
+(GCN) (Kipf & Welling, 2016). The GCN model keeps
+aggregating the information from neighboring nodes to learn
+representations for each node v,
+H(0)=X;H(l+1)=(^AH(l)Wl):
+whereis a non-linear activation function, the matrix ^A
+is deﬁned as ^A=~D 1
+2~A~D 1
+2,~A=A+IN, and ~Dii=P
+j~Aij. The last layer outputs the score vectors of each
+node for prediction: H(m)
+v=F(v;X).
+6.2. Zugner’s Greedy Method
+In the work of (Z ¨ugner et al., 2018), they consider attacking
+node classiﬁcation models, Graph Convolutional Networks
+(Kipf & Welling, 2016), by modifying the nodes connec-
+tions or node features (binary). In this setting, an adversary
+is allowed to add/remove edges between nodes, or ﬂip the
+feature of nodes with limited number of operations. The
+goal is to mislead the GCN model which is trained on the
+perturbed graph (transductive learning) to give wrong pre-
+dictions. In their work, they also specify three levels of
+adversary capabilities: they can manipulate (1) all nodes,
+(2) a set of nodesAincluding the target victim x, and (3) a
+set of nodesAwhich does not include the target node x. A
+sketch is shown in Figure 10.
+Similar to the objective function in (Carlini & Wagner,
+2017b) for image data, they formulate the graph attack-
+ing problem as a search for a perturbed graph G0such that
+the learned GCN classiﬁer Zhas the largest score margin:
+max
+i6=yln(Z
+y(v0;G0)) ln(Z
+i(v0;G0)) (9)
+Figure 10. Adding an edge to alter the prediction of Graph Convo-
+lutional Network. (Image Credit: (Z ¨ugner et al., 2018))
+The authors solve this objective by ﬁnding perturbations on
+a ﬁxed, linearized substitute GCN classiﬁer Gsubwhich is
+trained on the clean graph. They use a heuristic algorithm
+to ﬁnd the most inﬂuential operations on graph Gsub(e.g.
+removing/adding the edge or ﬂipping the feature which
+can cause largest increase in (9)). The experimental results
+demonstrate that the adversarial operations are also effective
+on the later trained classiﬁer Z.
+During the attacking process, the authors also impose two
+key constraints to ensure the similarity of the perturbed
+graph to the original one: (1) the degree distribution should
+be maintained, and (2) two positive features which never
+happen together in Gshould also not happen together in G0.
+Later, some other graph attacking works (e.g. (Ma et al.,
+2019)) suggest the eigenvalues/eigenvectors of the graph
+Laplacian Matrix should also be maintained during attack-
+ing, otherwise the attacks are easily detected. However,
+there is still no ﬁrm consensus on how to formally deﬁne
+the similarity between graphs and generate unnoticeable
+perturbation.
+6.3. Dai’s RL Method : RL-S2V
+Different from Zugner’s greedy method, the work (Dai et al.,
+2018) introduced a Reinforcement Learning method to at-
+tack the graph neural networks. This work only considers
+adding or removing edges to modify the graph structure.
+In (Dai et al., 2018)’s setting, a node classiﬁer Ftrained
+on the clean graph G(0)=Gis given, node classiﬁer F
+is unknown to the attacker, and the attacker is allowed to
+modifymedges in total to alter F’s prediction on the victim
+nodev0. The authors formulate this attacking mission as
+a Q-Learning game (Mnih et al., 2013), with the deﬁned
+Markov Decision Process as below:
+State The statestis represented by the tuple (G(t);v0),
+whereG(t)is the modiﬁed graph with titerative steps.
+Action To represent the action to add/remove edges, a
+single action at time step tisat2VV , which means
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+the edge to be added or removed.
+Reward In order to encourage actions to fool the clas-
+siﬁer, we should give a positive reward if v0’s label is
+altered. Thus, the authors deﬁne the reward function
+as :r(st;at) = 0;8t= 1;2;:::;m 1, and for the last
+step:
+r(sm;am) =(
+1 ifC(v0;G(m))6=y
+ 1ifC(v0;G(m)) =y
+Termination The process stops once the agent ﬁnishes
+modifyingmedges.
+The Q-Learning algorithm helps the adversary have knowl-
+edge about which actions to take (add/remove which edge)
+on the given state (current graph structure), in order to get
+largest reward (change F’s output).
+6.4. Graph Structure Poisoning via Meta-Learning
+Previous graph attack works only focus on attacking one sin-
+gle victim node. The work in (Z ¨ugner & G ¨unnemann, 2019)
+attempts to poison the graph so that the global node classiﬁ-
+cation performance of GCN can be undermined and made
+almost useless. The approach is based on meta learning
+(Finn et al., 2017), which is traditionally used for hyperpa-
+rameter optimization, few-shot image recognition, and fast
+reinforcement learning. In the work (Z ¨ugner & G ¨unnemann,
+2019), they use meta learning technique which takes the
+graph structure as the hyperparameter of the GCN model to
+optimize. Using their algorithm to perturb 5%edges of a
+CITESEER graph dataset, they can increase the misclassiﬁ-
+cation rate to over 30%.
+6.5. Attack on Node Embedding
+The work in (Bojcheski & G ¨unnemann, 2018) studies how
+to perturb the graph structure in order to corrupt the quality
+of node embedding, and consequently hinder subsequent
+learning tasks such as node classiﬁcation or link prediction.
+Speciﬁcally, they study DeepWalk (Perozzi et al., 2014) as
+a random-walk based node embedding learning approach
+and approximately ﬁnd the graph which has the largest loss
+of the learned node embedding.
+6.6. ReWatt: Attacking Graph Classiﬁer via Rewiring
+The ReWatt method (Ma et al., 2019) attempts to attack the
+graph classiﬁcation models, where each input of the model
+is a whole graph. The proposed algorithm can mislead the
+model by making unnoticeable perturbations on graph.
+In their attacking scheme, they utilize reinforcement learn-
+ing to ﬁnd a rewiring operation a= (v1;v2;v3)at each
+step, which is a set of 3 nodes. The ﬁrst two nodes wereconnected in the original graph and the edge between them
+is removed in the ﬁrst step of the rewiring process. The sec-
+ond step of the rewiring process adds an edge between the
+nodev1andv3, wherev3is constrained to be within 2-hops
+away fromv1. Some analysis in (Ma et al., 2019) shows
+that the rewiring operation tends to keep the eigenvalues
+of the graph’s Laplacian matrix, which makes it difﬁcult to
+detect the attacker.
+6.7. Defending Graph Neural Networks
+Many works have shown that graph neural networks are
+vulnerable to adversarial examples, even though there is still
+no consensus on how to deﬁne the unnoticeable perturbation.
+Some defending works have already appeared. Many of
+them are inspired by the popular defense methodology in
+image classiﬁcation, using adversarial training to protect
+GNN models, (Feng et al., 2019; Xu et al., 2019), which
+provides moderate robustness.
+7. Adversarial Examples in Audio and Text
+Data
+Adversarial examples also exist in DNNs’ applications in
+audio and text domains. An adversary can craft fake speech
+or fake sentences that mislead the machine language pro-
+cessors. Meanwhile, deep learning models on audio/text
+data have already been widely used in many tasks, such as
+Apple Siri and Amazon Echo. Therefore, the studies on
+adversarial examples in audio/text data domain also deserve
+our attention.
+As for text data, the discreteness nature of the inputs makes
+the gradient-based attack on images not applicable anymore
+and forces people to craft discrete perturbations on different
+granularities of text (character-level, word-level, sentence-
+level, etc.). In this section, we introduce the related works
+in attacking NLP architectures for different tasks.
+7.1. Speech Recognition Attacks
+The work in (Carlini & Wagner, 2018) studies how to attack
+state-of-art speech-to-text transcription networks, such as
+DeepSpeech (Hannun et al., 2014). In their setting, when
+given any speech waveform x, they can add an inaudible
+sound perturbation that makes the synthesized speech x+
+be recognized as any targeted desired phrase.
+In their attacking work, they limited the maximum Decibels
+(dB) on any time of the added perturbation noise, so that the
+audio distortion is unnoticeable. Moreover, they inherit the
+C & W’s attack method (Carlini & Wagner, 2017b) on their
+audio attack setting.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+7.2. Text Classiﬁcation Attacks
+Text classiﬁcation is one of main tasks in natural language
+processing. In text classiﬁcation, the model is devised to
+understand a sentence and correctly label the sentence. For
+example, text classiﬁcation models can be applied on the
+IMDB dataset for characterizing user’s opinion (positive
+or negative) on the movies, based on the provided reviews.
+Recent works of adversarial attacks have demonstrated that
+text classiﬁers are easily misguided by slightly modifying
+the texts’ spelling, words or structures.
+7.2.1. A TTACKING WORD EMBEDDING
+The work (Miyato et al., 2016) considers to add perturbation
+on the word embedding (Mikolov et al., 2013), so as to
+fool a LSTM (Hochreiter & Schmidhuber, 1997) classiﬁer.
+However, this attack only considers perturbing the word
+embedding, instead of original input sentence.
+7.2.2. A TTACKING WORDS AND LETTERS
+The work HotFlip (Ebrahimi et al., 2017) considers to re-
+place a letter in a sentence in order to mislead a character-
+level text classiﬁer (each letter is encoded to a vector). For
+example, as shown in Figure 11, changing a single letter in
+a sentence alters the model’s prediction on its topic. The
+attack algorithm manages to achieve this by ﬁnding the
+most-inﬂuential letter replacement via gradient information.
+These adversarial perturbations can be noticed by human
+readers, but they don’t change the content of the text as a
+whole, nor do they affect human judgments.
+Figure 11. Replace one letter in a sentence to alter a text classiﬁer’s
+prediction on a sentence’s topic. (Image Credit: (Ebrahimi et al.,
+2017))
+The work in (Liang et al., 2017) considers to manipulate
+the victim sentence on word and phrase levels. They try
+adding, removing or modifying the words and phrases in
+the sentences. In their approach, the ﬁrst step is similar to
+HotFlip (Ebrahimi et al., 2017). For each training sample,
+they ﬁnd the most-inﬂuential letters, called “hot characters”.
+Then, they label the words that have more than 3 “hot charac-
+ters” as “hot words”. “Hot words” composite “hot phrases”,
+which are most-inﬂuential phrases in the sentences. Ma-
+nipulating these phrases is likely to inﬂuence the model’s
+prediction, so these phrases composite a “vocabulary” toguide the attacking. When given a sentence, an adversary
+can use this vocabulary to ﬁnd the weakness of the sentence,
+add one hot phrase, remove a hot phrase in the given sen-
+tence, or insert a meaningful fact which is composed of hot
+phrases.
+DeepWordBug (Gao et al., 2018) and TextBugger Li et al.
+(2018a) are black-box attack methods for text classiﬁcation.
+The basic idea of the former is to deﬁne a scoring strategy
+to identify the key tokens which will lead to a wrong predic-
+tion of the classiﬁer if modiﬁed. Then they try four types of
+“imperceivable” modiﬁcations on such tokens: swap, substi-
+tution, deletion and insertion, to mislead the classiﬁer. The
+latter follows the same idea, and improves it by introducing
+new scoring functions.
+The works (Samanta & Mehta, 2017; Iyyer et al., 2018) start
+to craft adversarial sentences that grammatically correct and
+maintain the syntax structure of the original sentence. The
+work in (Samanta & Mehta, 2017) achieves this by using
+synonyms to replace original words, or adding some words
+which have different meanings in different contexts. On the
+other hand, the work (Iyyer et al., 2018) manages to fool the
+text classiﬁer by paraphrasing the structure of sentences.
+The work in (Lei et al., 2018) conducts sentence and word
+paraphrasing on input texts to craft adversarial examples. In
+this work, they ﬁrst build a paraphrasing corpus that contains
+a lot of word and sentence paraphrases. To ﬁnd an optimal
+paraphrase of an input text, a greedy method is adopted to
+search valid paraphrases for each word or sentence from the
+corpus. Moreover, they propose a gradient-guided method
+to improve the efﬁciency of greedy search. This work also
+has signiﬁcant contributions in theory: they formally deﬁne
+the task of discrete adversarial attack as an optimization
+problem on a set functions and they prove that the greedy
+algorithm ensures a 1 1
+eapproximation factor for CNN
+and RNN text classiﬁers.
+7.3. Adversarial Examples in Other NLP Tasks
+7.3.1. A TTACK ON READING COMPREHENSION
+SYSTEMS
+The work (Jia & Liang, 2017) studies whether Reading Com-
+prehension models are vulnerable to adversarial attacks. In
+reading comprehension tasks, the machine learning model
+is asked to answer a given question, based on the model’s
+“understanding” from a paragraph of an article. For example,
+the work (Jia & Liang, 2017) concentrates on Stanford Ques-
+tion Answering Dataset (SQuAD) where systems answer
+questions about paragraphs from Wikipedia.
+The authors successfully degrade the intelligence of the
+state-of-art reading comprehension models on SQuAD by
+inserting adversarial sentences. As shown in Figure 12, the
+inserted sentence (blue) looks similar to the question, but
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+it does not contradict the correct answer. This inserted sen-
+tence is understandable for human readers but confuses the
+machine a lot. As a result, the proposed attacking algorithm
+reduced the performance of 16 state-of-art reading compre-
+hension models from average 75% F1 score (accuracy) to
+36%.
+Figure 12. By adding an adversarial sentence which is similar to
+the answer, the reading comprehension model gives a wrong an-
+swer. (Image Credit: (Jia & Liang, 2017))
+Their proposed algorithm AddSent shows a four-step opera-
+tion to ﬁnd adversarial sentences.
+1.Fake Question : What is the name of the quarterback
+whose jersey number is 37 in Champ Bowl XXXIV?
+2.Fake Answer : Jeff Dean
+3.Question to Declarative Form : Quarterback Jeff Dean
+is jersey number 37 in Champ Bowl XXXIV .
+4.Grammatically Correct : Quarterback Jeff Dean had
+jersey number 37 in Champ Bowl XXXIV .
+7.3.2. A TTACK ON NEURAL MACHINE TRANSLATION
+The work in (Belinkov & Bisk, 2017) studies the stability
+of machine learning translation tools when their input sen-
+tences are perturbed from natural errors (typos, misspellings,
+etc.) and manually crafted distortions (letter replacement,
+letter reorder). The experimental results show that the state-
+of-arts translation models are vulnerable to both two types
+of errors, and suggest adversarial training to improve the
+model’s robustness.
+Seq2Sick (Cheng et al., 2018) tries to attack seq2seq models
+in neural machine translation and text summarization. In
+their setting, two goals of attacking are set: to mislead the
+model to generate an output which has on overlapping with
+the ground truth, and to lead the model to produce an output
+with targeted keywords. The model is treated as a white-boxand the attacking problem is formulated as an optimization
+problem where they seek to solve a discrete perturbation by
+minimizing a hinge-like loss function.
+7.4. Dialogue Generation
+Unlike the tasks above where success and failure are clearly
+deﬁned, in the task of dialogue, there is no unique appropri-
+ate response for a given context. Thus, instead of misleading
+a well-trained model to produce incorrect outputs, works
+about attacking dialogue models seek to explore the prop-
+erty of neural dialogue models to be interfered by the per-
+turbations on the inputs, or lead a model to output targeted
+responses.
+The work in (Niu & Bansal, 2018) explores the over-
+sensitivity and over-stability of neural dialogue models by
+using some heuristic techniques to modify original inputs
+and observe the corresponding outputs. They evaluate the
+robustness of dialogue models by checking whether the
+outputs change signiﬁcantly with the modiﬁcations on the
+inputs. They also investigate the effects that take place
+when retraining the dialogue model using these adversarial
+examples to improve the robustness and performance of the
+underlying model.
+In the work (He & Glass, 2018), the authors try to ﬁnd
+trigger inputs which can lead a neural dialogue model to
+generate targeted egregious responses. They design a search-
+based method to determine the word in the input that max-
+imizes the generative probability of the targeted response.
+Then, they treat the dialogue model as a white-box and
+take advantage of the gradient information to narrow the
+search space. Finally they show that this method works for
+“normal” targeted responses which are decoding results for
+some input sentences, but for manually written malicious
+responses, it hardly succeeds.
+The work (Liu et al., 2019) treats the neural dialogue model
+as a black-box and adopts a reinforcement learning frame-
+work to effectively ﬁnd trigger inputs for targeted responses.
+The black-box setting is stricter but more realistic, while
+the requirements for the generated responses are properly
+relaxed. The generated responses are expected to be se-
+mantically identical to the targeted ones but not necessarily
+exactly match with them.
+8. Adversarial Examples in Miscellaneous
+Tasks
+In this section, we summarize some adversarial attacks in
+other domains. Some of these domains are safety-critical,
+so the studies on adversarial examples in these domains are
+also important.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+8.1. Computer Vision Beyond Image Classiﬁcation
+1.Face Recognition
+The work (Sharif et al., 2016) seeks to attack face
+recognition models on both a digital level and physical
+level. The main victim model is based on the architec-
+ture in (Parkhi et al.), which is a 39-layer DNN model
+for face recognition tasks. The attack on the digital
+level is based on traditional attacks, like Szegedy’s
+L-BFGS method (Section 3.1.2).
+Beyond digital-level adversarial faces, they also suc-
+ceed in misleading face recognition models on physical
+level. They achieve this by asking subjects to wear their
+3D printed sunglasses frames. The authors optimize
+the color of these glasses by attacking the model on a
+digital level: by considering various adversarial glasses
+and the most effective adversarial glasses are used for
+attack. As shown in Figure 13, an adversary wears the
+adversarial glasses and successfully fool the detection
+of victim face recognition system.
+Figure 13. An adversary (left) wears a pair of adversarial glasses
+and is recognized as a movie-star, Milla Jovovich. (Image Credit:
+(Sharif et al., 2016))
+2.Object Detection and Semantic Segmentation
+There are also studies on semantic segmentation and
+object detection models in computer vision (Xie et al.,
+2017b; Metzen et al., 2017b). In both semantic segmen-
+tation and object detection tasks, the goal is to learn a
+model that associates an input image xwith a series
+of labelsY=fy1;y2;:::yNg. Semantic segmentation
+models give each pixel of xa labelyi, so that the im-
+age is divided to different segments. Similarly, object
+detection models label all proposals (regions where the
+objects lie).
+The work (Xie et al., 2017b) can generate an adversar-
+ial perturbation on xwhich can cause the classiﬁer to
+give wrong prediction on all the output labels of the
+model, in order to fool either semantic segmentation
+or object detection models. The work (Metzen et al.,
+2017b) ﬁnds that there exists universal perturbation for
+any input image for semantic segmentation models.8.2. Video Adversarial Examples
+Most works concentrate on attacking static image classiﬁ-
+cation models. However, success on image attacks cannot
+guarantee that there exist adversarial examples on videos
+and video classiﬁcation systems. The work (Li et al., 2018b)
+uses GAN (Goodfellow et al., 2014a) to generate a dynamic
+perturbation on video clips that can mislead the classiﬁca-
+tion of video classiﬁers.
+8.3. Generative Models
+The work (Kos et al., 2018) attacks the variational autoen-
+coder (V AE) (Kingma & Welling, 2013) and V AE-GAN
+(Larsen et al., 2015). Both V AE and V AE-GAN use an en-
+coder to project the input image xinto a lower-dimensional
+latent representation z, and a decoder to reconstruct a new
+image ^xfromz. The reconstructed image should maintain
+the same semantics as the original image. In (Kos et al.,
+2018)’s attack setting, they aim to slightly perturb the in-
+put imagexfed to encoder, which will cause the decoder
+to generate image fdec(fenc(x))having different meaning
+from the input x. For example, in MNIST dataset, the input
+image is ”1”, and the reconstructed image is ”0”.
+8.4. Malware Detection
+The existence of adversarial examples in safety-critical tasks,
+such as malware detection, should be paid much attention.
+The work (Grosse et al., 2016) built a DNN model on the
+DREBIN dataset by (Arp et al., 2014), which contains
+120,000 Android application samples, where over 5,000
+are malware samples. The trained model has 97% accuracy,
+but malware samples can evade the classiﬁer if attackers add
+fake features to them. Some other works (Hu & Tan, 2017;
+Anderson et al., 2016) consider using GANs (Goodfellow
+et al., 2014a) to generate adversarial malware.
+8.5. Fingerprint Recognizer Attacks
+Fingerprint recognition systems are also one of the most
+safety-critical ﬁelds where machine learning models are
+adopted. While, there are adversarial attacks undermining
+the reliability of these models. For example, ﬁngerprint
+spoof attacks copy an authorized person’s ﬁngerprint and
+replicate it on some special materials such as liquid latex
+or gelatin. Traditional ﬁngerprint recognition techniques
+especially minutiae-based models fail to distinguish the
+ﬁngerprint images generated from different materials. The
+works (Chugh & Jain, 2018; Chugh et al., 2018) design a
+modiﬁed CNN to effectively detect the ﬁngerprint spoof
+attack.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Figure 14. Left ﬁgure: the brick takes correct actions to go up
+to catch the ball. Right ﬁgure: the current state is perturbed by
+changing one pixel. The policy gives an incorrect command to go
+down. (Image Credit: (Huang et al., 2017))
+8.6. Reinforcement Learning
+Different from classiﬁcation tasks, deep reinforcement learn-
+ing (RL) aims to learn how to perform some human tasks,
+such as play Atari 2600 games (Mnih et al., 2013) or play
+Go (Silver et al., 2016b). For example, to play an Atari
+game Pong , (Figure 14-left), the trained model takes input
+from the latest images of game video (state - x), and outputs
+a decision to move up or down (action - y). The learned
+model can be viewed as a rule (policy - ) to win the game
+(reward -L(;x;y )). A simple sketch can be: x !y,
+which is in parallel to classiﬁcation tasks: xf  !y. The RL
+algorithms are trained to learn the parameters of .
+The work (Huang et al., 2017) shows that deep reinforce-
+ment learning models are also vulnerable to adversarial
+examples. Their approach is inherited from FGSM (Good-
+fellow et al., 2014b), to take one-step gradient on the state
+x(latest images of game video) to craft a fake state x0. The
+policy’s decision on x0can be totally useless to achieve the
+reward. Their results show that a slight perturbation on RL
+models’ state, can cause large difference on the models’
+decision and performance. Their work shows that Deep
+Q Learning (Mnih et al., 2013), TRPO (Schulman et al.,
+2015) and A3C (Mnih et al., 2016) are all vulnerable to their
+attacks.
+9. Conclusion
+In this survey, we give a systemic, categorical and compre-
+hensive overview on the recent works regarding adversarial
+examples and their countermeasures, in multiple data do-
+mains. We summarize the studies from each section in
+the chronological order as shown in Appendix B, because
+these works are released with relatively high frequency in
+response to one another. The current state-of-the-art attackswill likely be neutralized by new defenses, and these de-
+fenses will subsequently be circumvented. We hope that
+our work can shed some light on the main ideas of adversar-
+ial learning and related applications in order to encourage
+progress in the ﬁeld.
+Acknowledgements
+This work is supported by the National Science Founda-
+tion (NSF) under grant numbers IIS-1845081 and CNS-
+1815636.
+References
+Alzantot, M., Sharma, Y ., Chakraborty, S., and Srivastava, M.
+Genattack: Practical black-box attacks with gradient-free opti-
+mization. arXiv preprint arXiv:1805.11090 , 2018.
+Anderson, H. S., Woodbridge, J., and Filar, B. Deepdga:
+Adversarially-tuned domain generation and detection. In Pro-
+ceedings of the 2016 ACM Workshop on Artiﬁcial Intelligence
+and Security , pp. 13–21. ACM, 2016.
+Arp, D., Spreitzenbarth, M., Gascon, H., Rieck, K., and Siemens,
+C. Drebin: Effective and explainable detection of android
+malware in your pocket. 2014.
+Athalye, A., Engstrom, L., Ilyas, A., and Kwok, K. Synthesizing
+robust adversarial examples. arXiv preprint arXiv:1707.07397 ,
+2017.
+Athalye, A., Carlini, N., and Wagner, D. Obfuscated gradients give
+a false sense of security: Circumventing defenses to adversarial
+examples. arXiv preprint arXiv:1802.00420 , 2018.
+Barreno, M., Nelson, B., Joseph, A. D., and Tygar, J. D. The
+security of machine learning. Machine Learning , 81(2):121–
+148, 2010.
+Belinkov, Y . and Bisk, Y . Synthetic and natural noise both break
+neural machine translation. arXiv preprint arXiv:1711.02173 ,
+2017.
+Biggio, B., Nelson, B., and Laskov, P. Poisoning attacks against
+support vector machines. arXiv preprint arXiv:1206.6389 , 2012.
+Biggio, B., Corona, I., Maiorca, D., Nelson, B., ˇSrndi ´c, N., Laskov,
+P., Giacinto, G., and Roli, F. Evasion attacks against machine
+learning at test time. In Joint European conference on machine
+learning and knowledge discovery in databases , pp. 387–402.
+Springer, 2013.
+Bojcheski, A. and G ¨unnemann, S. Adversarial attacks on node
+embeddings. arXiv preprint arXiv:1809.01093 , 2018.
+Buckman, J., Roy, A., Raffel, C., and Goodfellow, I. Thermometer
+encoding: One hot way to resist adversarial examples. In Inter-
+national Conference on Learning Representations , 2018. URL
+https://openreview.net/forum?id=S18Su--CW .
+Carlini, N. and Wagner, D. Adversarial examples are not easily
+detected: Bypassing ten detection methods. In Proceedings of
+the 10th ACM Workshop on Artiﬁcial Intelligence and Security ,
+pp. 3–14. ACM, 2017a.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Carlini, N. and Wagner, D. Towards evaluating the robustness of
+neural networks. In 2017 IEEE Symposium on Security and
+Privacy (SP) , pp. 39–57. IEEE, 2017b.
+Carlini, N. and Wagner, D. Audio adversarial examples: Targeted
+attacks on speech-to-text. In 2018 IEEE Security and Privacy
+Workshops (SPW) , pp. 1–7. IEEE, 2018.
+Carlini, N., Katz, G., Barrett, C., and Dill, D. L. Provably
+minimally-distorted adversarial examples. arXiv preprint
+arXiv:1709.10207 , 2017.
+Cauwenberghs, G. and Poggio, T. Incremental and decremen-
+tal support vector machine learning. In Advances in neural
+information processing systems , pp. 409–415, 2001.
+Chen, P.-Y ., Zhang, H., Sharma, Y ., Yi, J., and Hsieh, C.-J. Zoo:
+Zeroth order optimization based black-box attacks to deep neu-
+ral networks without training substitute models. In Proceedings
+of the 10th ACM Workshop on Artiﬁcial Intelligence and Secu-
+rity, pp. 15–26. ACM, 2017.
+Chen, P.-Y ., Sharma, Y ., Zhang, H., Yi, J., and Hsieh, C.-J. Ead:
+elastic-net attacks to deep neural networks via adversarial exam-
+ples. In Thirty-second AAAI conference on artiﬁcial intelligence ,
+2018.
+Cheng, M., Yi, J., Zhang, H., Chen, P.-Y ., and Hsieh, C.-
+J. Seq2sick: Evaluating the robustness of sequence-to-
+sequence models with adversarial examples. arXiv preprint
+arXiv:1803.01128 , 2018.
+Chugh, T. and Jain, A. K. Fingerprint presentation attack detection:
+Generalization and efﬁciency. arXiv preprint arXiv:1812.11574 ,
+2018.
+Chugh, T., Cao, K., and Jain, A. K. Fingerprint spoof buster: Use of
+minutiae-centered patches. IEEE Transactions on Information
+Forensics and Security , 13(9):2190–2202, 2018.
+Cires ¸An, D., Meier, U., Masci, J., and Schmidhuber, J. Multi-
+column deep neural network for trafﬁc sign classiﬁcation. Neu-
+ral networks , 32:333–338, 2012.
+Cisse, M., Bojanowski, P., Grave, E., Dauphin, Y ., and Usunier,
+N. Parseval networks: Improving robustness to adversarial
+examples. In Proceedings of the 34th International Conference
+on Machine Learning-Volume 70 , pp. 854–863. JMLR. org,
+2017.
+Dai, H., Li, H., Tian, T., Huang, X., Wang, L., Zhu, J., and Song,
+L. Adversarial attack on graph structured data. arXiv preprint
+arXiv:1806.02371 , 2018.
+Dalvi, N., Domingos, P., Sanghai, S., Verma, D., et al. Adversarial
+classiﬁcation. In Proceedings of the tenth ACM SIGKDD inter-
+national conference on Knowledge discovery and data mining ,
+pp. 99–108. ACM, 2004.
+Deb, D., Zhang, J., and Jain, A. K. Advfaces: Adversarial face
+synthesis. arXiv preprint arXiv:1908.05008 , 2019.
+Deng, J., Dong, W., Socher, R., Li, L.-J., Li, K., and Fei-Fei, L.
+Imagenet: A large-scale hierarchical image database. In 2009
+IEEE conference on computer vision and pattern recognition ,
+pp. 248–255. Ieee, 2009.Dhillon, G. S., Azizzadenesheli, K., Lipton, Z. C., Bernstein,
+J., Kossaiﬁ, J., Khanna, A., and Anandkumar, A. Stochastic
+activation pruning for robust adversarial defense. arXiv preprint
+arXiv:1803.01442 , 2018.
+Dong, Y ., Liao, F., Pang, T., Su, H., Zhu, J., Hu, X., and Li, J.
+Boosting adversarial attacks with momentum. In Proceedings
+of the IEEE conference on computer vision and pattern recogni-
+tion, pp. 9185–9193, 2018.
+Ebrahimi, J., Rao, A., Lowd, D., and Dou, D. Hotﬂip: White-
+box adversarial examples for text classiﬁcation. arXiv preprint
+arXiv:1712.06751 , 2017.
+Eykholt, K., Evtimov, I., Fernandes, E., Li, B., Rahmati, A.,
+Xiao, C., Prakash, A., Kohno, T., and Song, D. Robust
+physical-world attacks on deep learning models. arXiv preprint
+arXiv:1707.08945 , 2017.
+Fawzi, A., Moosavi-Dezfooli, S.-M., and Frossard, P. Robustness
+of classiﬁers: from adversarial to random noise. In Advances in
+Neural Information Processing Systems , pp. 1632–1640, 2016.
+Fawzi, A., Fawzi, O., and Frossard, P. Analysis of classiﬁers
+robustness to adversarial perturbations. Machine Learning , 107
+(3):481–508, 2018.
+Feinman, R., Curtin, R. R., Shintre, S., and Gardner, A. B.
+Detecting adversarial samples from artifacts. arXiv preprint
+arXiv:1703.00410 , 2017.
+Feng, F., He, X., Tang, J., and Chua, T.-S. Graph adversarial
+training: Dynamically regularizing based on graph structure.
+arXiv preprint arXiv:1902.08226 , 2019.
+Finn, C., Abbeel, P., and Levine, S. Model-agnostic meta-learning
+for fast adaptation of deep networks. In Proceedings of the 34th
+International Conference on Machine Learning-Volume 70 , pp.
+1126–1135. JMLR. org, 2017.
+Gao, J., Lanchantin, J., Soffa, M. L., and Qi, Y . Black-box gen-
+eration of adversarial text sequences to evade deep learning
+classiﬁers. In 2018 IEEE Security and Privacy Workshops
+(SPW) , pp. 50–56. IEEE, 2018.
+Gong, Z., Wang, W., and Ku, W.-S. Adversarial and clean data are
+not twins. arXiv preprint arXiv:1704.04960 , 2017.
+Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-
+Farley, D., Ozair, S., Courville, A., and Bengio, Y . Generative
+adversarial nets. In Advances in neural information processing
+systems , pp. 2672–2680, 2014a.
+Goodfellow, I. J., Shlens, J., and Szegedy, C. Explaining and har-
+nessing adversarial examples. arXiv preprint arXiv:1412.6572 ,
+2014b.
+Gretton, A., Borgwardt, K. M., Rasch, M. J., Sch ¨olkopf, B., and
+Smola, A. A kernel two-sample test. Journal of Machine
+Learning Research , 13(Mar):723–773, 2012.
+Grosse, K., Papernot, N., Manoharan, P., Backes, M., and
+McDaniel, P. Adversarial perturbations against deep neu-
+ral networks for malware classiﬁcation. arXiv preprint
+arXiv:1606.04435 , 2016.
+Grosse, K., Manoharan, P., Papernot, N., Backes, M., and Mc-
+Daniel, P. On the (statistical) detection of adversarial examples.
+arXiv preprint arXiv:1702.06280 , 2017.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Gu, S. and Rigazio, L. Towards deep neural network architectures
+robust to adversarial examples. arXiv preprint arXiv:1412.5068 ,
+2014.
+Guo, C., Rana, M., Cisse, M., and Van Der Maaten, L. Countering
+adversarial images using input transformations. arXiv preprint
+arXiv:1711.00117 , 2017.
+Hannun, A., Case, C., Casper, J., Catanzaro, B., Diamos, G., Elsen,
+E., Prenger, R., Satheesh, S., Sengupta, S., Coates, A., et al.
+Deep speech: Scaling up end-to-end speech recognition. arXiv
+preprint arXiv:1412.5567 , 2014.
+He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learning for
+image recognition. In Proceedings of the IEEE conference on
+computer vision and pattern recognition , pp. 770–778, 2016.
+He, T. and Glass, J. Detecting egregious responses
+in neural sequence-to-sequence models. arXiv preprint
+arXiv:1809.04113 , 2018.
+Hein, M. and Andriushchenko, M. Formal guarantees on the
+robustness of a classiﬁer against adversarial manipulation. In
+Advances in Neural Information Processing Systems , pp. 2266–
+2276, 2017.
+Hendrycks, D. and Gimpel, K. Early methods for detecting adver-
+sarial images. arXiv preprint arXiv:1608.00530 , 2016.
+Hinton, G., Deng, L., Yu, D., Dahl, G., Mohamed, A.-r., Jaitly,
+N., Senior, A., Vanhoucke, V ., Nguyen, P., Kingsbury, B., et al.
+Deep neural networks for acoustic modeling in speech recogni-
+tion. IEEE Signal processing magazine , 29, 2012.
+Hinton, G., Vinyals, O., and Dean, J. Distilling the knowledge in a
+neural network. arXiv preprint arXiv:1503.02531 , 2015.
+Hochreiter, S. and Schmidhuber, J. Long short-term memory.
+Neural computation , 9(8):1735–1780, 1997.
+Hu, W. and Tan, Y . Generating adversarial malware exam-
+ples for black-box attacks based on gan. arXiv preprint
+arXiv:1702.05983 , 2017.
+Huang, S., Papernot, N., Goodfellow, I., Duan, Y ., and Abbeel, P.
+Adversarial attacks on neural network policies. arXiv preprint
+arXiv:1702.02284 , 2017.
+Ilyas, A., Engstrom, L., Athalye, A., and Lin, J. Black-box ad-
+versarial attacks with limited queries and information. arXiv
+preprint arXiv:1804.08598 , 2018.
+Ilyas, A., Santurkar, S., Tsipras, D., Engstrom, L., Tran, B., and
+Madry, A. Adversarial examples are not bugs, they are features.
+arXiv preprint arXiv:1905.02175 , 2019.
+Ioffe, S. and Szegedy, C. Batch normalization: Accelerating deep
+network training by reducing internal covariate shift. arXiv
+preprint arXiv:1502.03167 , 2015.
+Iyyer, M., Wieting, J., Gimpel, K., and Zettlemoyer, L. Adversarial
+example generation with syntactically controlled paraphrase
+networks. arXiv preprint arXiv:1804.06059 , 2018.
+Jia, R. and Liang, P. Adversarial examples for evaluating read-
+ing comprehension systems. arXiv preprint arXiv:1707.07328 ,
+2017.Katz, G., Barrett, C., Dill, D. L., Julian, K., and Kochenderfer,
+M. J. Reluplex: An efﬁcient smt solver for verifying deep
+neural networks. In International Conference on Computer
+Aided Veriﬁcation , pp. 97–117. Springer, 2017.
+Kingma, D. P. and Welling, M. Auto-encoding variational bayes.
+arXiv preprint arXiv:1312.6114 , 2013.
+Kipf, T. N. and Welling, M. Semi-supervised classiﬁca-
+tion with graph convolutional networks. arXiv preprint
+arXiv:1609.02907 , 2016.
+Koh, P. W. and Liang, P. Understanding black-box predictions via
+inﬂuence functions. In Proceedings of the 34th International
+Conference on Machine Learning-Volume 70 , pp. 1885–1894.
+JMLR. org, 2017.
+Kos, J., Fischer, I., and Song, D. Adversarial examples for gener-
+ative models. In 2018 IEEE Security and Privacy Workshops
+(SPW) , pp. 36–42. IEEE, 2018.
+Krizhevsky, A., Sutskever, I., and Hinton, G. E. Imagenet classiﬁ-
+cation with deep convolutional neural networks. In Advances in
+neural information processing systems , pp. 1097–1105, 2012.
+Kurakin, A., Goodfellow, I., and Bengio, S. Adversarial machine
+learning at scale. arXiv preprint arXiv:1611.01236 , 2016a.
+Kurakin, A., Goodfellow, I., and Bengio, S. Adversarial examples
+in the physical world. arXiv preprint arXiv:1607.02533 , 2016b.
+Larsen, A. B. L., Sønderby, S. K., Larochelle, H., and Winther, O.
+Autoencoding beyond pixels using a learned similarity metric.
+arXiv preprint arXiv:1512.09300 , 2015.
+Lei, Q., Wu, L., Chen, P., Dimakis, A. G., Dhillon, I. S., and
+Witbrock, M. Discrete attacks and submodular optimization
+with applications to text classiﬁcation. CoRR , abs/1812.00151,
+2018. URL http://arxiv.org/abs/1812.00151 .
+Li, J., Ji, S., Du, T., Li, B., and Wang, T. Textbugger: Generating
+adversarial text against real-world applications. arXiv preprint
+arXiv:1812.05271 , 2018a.
+Li, S., Neupane, A., Paul, S., Song, C., Krishnamurthy, S. V .,
+Chowdhury, A. K. R., and Swami, A. Adversarial perturbations
+against real-time video classiﬁcation systems. arXiv preprint
+arXiv:1807.00458 , 2018b.
+Liang, B., Li, H., Su, M., Bian, P., Li, X., and Shi, W. Deep text
+classiﬁcation can be fooled. arXiv preprint arXiv:1704.08006 ,
+2017.
+Liu, D. C. and Nocedal, J. On the limited memory bfgs method
+for large scale optimization. Mathematical programming , 45
+(1-3):503–528, 1989.
+Liu, H., Derr, T., Liu, Z., and Tang, J. Say what i want: To-
+wards the dark side of neural dialogue models. arXiv preprint
+arXiv:1909.06044 , 2019.
+Ma, Y ., Wang, S., Wu, L., and Tang, J. Attacking graph convolu-
+tional networks via rewiring. arXiv preprint arXiv:1906.03750 ,
+2019.
+Madry, A., Makelov, A., Schmidt, L., Tsipras, D., and Vladu, A.
+Towards deep learning models resistant to adversarial attacks.
+arXiv preprint arXiv:1706.06083 , 2017.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Metzen, J. H., Genewein, T., Fischer, V ., and Bischoff, B.
+On detecting adversarial perturbations. arXiv preprint
+arXiv:1702.04267 , 2017a.
+Metzen, J. H., Kumar, M. C., Brox, T., and Fischer, V . Universal
+adversarial perturbations against semantic image segmentation.
+In2017 IEEE International Conference on Computer Vision
+(ICCV) , pp. 2774–2783. IEEE, 2017b.
+Mikolov, T., Sutskever, I., Chen, K., Corrado, G. S., and Dean,
+J. Distributed representations of words and phrases and their
+compositionality. In Advances in neural information processing
+systems , pp. 3111–3119, 2013.
+Miyato, T., Maeda, S.-i., Koyama, M., Nakae, K., and Ishii, S.
+Distributional smoothing with virtual adversarial training. arXiv
+preprint arXiv:1507.00677 , 2015.
+Miyato, T., Dai, A. M., and Goodfellow, I. Adversarial training
+methods for semi-supervised text classiﬁcation. arXiv preprint
+arXiv:1605.07725 , 2016.
+Mnih, V ., Kavukcuoglu, K., Silver, D., Graves, A., Antonoglou,
+I., Wierstra, D., and Riedmiller, M. Playing atari with deep
+reinforcement learning. arXiv preprint arXiv:1312.5602 , 2013.
+Mnih, V ., Badia, A. P., Mirza, M., Graves, A., Lillicrap, T., Harley,
+T., Silver, D., and Kavukcuoglu, K. Asynchronous methods for
+deep reinforcement learning. In International conference on
+machine learning , pp. 1928–1937, 2016.
+Moosavi-Dezfooli, S.-M., Fawzi, A., and Frossard, P. Deepfool: a
+simple and accurate method to fool deep neural networks. In
+Proceedings of the IEEE conference on computer vision and
+pattern recognition , pp. 2574–2582, 2016.
+Moosavi-Dezfooli, S.-M., Fawzi, A., Fawzi, O., and Frossard,
+P. Universal adversarial perturbations. In Proceedings of the
+IEEE conference on computer vision and pattern recognition ,
+pp. 1765–1773, 2017a.
+Moosavi-Dezfooli, S.-M., Fawzi, A., Fawzi, O., Frossard, P., and
+Soatto, S. Analysis of universal adversarial perturbations. arXiv
+preprint arXiv:1705.09554 , 2017b.
+Niu, T. and Bansal, M. Adversarial over-sensitivity and over-
+stability strategies for dialogue models. arXiv preprint
+arXiv:1809.02079 , 2018.
+Odena, A., Olah, C., and Shlens, J. Conditional image synthesis
+with auxiliary classiﬁer gans. In Proceedings of the 34th In-
+ternational Conference on Machine Learning-Volume 70 , pp.
+2642–2651. JMLR. org, 2017.
+Papernot, N., McDaniel, P., Jha, S., Fredrikson, M., Celik, Z. B.,
+and Swami, A. The limitations of deep learning in adversarial
+settings. In 2016 IEEE European Symposium on Security and
+Privacy (EuroS&P) , pp. 372–387. IEEE, 2016a.
+Papernot, N., McDaniel, P., Wu, X., Jha, S., and Swami, A. Dis-
+tillation as a defense to adversarial perturbations against deep
+neural networks. In 2016 IEEE Symposium on Security and
+Privacy (SP) , pp. 582–597. IEEE, 2016b.
+Papernot, N., McDaniel, P., Goodfellow, I., Jha, S., Celik, Z. B.,
+and Swami, A. Practical black-box attacks against machine
+learning. In Proceedings of the 2017 ACM on Asia conference
+on computer and communications security , pp. 506–519. ACM,
+2017.Parkhi, O. M., Vedaldi, A., Zisserman, A., et al. Deep face recog-
+nition.
+Perozzi, B., Al-Rfou, R., and Skiena, S. Deepwalk: Online learn-
+ing of social representations. In Proceedings of the 20th ACM
+SIGKDD international conference on Knowledge discovery and
+data mining , pp. 701–710. ACM, 2014.
+Pontryagin, L. S. Mathematical theory of optimal processes . Rout-
+ledge, 2018.
+Raghunathan, A., Steinhardt, J., and Liang, P. Certiﬁed defenses
+against adversarial examples. arXiv preprint arXiv:1801.09344 ,
+2018a.
+Raghunathan, A., Steinhardt, J., and Liang, P. S. Semideﬁnite
+relaxations for certifying robustness to adversarial examples.
+InAdvances in Neural Information Processing Systems , pp.
+10877–10887, 2018b.
+Rifai, S., Vincent, P., Muller, X., Glorot, X., and Bengio, Y . Con-
+tractive auto-encoders: Explicit invariance during feature extrac-
+tion. In Proceedings of the 28th International Conference on
+International Conference on Machine Learning , pp. 833–840.
+Omnipress, 2011.
+Russakovsky, O., Deng, J., Su, H., Krause, J., Satheesh, S., Ma,
+S., Huang, Z., Karpathy, A., Khosla, A., Bernstein, M., Berg,
+A. C., and Fei-Fei, L. ImageNet Large Scale Visual Recognition
+Challenge. International Journal of Computer Vision (IJCV) ,
+115(3):211–252, 2015. doi: 10.1007/s11263-015-0816-y.
+Samangouei, P., Kabkab, M., and Chellappa, R. Defense-gan:
+Protecting classiﬁers against adversarial attacks using generative
+models. arXiv preprint arXiv:1805.06605 , 2018.
+Samanta, S. and Mehta, S. Towards crafting text adversarial sam-
+ples. arXiv preprint arXiv:1707.02812 , 2017.
+Schmidt, L., Santurkar, S., Tsipras, D., Talwar, K., and Madry,
+A. Adversarially robust generalization requires more data. In
+Advances in Neural Information Processing Systems , pp. 5014–
+5026, 2018.
+Schulman, J., Levine, S., Abbeel, P., Jordan, M., and Moritz, P.
+Trust region policy optimization. In International conference
+on machine learning , pp. 1889–1897, 2015.
+Shafahi, A., Huang, W. R., Najibi, M., Suciu, O., Studer, C.,
+Dumitras, T., and Goldstein, T. Poison frogs! targeted clean-
+label poisoning attacks on neural networks. In Advances in
+Neural Information Processing Systems , pp. 6103–6113, 2018a.
+Shafahi, A., Huang, W. R., Studer, C., Feizi, S., and Goldstein,
+T. Are adversarial examples inevitable? arXiv preprint
+arXiv:1809.02104 , 2018b.
+Shafahi, A., Najibi, M., Ghiasi, A., Xu, Z., Dickerson, J., Studer,
+C., Davis, L. S., Taylor, G., and Goldstein, T. Adversarial
+training for free! arXiv preprint arXiv:1904.12843 , 2019.
+Sharif, M., Bhagavatula, S., Bauer, L., and Reiter, M. K. Acces-
+sorize to a crime: Real and stealthy attacks on state-of-the-art
+face recognition. In Proceedings of the 2016 ACM SIGSAC
+Conference on Computer and Communications Security , pp.
+1528–1540. ACM, 2016.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+Sharma, Y . and Chen, P.-Y . Attacking the madry defense
+model with l1-based adversarial examples. arXiv preprint
+arXiv:1710.10733 , 2017.
+Sharma, Y . and Chen, P.-Y . Bypassing feature squeezing by in-
+creasing adversary strength. arXiv preprint arXiv:1803.09868 ,
+2018.
+Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L., van den
+Driessche, G., Schrittwieser, J., Antonoglou, I., Panneershel-
+vam, V ., Lanctot, M., Dieleman, S., Grewe, D., Nham, J., Kalch-
+brenner, N., Sutskever, I., Lillicrap, T., Leach, M., Kavukcuoglu,
+K., Graepel, T., and Hassabis, D. Mastering the game of go
+with deep neural networks and tree search. Nature , 529:484–
+503, 2016a. URL http://www.nature.com/nature/
+journal/v529/n7587/full/nature16961.html .
+Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L., Van
+Den Driessche, G., Schrittwieser, J., Antonoglou, I., Panneer-
+shelvam, V ., Lanctot, M., et al. Mastering the game of go with
+deep neural networks and tree search. nature , 529(7587):484,
+2016b.
+Sinha, A., Namkoong, H., and Duchi, J. Certifying some distri-
+butional robustness with principled adversarial training. arXiv
+preprint arXiv:1710.10571 , 2017.
+Song, Y ., Kim, T., Nowozin, S., Ermon, S., and Kushman,
+N. Pixeldefend: Leveraging generative models to under-
+stand and defend against adversarial examples. arXiv preprint
+arXiv:1710.10766 , 2017.
+Song, Y ., Shu, R., Kushman, N., and Ermon, S. Constructing
+unrestricted adversarial examples with generative models. In
+Advances in Neural Information Processing Systems , pp. 8312–
+8323, 2018.
+Srivastava, N., Hinton, G., Krizhevsky, A., Sutskever, I., and
+Salakhutdinov, R. Dropout: a simple way to prevent neural
+networks from overﬁtting. The journal of machine learning
+research , 15(1):1929–1958, 2014.
+Stutz, D., Hein, M., and Schiele, B. Disentangling adversarial
+robustness and generalization. In Proceedings of the IEEE
+Conference on Computer Vision and Pattern Recognition , pp.
+6976–6987, 2019.
+Su, D., Zhang, H., Chen, H., Yi, J., Chen, P.-Y ., and Gao, Y . Is
+robustness the cost of accuracy?–a comprehensive study on the
+robustness of 18 deep image classiﬁcation models. In Proceed-
+ings of the European Conference on Computer Vision (ECCV) ,
+pp. 631–648, 2018.
+Su, J., Vargas, D. V ., and Sakurai, K. One pixel attack for fooling
+deep neural networks. IEEE Transactions on Evolutionary
+Computation , 2019.
+Szegedy, C., Zaremba, W., Sutskever, I., Bruna, J., Erhan, D.,
+Goodfellow, I., and Fergus, R. Intriguing properties of neural
+networks. arXiv preprint arXiv:1312.6199 , 2013.
+Tjeng, V ., Xiao, K., and Tedrake, R. Evaluating robustness of neu-
+ral networks with mixed integer programming. arXiv preprint
+arXiv:1711.07356 , 2017.
+Tram `er, F., Kurakin, A., Papernot, N., Goodfellow, I., Boneh, D.,
+and McDaniel, P. Ensemble adversarial training: Attacks and
+defenses. arXiv preprint arXiv:1705.07204 , 2017.Tsipras, D., Santurkar, S., Engstrom, L., Turner, A., and Madry,
+A. Robustness may be at odds with accuracy. arXiv preprint
+arXiv:1805.12152 , 2018.
+Van den Oord, A., Kalchbrenner, N., Espeholt, L., Vinyals, O.,
+Graves, A., et al. Conditional image generation with pixelcnn
+decoders. In Advances in neural information processing systems ,
+pp. 4790–4798, 2016.
+Vandenberghe, L. and Boyd, S. Semideﬁnite programming. SIAM
+review , 38(1):49–95, 1996.
+Wierstra, D., Schaul, T., Glasmachers, T., Sun, Y ., Peters, J., and
+Schmidhuber, J. Natural evolution strategies. The Journal of
+Machine Learning Research , 15(1):949–980, 2014.
+Wong, E. and Kolter, J. Z. Provable defenses against adversarial
+examples via the convex outer adversarial polytope. arXiv
+preprint arXiv:1711.00851 , 2017.
+Wong, E., Schmidt, F., Metzen, J. H., and Kolter, J. Z. Scaling prov-
+able adversarial defenses. In Advances in Neural Information
+Processing Systems , pp. 8400–8409, 2018.
+Xiao, C., Li, B., Zhu, J.-Y ., He, W., Liu, M., and Song, D. Gen-
+erating adversarial examples with adversarial networks. arXiv
+preprint arXiv:1801.02610 , 2018a.
+Xiao, C., Zhu, J.-Y ., Li, B., He, W., Liu, M., and Song, D.
+Spatially transformed adversarial examples. arXiv preprint
+arXiv:1801.02612 , 2018b.
+Xiao, K. Y ., Tjeng, V ., Shaﬁullah, N. M., and Madry, A. Training
+for faster adversarial robustness veriﬁcation via inducing relu
+stability. arXiv preprint arXiv:1809.03008 , 2018c.
+Xie, C., Wang, J., Zhang, Z., Ren, Z., and Yuille, A. Mitigat-
+ing adversarial effects through randomization. arXiv preprint
+arXiv:1711.01991 , 2017a.
+Xie, C., Wang, J., Zhang, Z., Zhou, Y ., Xie, L., and Yuille, A.
+Adversarial examples for semantic segmentation and object
+detection. In Proceedings of the IEEE International Conference
+on Computer Vision , pp. 1369–1378, 2017b.
+Xu, K., Chen, H., Liu, S., Chen, P.-Y ., Weng, T.-W., Hong, M., and
+Lin, X. Topology attack and defense for graph neural networks:
+An optimization perspective. arXiv preprint arXiv:1906.04214 ,
+2019.
+Xu, W., Evans, D., and Qi, Y . Feature squeezing: Detecting
+adversarial examples in deep neural networks. arXiv preprint
+arXiv:1704.01155 , 2017.
+Zhang, D., Zhang, T., Lu, Y ., Zhu, Z., and Dong, B. You only
+propagate once: Painless adversarial training using maximal
+principle. arXiv preprint arXiv:1905.00877 , 2019a.
+Zhang, H., Yu, Y ., Jiao, J., Xing, E. P., Ghaoui, L. E., and Jordan,
+M. I. Theoretically principled trade-off between robustness and
+accuracy. arXiv preprint arXiv:1901.08573 , 2019b.
+Z¨ugner, D. and G ¨unnemann, S. Adversarial attacks on graph neural
+networks via meta learning. arXiv preprint arXiv:1902.08412 ,
+2019.
+Z¨ugner, D., Akbarnejad, A., and G ¨unnemann, S. Adversarial
+attacks on neural networks for graph data. In Proceedings of the
+24th ACM SIGKDD International Conference on Knowledge
+Discovery & Data Mining , pp. 2847–2856. ACM, 2018.
+Adversarial Attacks and Defenses in Images, Graphs and Text: A ReviewAppendix
+A. Dichotomy of Attacks
+Attack Publication Similarity Attacking Capability Algorithm Apply Domain
+L-BFGS (Szegedy et al., 2013) l2 White-Box Iterative Image Classiﬁcation
+FGSM (Goodfellow et al., 2014b) l1,l2 White-Box Single-Step Image Classiﬁcation
+Deepfool (Moosavi-Dezfooli et al., 2016) l2 White-Box Iterative Image Classiﬁcation
+JSMA (Papernot et al., 2016a) l2 White-Box Iterative Image Classiﬁcation
+BIM (Kurakin et al., 2016a) l1 White-Box Iterative Image Classiﬁcation
+C & W (Carlini & Wagner, 2017b) l2 White-Box Iterative Image Classiﬁcation
+Ground Truth (Carlini et al., 2017) l0 White-Box SMT solver Image Classiﬁcation
+Spatial (Xiao et al., 2018b) Total Variation White-Box Iterative Image Classiﬁcation
+Universal (Metzen et al., 2017b) l1,l2 White-Box Iterative Image Classiﬁcation
+One-Pixel (Su et al., 2019) l0 White-Box Iterative Image Classiﬁcation
+EAD (Chen et al., 2018) l1+l2,l2 White-Box Iterative Image Classiﬁcation
+Substitute (Papernot et al., 2017) lp Black-Box Iterative Image Classiﬁcation
+ZOO (Chen et al., 2017) lp Black-Box Iterative Image Classiﬁcation
+Biggio (Biggio et al., 2012) l2 Poisoning Iterative Image Classiﬁcation
+Explanation (Koh & Liang, 2017) lp Poisoning Iterative Image Classiﬁcation
+Zugner’s (Z¨ugner et al., 2018) Degree Distribution, Coocurrence Poisoning Greedy Node Classiﬁcation
+Dai’s (Dai et al., 2018) Edges Black-Box RL Node & Graph Classiﬁcation
+Meta (Z¨ugner & G ¨unnemann, 2019) Edges Black-Box RL Node Classiﬁcation
+C & W (Carlini & Wagner, 2018) max dB White-Box Iterative Speech Recognition
+Word Embedding (Miyato et al., 2016) lp White-Box One-Step Text Classiﬁcation
+HotFlip (Ebrahimi et al., 2017) letters White-Box Greedy Text Classiﬁcation
+Jia & Liang (Jia & Liang, 2017) letters Black-Box Greedy Reading Comprehension
+Face Recognition (Sharif et al., 2016) physical White-Box Iterative Face Recognition
+RL attack (Huang et al., 2017) lp White-Box RL
+Adversarial Attacks and Defenses in Images, Graphs and Text: A Review
+B. Dichotomy of Defenses
+Defenses
+Gradient Masking Robust Optimization Detection
+Shattered Gradient
+(Buckman et al., 2018)
+(Guo et al., 2017)
+Shattered Gradient
+(Dhillon et al., 2018)
+(Xie et al., 2017a)
+Exploding/Vanishing Gra-
+dient
+(Song et al., 2017)
+(Samangouei et al., 2018)
+(Papernot et al., 2016b)Auxilliary Model
+(Grosse et al., 2016)
+(Gong et al., 2017)
+(Metzen et al., 2017a)
+Statistical Methods
+(Hendrycks & Gimpel,
+2016)
+(Grosse et al., 2017)
+(Gretton et al., 2012)
+Check Consistency
+(Feinman et al., 2017)
+(Xu et al., 2017)Adversarial Training
+(Goodfellow et al., 2014b)
+(Madry et al., 2017)
+(Tram `er et al., 2017)
+(Sinha et al., 2017)
+Certiﬁed Defense
+(Wong & Kolter, 2017)
+(Hein & Andriushchenko,
+2017)
+(Raghunathan et al.,
+2018a)
+(Sinha et al., 2017)
+Regularization
+(Cisse et al., 2017)
+(Gu & Rigazio, 2014)
+(Rifai et al., 2011)

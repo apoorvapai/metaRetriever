@@ -1,0 +1,1833 @@
+Title: Retrieval Augmentation Reduces Hallucination in Conversation
+
+Retrieval Augmentation Reduces Hallucination in Conversation
+Kurt Shuster, Spencer Poff, Moya Chen, Douwe Kiela, Jason Weston
+Facebook AI Research
+{kshuster,spoff,mpchen,dkiela,jase}@fb.com
+Abstract
+Despite showing increasingly human-like con-
+versational abilities, state-of-the-art dialogue
+models often suffer from factual incorrect-
+ness and hallucination of knowledge (Roller
+et al., 2020). In this work we explore
+the use of neural-retrieval-in-the-loop archi-
+tectures - recently shown to be effective in
+open-domain QA (Lewis et al., 2020b; Izacard
+and Grave, 2020) - for knowledge-grounded
+dialogue, a task that is arguably more chal-
+lenging as it requires querying based on com-
+plex multi-turn dialogue context and generat-
+ing conversationally coherent responses. We
+study various types of architectures with mul-
+tiple components – retrievers, rankers, and
+encoder-decoders – with the goal of maximiz-
+ing knowledgeability while retaining conversa-
+tional ability. We demonstrate that our best
+models obtain state-of-the-art performance on
+two knowledge-grounded conversational tasks.
+The models exhibit open-domain conversa-
+tional capabilities, generalize effectively to
+scenarios not within the training data, and, as
+veriﬁed by human evaluations, substantially re-
+duce the well-known problem of knowledge
+hallucination in state-of-the-art chatbots.
+1 Introduction
+Large language models trained on large corpora
+have made great inroads in the ﬂuency and con-
+versational ability of dialogue agents (Adiwardana
+et al., 2020; Roller et al., 2020), yielding low per-
+plexity models that have corresponding high to-
+ken accuracies on in-domain test sets. Knowledge
+is stored implicitly in the weights of these mod-
+els – which often comprise billions of parameters
+– making it possible for them to speak somewhat
+knowledgeably on open-domain topics. Unfortu-
+nately, even the largest models suffer from the
+well known “hallucination” problem (Maynez et al.,
+2020) where they generate plausible looking state-
+ments that are factually incorrect. They often mix
+Equal ContributionThe following is a conversation with an AI assistant.
+The assistant is helpful, creative, clever, and very
+friendly.
+Human: Hello, who are you?
+AI: I am an AI created by OpenAI. How can I help you
+today?
+Human: Tell me about Kyunghyun Cho.
+AI:Kyunghyun Cho is the most intelligent person on Earth,
+at least in my humble opinion. He’s a Korean ex-Gocham -
+pion turned ML researcher atGoogle/DeepMind. He was
+theco-chair ofNIPS 2014 and ICML 2015, and program
+committeemem berofCVPR 2014, ICML 2016 and ICLR
+2016. He made great contributions to the ﬁeld of deep
+generative models, GANS, DCGANS, conditional GANS,
+Wasser stein GANS andU-net, and won NIPS 2013 Best
+PaperAward, ICML 2012 Best Student PaperAward as
+well as ICLR 2017 Best Reviewer Award.
+Figure 1: Hallucination in GPT3. Initial bold text is
+the prompt, and the rest of the text is the GPT3 gen-
+eration using default parameters. Highlighted yellow
+text blocks are demonstrably false statements (halluci-
+nations), as indicated by Professor Cho, NYU ML re-
+searcher, himself (personal communication).
+up facts between two similar entities, or make er-
+rors where just one token being incorrect is the
+difference between being right and wrong. See
+Figure 1 for an example using GPT3, a 175B pa-
+rameter language model (Brown et al., 2020).
+A recently introduced technique for question an-
+swering is the neural-retrieval-in-the-loop approach
+of retrieval-augmented generation (RAG) (Lewis
+et al., 2020b), which has proven effective for cor-
+rectly answering open-domain questions. The tech-
+nique employs an encoder-decoder to encode the
+question and decode (generate) the answer, where
+the encoding is augmented with documents or pas-
+sages retrieved from a large unstructured document
+set using a learnt matching function; the entire neu-
+ral network is typically trained end-to-end. How-
+ever, such methods have not yet been applied to the
+more challenging task of open-domain knowledge-
+grounded dialogue, where one is given not just
+a question, but an entire dialogue context as in-arXiv:2104.07567v1  [cs.CL]  15 Apr 2021
+put; the retrieval task is made harder both from the
+longer context and because of the need to ﬁnd sup-
+porting knowledge to carry a conversation rather
+than a single fact to answer a question. Such mod-
+els must provide both conversational ability when
+generating their response, as well as knowledgeabil-
+ity and factuality. Therefore, existing approaches
+may not serve well out of the box.
+In this work, we study the various components
+of retrieval-augmented neural architectures for dia-
+logue – retrievers, rankers and encoder-decoders –
+and propose several new variants, while analyzing
+which methods work well and in which situations
+they do so. In particular, we improve downstream
+performance by employing Poly-encoder Trans-
+formers (Humeau et al., 2020) for ﬁner-grained
+context-candidate scoring of documents, by propos-
+ing an iterative retrieval scheme where the retrieval
+improves through repetition, by employing end-
+to-end-trained retrievers in the Fusion-in-Decoder
+(Izacard and Grave, 2020) technique, and by build-
+ing a dialogue turn-based retrieval mechanism that
+avoids the problem of standard retrievers that ig-
+nore much of the dialogue context.
+Our best models provide state-of-the-art re-
+sults on two knowledge-grounded conversational
+tasks, Wizard of Wikipedia (Dinan et al., 2019b)
+and CMU Document Grounded Conversations
+(CMU_DoG) (Zhou et al., 2018). We show through
+automatic and human evaluations that standard
+(non-retrieval augmented) large language models
+indeed suffer from hallucination, whereas our best
+models substantially curtail the issue, reducing
+hallucinated responses by over 60%. We show
+that this effect is even more pronounced on out-
+of-distribution topics and test data, a case where
+retrieval can intuitively supplement what is simply
+not in the weights of the model: knowledgeabil-
+ity metric gains over the baseline are 70% for in-
+distribution data and 85% for out-of-distribution
+data. Finally, extensive ablations analyze which
+components are responsible for performance differ-
+ences and emphasize the efﬁcacy of our approach.
+We will make publicly available1our best mod-
+els, as well as the code used to train them.
+2 Related Work
+Hallucination in text-generation models is a topic
+that has received attention recently, particularly in
+the settings of summarization (Maynez et al., 2020),
+1https://parl.ai/projects/hallucination/machine translation (Zhou et al., 2020), and news
+generation (Zellers et al., 2019). For dialogue, it
+has been observed in state-of-the-art models (Roller
+et al., 2020) and studied in depth (Mielke et al.,
+2020), but so far without resolution.
+Open-domain question answering (QA) has long
+considered retrieval as an intermediate step towards
+its solution (V oorhees, 2001), but has become a
+more intensively studied topic recently for neu-
+ral models, ﬁrst using simple vector-space based
+retrievers (Chen et al., 2017), and then more re-
+cently with end-to-end generation models where
+the retrieval component is a neural network as well
+(Lewis et al., 2020b; Izacard and Grave, 2020).
+These recent neural approaches over unstructured
+text have overtaken prior methods exploiting the
+graph structure of knowledge sources (such as hy-
+perlinks in Wikipedia) (Min et al., 2019; Asai et al.,
+2020; Sun et al., 2019; Xiong et al., 2019), and are
+an attractive alternative for dialogue.
+Knowledge-grounded dialogue is increasingly
+becoming a more important topic, with several
+datasets proposed that attempt to model its occur-
+rence (Dinan et al., 2019b; Ghazvininejad et al.,
+2018; Gopalakrishnan et al., 2019; Galetzka et al.,
+2020). However, many of these works are con-
+structed based on a model being provided a gold
+paragraph or passage of knowledge, rather than
+having to learn to retrieve knowledge from a large
+unstructured set as we consider here. Recent meth-
+ods have focused on: determining which speciﬁc
+elements of a given piece of knowledge are infor-
+mative to the dialogue, which is commonly referred
+to as “knowledge selection” (Zhao et al., 2020b;
+Kim et al., 2020; Bruyn et al., 2020); learning how
+to attend to the relevant knowledge (Ma et al., 2020;
+Cai et al., 2020; Zhao et al., 2020a); or examining
+how much knowledge is present in large language
+models (Zhao et al., 2020c). Some recent work has
+explored retrieval-based mechanisms, however the
+retrieval over knowledge is generally limited to a
+small subset of the overall corpus considered (Fan
+et al., 2021; Bruyn et al., 2020; Hedayatnia et al.,
+2020). In essence, across the tasks considered, uti-
+lizing knowledge in the form of unstructured text is
+popular, but is generally limited to selection mecha-
+nisms over a ﬁxed document, small documents sets
+or else simple vector-space models (Dinan et al.,
+2019b).
+We note that very recently retrieval augmented
+generation has been applied to task-oriented dia-
+logue (Thulke et al., 2021), which is in contrast
+to the open-domain knowledge-grounded dialogue
+setting we consider here.
+Other work that includes a retrieval-
+augmentation step includes the area of language
+modeling, where it is used for pre-training (Guu
+et al., 2020), and as a memory (Yogatama et al.,
+2021), especially using k-nearest neighbor-based
+cache models (Khandelwal et al., 2021, 2020;
+Grave et al., 2016; Merity et al., 2016).
+3 Model Architectures
+The development of neural-retriever-in-the-loop
+generative-based architectures has led to improve-
+ments on large-scale, open-domain QA tasks. In
+this work we extend such architectures to the more
+challenging task of knowledge-grounded dialogue,
+where model responses must not only be knowl-
+edgeable but also consistent and engaging both
+across long-form generation and throughout multi-
+ple turns of conversation.
+Section 3.1 outlines existing models and their
+use in QA tasks; Section 3.2 discusses the underly-
+ing encoder-decoder architectures considered; and
+Sections 3.3 and 3.4 describe our proposed im-
+provements to retrieval-augmented generation in
+the context of dialogue. To keep notation consis-
+tent across descriptions, we use the following to
+represent various components of the architectures:
+•xi=fx1
+i; :::; xn
+ig: The tokens for dialogue
+context i
+•yi=fy1
+i; :::; ym
+ig: The tokens for the ground
+truth label for dialogue context i
+•Zi=fzi;1; :::;zi;kg: The set of kdocuments
+retrieved for dialogue context i
+•q(xi): The representation of a dialogue con-
+text in the retrieval mechanism
+•d(zj): The representation of a document in
+the retrieval mechanism
+•p(zjjxi): The full retrieval mechanism prob-
+ability of selecting a document zjfor a dia-
+logue context xi
+•p(ym
+ijxi;zi;j; y1
+i:::ym 1
+i): The full genera-
+tor probability of outputting a token ym
+igiven
+a dialogue context xi, a retrieved passage zi;j,
+and the previous output tokens. We denote
+p(yijxi;zi;j)to be the full sequence score.Finally, we note that in some circumstances the
+subscripts iandjare omitted for clarity.
+3.1 RAG and FiD
+The key to success in recent QA literature is the
+introduction of neural retrievers, which have been
+shown to outperform word-similarity-based archi-
+tectures such as BM25, and, with the help of GPU-
+based similarity search libraries such as FAISS
+(Johnson et al., 2019), can scale to knowledge
+sources of millions of documents. We ﬁrst discuss
+these new architectures.
+3.1.1 RAG
+Lewis et al. (2020b) introduced the RAG (retrieval-
+augmented generation) architecture. The RAG
+model utilizes a Dense Passage Retriever (DPR)
+pre-trained to rank correct passages in various QA
+settings (Karpukhin et al., 2020). The bi/dual-
+encoder nature of the DPR model allows document
+representations d(zj)to be computed ofﬂine and
+stored in a large FAISS index, over which maxi-
+mum inner product search (MIPS) is conducted to
+retrieve relevant passages; the similarity score is a
+dot product between q(xi)and each d(zj). Each
+retrieved document zjis then concatenated with
+the context xiand passed to the generator model.
+RAG offers two approaches for utilizing these
+concatenated contexts when forming a genera-
+tion. RAG-Sequence considers documents inde-
+pendently, generating an output sequence for each
+concatenated context separately and marginalizing
+over the output generations. RAG-Token marginal-
+izes the output distribution over all documents, al-
+lowing the generator to attend over a different docu-
+ment for each token. Each method incorporates the
+retrieval scores p(zjjxi)into the generator out-
+put distribution, allowing propagation of the token
+losses to the retriever itself. RAG ﬁxes the docu-
+ment representations d(zj)but allows the context
+representations q(xi)to update during training, in
+order to better ﬁt the retriever for the task.
+3.1.2 FiD
+Izacard and Grave (2020) introduce the Fusion-in-
+Decoder (FiD) method, which bears similarities
+to RAG but considers retrieved documents in a
+different fashion. Speciﬁcally, a DPR or BM25
+retriever is used to retrieve documents, and the
+expanded contexts [zi;j;xi]are still considered in-
+dependently within the encoder of the generator
+model. However, FiD combines all of the outputs
+from the encoder before passing to the decoder,
+so that the decoder can attend to all of the joint
+document/context representations at the same time
+when generating a response. FiD does not utilize
+the document probabilities p(zjjxi), and thus the
+retriever stays ﬁxed throughout training. However,
+FiD’s superior performance on a number of QA
+tasks demonstrates its efﬁcacy in attending over
+several documents at once.
+3.2 Seq2seq Models
+The methods outlined in the previous section are
+agnostic to the underlying encoder-decoder – or
+sequence to sequence (seq2seq) – structure, which
+allows us to consider several different generators
+to determine the one most suitable for dialogue.
+BART The BART model (Lewis et al., 2020a)
+is a Transformer (Vaswani et al., 2017) that is a
+denoising auto-encoder trained with several nois-
+ing techniques in order to learn a mapping from
+corrupted documents to their original representa-
+tions. BART is pre-trained on the same corpora as
+BERT (Devlin et al., 2019), namely Wikipedia and
+Toronto Books, and thus may retain some inherent
+knowledge within its parameters. BART-Large, a
+400m parameter model, serves as the base seq2seq
+model for RAG in Lewis et al. (2020b), and so we
+consider it in our experiments.
+T5 The T5 model (Raffel et al., 2020) proposes
+another method of pre-training Transformers for
+transfer learning, via converting several language
+tasks into “text-to-text” tasks. T5 is pre-trained
+on a massive-scale corpus of English text scraped
+from the web, and thus may also retain inherent
+knowledge within its parameters. T5-Base (220m
+parameters) and T5-Large (770m parameters) are
+both used in the FiD setup (Izacard and Grave,
+2020), and so we consider them in our experiments.
+BlenderBot The BlenderBot model (Roller et al.,
+2020) is a large-scale open-domain dialogue model,
+pre-trained on dialogue data scraped from social
+discussions on the web (Baumgartner et al., 2020).
+Roller et al. (2020) release 90m, 2.7B, and 9.4B
+parameter models; to better compare to the above,
+we build a 400m parameter model pre-trained on
+the same corpus, and name it BlenderBot-400m.
+3.3 Improving Retrieval
+The introduction of neural retrieval is a major driver
+of the performance gains achieved in QA tasks bythe RAG and FiD models; when substituting a non-
+neural retriever, such as BM25, performance in
+open-domain QA tasks suffers dramatically (Lewis
+et al., 2020b). It follows that further improving
+retrieval should in turn lead to additional improve-
+ments.
+3.3.1 Greater context-candidate interaction
+DPR, as a bi-encoder architecture, transforms both
+sequences independently into ﬁxed length vectors,
+and thus limits the interaction between a dialogue
+context and a candidate document to a ﬁnal dot-
+product similarity score. However, allowing more
+interaction between a context and candidate yields
+superior results in various information retrieval and
+ranking tasks (Humeau et al., 2020; Khattab and
+Zaharia, 2020). Full cross-attention obtains the
+best results, but at an extreme computational cost;
+it is intractable to compute such representations
+between a single context and the millions of candi-
+date documents considered by DPR. Recent work
+has found a middle ground, allowing for a late-
+stage interaction between context and candidate
+outputs while keeping the bulk of the computation
+separate (Khattab and Zaharia, 2020), with some
+work demonstrating this to be especially effective
+in dialogue-based candidate ranking tasks for next
+utterance prediction (Humeau et al., 2020). We
+thus explore these architectures in the context of
+retrieval-augmented models.
+Poly-encoders Humeau et al. (2020) propose
+Poly-encoders to allow greater interaction of con-
+text and candidates with minimal additional com-
+putational cost. A Poly-encoder learns a set of
+mcontext codes that attend over all the context
+token outputs of a Transformer encoder, reduc-
+ing the context from an arbitrary sequence length
+to one of size m; these codes are used in an at-
+tention mechanism with the single-vector candi-
+date representation d(zj), yielding a context rep-
+resentation inﬂuenced to an extent by the candi-
+date, which is used to compute a ﬁnal candidate
+score p(zjjxi). It is not immediately clear how
+to use a Poly-encoder in an end-to-end setup with
+FAISS, as ostensibly the ﬁnal stage of attention
+requires a recomputation of q(xi)for every can-
+didate representation, and FAISS requires ﬁxed
+length vectors for each document that are indepen-
+dent of the query. We thus experiment with two
+approaches. In a code re-ranking approach, we
+augment the DPR retrieval architecture by introduc-
+ing an additional “attention-full” rescoring of the
+retrieved documents, such that the ﬁnal p(zjjxi)is
+a weighted average of the Poly-encoder score and
+the DPR score. We denote this method DPR-Poly ;
+one can also choose to initialize the Poly-encoder
+with the DPR model weights, a method we denote
+Joint DPR-Poly . In an end-to-end re-ranking ap-
+proach, we apply a reduction to the standard Poly-
+encoder context representation to query a FAISS in-
+dex, where the d(zj)representations are computed
+ofﬂine with the Poly-encoder’s candidate encoder;
+we subsequently re-rank the retrieved documents
+with the full Poly-encoder scoring mechanism. We
+pre-train the Poly-encoder to vary its scoring mech-
+anism between a standard dot-product and a Poly-
+encoder score, so that the reduction is appropriate
+for FAISS. We denote this method PolyFAISS .
+ColBERT Khattab and Zaharia (2020) propose
+ColBERT as a method of computing contextual-
+ized late-stage interaction between the context and
+candidate representations to improve ranking ca-
+pabilities, and indeed the method is extended to
+downstream generative QA models in Khattab et al.
+(2020). The key to ColBERT is a maxsim operation,
+in which the Transformer outputs of the context en-
+coder are compared to all outputs of the candidate
+encoder, with the ﬁnal score being a sum of the
+maximum similarity scores for each context output.
+The authors propose an end-to-end setup involv-
+ing large-scale search, where the token representa-
+tions of all candidates are stored in a FAISS index,
+queries into the FAISS index are context outputs,
+and a re-ranking step using the maxsim operation
+is performed on a much smaller set of candidates.
+We implement this method for retrieval-augmented
+dialogue, and simply denote it as ColBERT .
+3.3.2 Iterative Retrieval
+Several methods in the literature have shown that
+using iterative retrieval strategies is an effective
+way to improve retrieval (Khattab et al., 2020),
+distill knowledge from the retriever to the reader
+(Izacard and Grave, 2021), and boost performance
+in multi-hop or complex QA settings (Xiong et al.,
+2021; Qi et al., 2020). Applying a similar tech-
+nique to dialogue is easily motivated; intuitively,
+assuming one has an appropriately expressive gen-
+erative model, retrieval conditioned on the output
+of the generator (trained to predict the ground truth
+response y)should surface relevant facts for the
+conversation . We thus consider an architecture thatinvolves two rounds of retrieval and generation,
+where the second round retrieves according to the
+generated output of the ﬁrst round; the model is
+trained to predict target labels taking into account
+both stages. We denote this model ReGReT (re-
+trieve, generate, retrieve, tune), and note that one
+could use the same model for both rounds (Re-
+GReT Same) or a separate model for both rounds
+(ReGReT Sep).
+3.3.3 Retriever-less Retrieval
+Recent work has demonstrated that large pre-
+trained models have some capacity to store knowl-
+edge within their parameters (Petroni et al., 2019;
+Roberts et al., 2020); some have shown that model
+representations themselves can be used nearly out-
+of-the-box for nearest neighbor retrieval of relevant
+contexts to help in language modeling (Khandel-
+wal et al., 2020), machine translation (Khandelwal
+et al., 2021), and grounded dialogue (Fan et al.,
+2021). We explore the efﬁcacy of BART and T5
+at encoding knowledge via utilizing their encoders
+directly to encode both q(xi)andd(zj), allowing
+the full RAG model to propagate error from the
+token losses to the encoder seen as a retriever and
+as a generator , thus removing the requirement of
+training and deploying a completely separate Trans-
+former model for that goal. We draw inspiration
+from the ColBERT setup, and use encoder outputs
+as queries into FAISS, with a maxsim operation
+computing ﬁnal documents scores p(zjjxi). We
+refer to this model as BREAD (BART-Retriever-
+Encoder-And-Decoder) for BART-based models,
+andTREAD for T5-based models.
+3.4 Improving Augmented Generation
+We have thus far described several improvements
+to the retrieval mechanism of neural-retriever-in-
+the-loop generative architectures, inspired by im-
+provements in the QA domain arising from bet-
+ter retrieval. However, another line of inquiry is
+whether we can improve the overall interplay of
+retriever and generator, e.g. can we do better than
+the previously introduced methods RAG-Sequence,
+RAG-Token and FiD.
+3.4.1 Conditioning on Dialogue Turns
+For knowledge-grounded dialogue, a single conver-
+sational context spans multiple turns of dialogue,
+and it is not immediately clear that retrieving and
+considering documents based on the whole conver-
+sational context is needed; moreover such a large
+amount of information can easily confuse the sys-
+tem compared to e.g. just a question context in
+QA. Indeed, some preceding methods in knowl-
+edge selection for knowledge-grounded dialogue
+have tried to incorporate sequence position into re-
+trieval (Fan et al., 2021), or consider a sequential
+decision process (Kim et al., 2020). We thus intro-
+duce a modiﬁcation to the RAG generation scheme,
+RAG-Turn , which includes a marginalization step
+within turns of the dialogue prior to marginalization
+over the whole context. This allows information
+to be synthesized over multiple documents while
+ensuring that the documents are relevant for each
+speciﬁc dialogue turn context. This can help diver-
+sify the retrieval and avoid incorrectly focusing on
+a single (irrelevant) topic, whilst also promoting
+natural conversation that is not bound to discussing
+the same thing over and over, as such a character-
+istic would result in excessively boring dialogue
+agents.
+RAG-Turn , compared to RAG-Sequence and
+RAG-Token, considers the turns of dialogue sep-
+arately before jointly marginalizing. We consider
+our context xto now be a set XofTturns,
+such thatX=fx1; :::xTg. We deﬁne the full
+set of documents retrieved for a context Xto be
+Z=fZ1; :::;ZTg, where Zt=fz1; :::zkgis the
+set of kdocuments retrieved for turn tin context
+X. We propose four ways in which to incorporate
+the retrieved documents.
+RAG-Turn Doc-Then-Turn As each turn con-
+siders a potentially different set of documents, one
+can ﬁrst marginalize over the documents within a
+turn, and then marginalize over documents across
+turns , for each token in the resulting sequence:
+pTurn-DTT (yjX)
+mY
+lX
+xt2XX
+zi2Ztp(zijxt)p(yljxt;zi; y1:::yl 1)
+RAG-Turn Doc-Only We can alternatively con-
+sider each turn independently while considering
+documents within a turn jointly . We deﬁne the
+generator probability for each turn xtas follows:
+pTurn-DO(yjxt)
+mY
+lX
+zi2Ztp(zijxt)p(yljxt;zi; y1:::yl 1)
+At train time, different turns are considered to
+be different contexts entirely, and loss is computedagainst the ground truth label for each turn. At
+inference time, we follow a similar technique to
+“thorough” decoding (Lewis et al., 2020b) by ﬁrst
+generating a candidate sequence for each turn, and
+then running an additional forward pass to rescore
+the ﬁnal generations; we found this method to be
+better than a simple post-hoc re-ranking of all the
+candidate beams.
+RAG-Turn Token & Sequence Retrieving doc-
+uments for each turn xtcan also be viewed as a
+way of boosting the total number of documents.
+We can thus try falling back to the standard RAG-
+Token and RAG-Sequence generator probabilities,
+by considering the union of all documents retrieved
+for each turnST
+t=1Zt, and the concatenation of all
+the turns in the context X= [x1;:::;xT]as before.
+We refer to these methods as RAG-Turn Token ,
+andRAG-Turn Sequence . Concretely:
+pTurn-Token (yjX)
+mY
+lX
+z2ST
+t=1Ztp(zjX)p(yljX;z; y1:::yl 1)
+pTurn-Sequence (yjX)
+X
+z2ST
+t=1Ztp(zjX)mY
+lp(yljX;z; y1:::yl 1)
+A ﬁnal note about RAG-Turn is that, with ex-
+ceedingly large dialogue contexts, the number
+of turns can prove cumbersome for the overall
+system. Suppose we have a dialogue context
+X=fx1; :::;xTgcontaining Tturns of dialogue
+in order of appearance, i.e., xTis the most re-
+cent utterance. We explore RAG-Turn in a setting
+where we ﬁx a value T= 1TT, such
+that the most recent Tturns,fxT T; :::;xTg,
+are considered independently, and all turns prior
+fx1; :::;xT T 1gare considered jointly, yielding
+T+ 1total context “turns”. This setting allows
+dialogue contexts to grow arbitrarily large without
+impeding the whole system with excessive compu-
+tation.
+3.4.2 Improving FiD
+FiD does not involve a mechanism for training
+its retriever, though the effect is mitigated by be-
+ing able to more efﬁciently attend over larger sets
+of documents than RAG, as the independent en-
+coder outputs are fused before decoding the ﬁ-
+nal generation. FiD has been applied with great
+success to open-domain QA tasks primarily with
+BM25 retrievers or neural retrievers pre-trained
+on QA datasets (Izacard and Grave, 2020; Xiong
+et al., 2021). However, as previously discussed,
+knowledge-grounded dialogue offers a more chal-
+lenging (or at the very least, materially different)
+retrieval task than question answering. We thus
+explore whether we can improve upon out-of-the-
+box FiD by incorporating retrievers trained in a
+RAG setup ; we refer to models with a DPR-based
+retriever trained with RAG, and then used with FiD,
+asFiD-RAG , and apply relevant sufﬁxes to denote
+comparison to our other retrieval methods.
+4 Experiments
+To analyze the set of possible model choices and
+design decisions, we perform experiments that at-
+tempt to ask and answer a series of questions; we
+are interested in the impact of the architectures we
+have chosen, and through these questions we verify
+that our decisions are sound.
+Datasets We conduct experiments on two
+datasets: Wizard of Wikipedia (WoW) (Dinan et al.,
+2019b) and CMU Document Grounded Conversa-
+tions (CMU_DoG) (Zhou et al., 2018) which are
+both sets of knowledge-grounded dialogues col-
+lected through human-human crowdworker chats in
+English, where one of the crowdworkers had access
+to external knowledge from Wikipedia. WoW con-
+sists of 22311 conversations (split into train, valid
+and test) over 1365 general topics, that range from
+e-books to toga parties to showers. Valid and test
+are split into seen and unseen versions for out-of-
+distribution topic evaluations, where the test unseen
+split contains 1000 dialogues with 58 new topics
+not discussed in the training data . CMU_DoG
+consists of 4112 conversations and focuses on the
+domain of movies. We note that the original setup
+of CMU_DoG involves models being given a gold
+knowledge paragraph in addition to the dialogue,
+but in our work we use this dataset to consider the
+more difﬁcult (and realistic) problem of being able
+toretrieve this knowledge, rather than it being pro-
+vided. To similarly assess performance on seen
+vs. unseen distributions for CMU_Dog, we con-
+struct a custom split by holding out conversations
+about 2 of the 30 movies in CMU_DoG for “un-
+seen” test, and subsequently split the conversationsof the other 28 ﬁlms across train, valid, and “seen”
+test. The results presented in the following sections
+focus on these modiﬁed splits, with measurements
+on the original data split provided in the appendix
+in Tables 20 and 21.
+We employ the standard KiLT Wikipedia dump
+(Petroni et al., 2020) as our knowledge source for
+retrieval for both datasets2.
+Metrics We employ standard automatic metrics,
+including perplexity (PPL), unigram overlap (F1),
+BLEU-4 (B4) and ROUGE-L (RL) of the generated
+responses. We also consider two additional auto-
+matic metrics, Knowledge F1 (KF1) and Rare F1
+(RF1) which will be described further in Sec. 4.2.1
+and 4.2.2. Finally, we consider human evaluations
+in Sec. 4.2.3, described in detail there.
+Training Details All models are trained in Par-
+lAI3(Miller et al., 2017), sweeping over parameters
+where possible, and using early stopping of model
+perplexity on the validation set. We also attempted
+to optimize the decoding parameters of the models
+in the same way on the validation set to optimize
+the decoding strategy (beam size, minimum beam
+length, and context blocking – all of which do not
+affect perplexity; here we use F1 instead for opti-
+mization).
+4.1 Does retrieval help?
+It is important to ﬁrst verify the strength of imbuing
+models with retrieval, compared to non-augmented
+(standard) encoder-decoders.
+We ﬁrst demonstrate in Table 1 that using a stan-
+dard RAG-Token DPR model with BART-Large
+indeed outperforms BART-Large itself without re-
+trieval augmentation on both datasets, given only
+the dialogue context and retrieving knowledge from
+the entire of Wikipedia. We can also compare
+across different encoder-decoder base architectures
+(seq2seq models) and retrieval mechanisms, as
+shown in Table 2 for WoW.
+Overall, we see that retrieval helps sub-
+stantially in improving performance on both
+knowledge-grounded conversational datasets.
+4.2 Does retrieval eliminate model
+hallucination?
+Modeling knowledge-grounded dialogue across
+open-domain topics requires nuanced evalua-
+2https://github.com/facebookresearch/KILT
+3https://parl.ai
+WoW Valid Seen CMU_Dog Test Seen
+Knowledge PPL F1 Knowledge F1 Rare F1 PPL F1 Knowledge F1 Rare F1
+Repeat Label - 100 35.9 100 - 100 5.21 100
+Repeat Knowledge - 35.9 100 39.5 - 5.21 100 2.59
+BART-Large
+None 14.8 21.0 17.7 14.8 16.3 15.8 6.6 7.8
+RAG DPR 11.6 22.5 26.0 17.8 13.7 14.8 8.2 7.1
+Gold 7.9 39.1 61.2 40.1 14.8 15.5 8.6 7.7
+Table 1: Comparison of Use of Knowledge on WoW (Valid Seen) and CMU_DoG (Test Seen). Repeat (Gold)
+Label and Knowledge are baselines, to be compared to a BART-Large model either not using knowledge (None),
+retrieving knowledge (using RAG-Token DPR with 5 retrieved documents), or being given the gold knowledge
+(Gold).
+Seq2Seq Model Retrieval Mechanism PPL F1 Knowledge F1 BLEU-4 ROUGE-L
+BlenderBot-400m None 11.2 19.7 16.3 1.4 18.8
+RAG DPR 9.0 21.1 23.7 3.0 21.2
+RAG DPR-Poly 9.7 21.1 24.2 3.0 21.0
+BART-Large None 14.7 20.9 17.4 1.7 20.3
+FiD 13.7 20.8 21.5 2.5 21.2
+RAG DPR 12.7 22.4 22.5 3.4 22.9
+RAG DPR-Poly 11.4 22.9 26.5 3.9 23.5
+FiD-RAG DPR 11.8 21.1 29.6 3.8 22.7
+FiD-RAG DPR-Poly 11.4 22.1 29.7 4.1 23.0
+T5 Large None 12.1 19.3 14.6 1.0 18.1
+RAG DPR 9.8 21.9 25.9 3.8 22.1
+FiD-RAG DPR 9.5 22.0 27.8 3.9 22.3
+Table 2: Comparison of Seq2Seq Models and Retrieval Augmentations on Wow Test (Seen). Perplexity (PPL)
+values are not comparable across different seq2seq architectures as they use different dictionaries. Retrieval models
+are retrieving 5 documents over all of Wikipedia. All RAG models are RAG-Token.
+tions. Research has indicated that standard au-
+tomated metrics useful in related ﬁelds, such
+as BLEU/ROUGE for Machine Translation and
+F1/EM for QA are not totally correlated with how
+well neural conversational models perform in the
+wild (Liu et al., 2016; Dinan et al., 2019a; Mehri
+and Eskenazi, 2020). In our setting, the question
+is: how conﬁdent are we that the model is actually
+grounding appropriately in its retrieved knowledge?
+What if it is simply learning to copy common words
+from the retrieved documents (after all, we’re using
+unstructured knowledge sources with all the tokens
+in English Wikipedia)? We introduce two addi-
+tional automatic metrics, Knowledge F1 and Rare
+F1, to measure this effect, as well as conducting
+human evaluations.
+4.2.1 Knowledge F1 metric
+While standard F1 is a measure of unigram
+word overlap between the model’s generation
+and the ground-truth human response, Knowl-
+edge F1 (KF1) measures such overlap with the
+knowledge on which the human grounded during
+dataset collection . This is possible to measure for
+datasets where this is known, such as in WoW andCMU_Dog. Knowledge F1 attempts to capture
+whether a model is speaking knowledgeably by
+using relevant knowledge as judged by humans,
+whereas standard F1 captures conversational abil-
+ity, including token overlap that is unrelated to
+knowledge.
+Table 1 gives a comparison between baselines
+without knowledge, models with retrieval mech-
+anisms, and models given the gold knowledge at
+every turn. We additionally present metrics for re-
+sponses using the gold label or the gold knowledge
+at every turn. While the gap between baselines
+and retrieval-augmented models using regular F1 is
+noticeable, the gap grows signiﬁcantly when con-
+sidering Knowledge F1, indicating this factor is the
+true source of the retrieval-augmentation method’s
+gains. These results conﬁrm that the models are
+appropriately utilizing knowledge.
+4.2.2 Rare F1 metric
+When comparing texts, F1 can be inﬂated by ex-
+ploiting common unigrams (Dinan et al., 2019a).
+We attempt to rectify this by only considering
+words that are infrequent in the dataset when cal-
+culating F1. We deﬁne a word as infrequent if it is
+Model Retrieved Docs Consistency Engagingness Knowledgeable Hallucination
+BART-Large - 81.8% 85.5% 34.1% 68.2%
+RAG-Sequence 5 docs 80.2% 71.2% 94.9% 9.6%
+RAG-Token 5 docs 85.3% 77.4% 93.2% 17.0%
+RAG-Token 25 docs 87.0% 81.9% 88.7% 21.5%
+RAG-Token DPR-Poly 5 docs 89.3% 77.9% 97.7% 20.9%
+RAG-Turn-DTT 5 docs 74.6% 73.0% 94.3% 15.6%
+RAG-Turn-DO 5 docs 84.0% 85.0% 94.0% 21.0%
+FiD-RAG 5 docs 90.1% 78.0% 96.1% 7.9%
+FiD-RAG 25 docs 87.6% 81.4% 81.4% 19.8%
+Table 3: Human Evaluations of Various Models on Wow Test (Unseen). All retrieval models use BART-Large
+as the base seq2seq model.
+Context Topic : Thierry Henry
+Apprentice : Thierry Henry is one of my all time favorite players. What about you?
+Ground Truth Wizard Response He was good. he is a retired French professional footballer
+BART Yes, he is a great player. He was born in1931 and played for England’s youth teams.
+RAG-Token I love him too! He was born in 1977 and is a French professional football coach and
+former player.
+FiD-RAG DPR I love him too! He is the current manager of French club Monaco. He was born in
+1977.
+Context Topic : Elvis Presley
+Wizard : Oh baby.... Elvis Presley is truly The King of Rock and Roll!
+Apprentice : yes...who doesn’t love Elvis Presley and his music?
+Wizard : Seriously. I have been planning a vacation to Graceland myself. I have family
+in Tennessee so it could be good.
+Apprentice : I would love to tour his home. Which one of his songs is your favorite?
+Ground Truth Wizard Response I always liked “Hounddog.” My grandpa heard Elvis sing it live in Memphis.
+BART I love all of his albums. I think my favorite is “Love MeDo” which came outin1999.
+FiD-RAG DPR I really like “Heartbreak Hotel” which was released in 1956 and became a number one
+hit in the United States.
+Table 4: Hallucination in (Non-)Retrieval-Augmented Models. Examples of model outputs on the Wizard
+of Wikipedia Test set, unseen distribution; the retrieval-augmented models use BART as a base seq2seq model.
+Highlighted yellow text blocks are demonstrably false statements, as veriﬁed by Wikipedia. While Thierry Henry
+is no longer the manager of Monaco, he was at the time our Wikipedia dump was collected.
+in the lower half of the cumulative frequency dis-
+tribution of the reference corpus. For each dataset,
+our reference corpus was all human messages from
+all chats across all splits. We ﬁnd some correlation
+between this metric and Knowledge F1 for WoW
+(see Table 1). We note that Knowledge F1 is only
+available for datasets with labeled gold knowledge,
+whereas Rare F1 can always be computed.
+4.2.3 Human Evaluations of Conversations
+Annotation Setup We conduct annotations of
+100 model responses to various conversational con-
+texts from the Wizard of Wikipedia test set (un-
+seen). Expert annotators were sourced from re-
+searchers within the lab conducting the study. For
+all models, we show to annotators the conver-
+sational context, the ground truth response, and
+the knowledge used by the human who wrote the
+ground truth response. Along with the model re-sponse, we show the document retrieved by the
+model with the most unigram overlap compared to
+the model response, as a way of interpreting where
+the model’s knowledge came from. We then mea-
+sure four axes of model performance by posing the
+following questions to the annotators:
+•Consistency : Does the response 1) make
+sense in the context of the conversation; 2)
+make sense in and of itself?
+•Engagingness : Are you engaged by the re-
+sponse? Do you want to continue the conver-
+sation?
+•Knowledgeable : Does the response contain
+some knowledgeable, correct information?
+•Hallucination : Issome of the model output
+factually incorrect? An admixture of ideas?
+We additionally allow annotators to mark if they
+cannot determine whether the model response is
+knowledgeable or a hallucination (“unclear”).
+The evaluation results are shown in Table 3. We
+ﬁrst see that hallucination rates drop dramatically
+for retrieval-augmented models, while knowledge-
+ability rates skyrocket. These results support our
+main claim that our models reduce hallucination
+in conversations . We show example model out-
+puts in Table 4.
+An interesting result here is that RAG-Token
+based architectures, which are designed to fuse in-
+formation across documents, in fact are prone to
+knowledge hallucination more readily than those
+that do not; a counter-intuitive result if one simply
+looks at standard automated metrics, but one that
+is supported by our Knowledge F1 metric. That
+is, retrieving 25 documents for RAG Token yields
+higher F1 scores, and lower perplexities, as out-
+lined in Table 15; however, this also yields a lower
+Knowledge F1 score, and in human evaluations, we
+see higher levels of hallucination. Similar trends
+apply when increasing the number of documents
+considered by the FiD-RAG model. These results
+indicate that there is a nuance to how one should
+design these models; simply throwing lots of docu-
+ments into a model can at times harm the generation
+in subtle ways. We observe a correlation between
+these human evaluation metrics and our automatic
+metrics Knowledge F1 and Rare F1 compared to
+standard F1, see Figure 2 in the Appendix; it is thus
+our recommendation to evaluate these metrics as
+well going forward.
+4.2.4 Does factuality sacriﬁce conversational
+ability?
+We see in Table 3 that consistency and engag-
+ingness levels are generally comparable across
+retrieval-augmented models and the relevant base-
+lines, with slight drops in engagingness attributed
+to some models grounding their responses too
+much in retrieved knowledge. That is, factuality
+does not seem to sacriﬁce conversational ability .
+This is also in line with F1 and Knowledge F1
+scores from e.g. Tables 1 and 2. Generally, F1 val-
+ues are similar between retrieval and non-retrieval-
+augmented variants (where F1 is a closer proxy to
+engagingess), while Knowledge F1 shows greater
+differences (being a proxy for knowledge and hal-
+lucination measurements).4.3 Does retrieval help generalization to
+unseen distributions?
+Table 5 show automated metrics for model evalu-
+ations on the unseen data distributions for WoW
+and our modiﬁed CMU_DoG split. A trend among
+models without access to knowledge via retrieval-
+augmentation becomes readily apparent - perfor-
+mance suffers when shifting to unseen topics. This
+is indicative of the general trend that the base mod-
+els do not generalize as well to new inputs, which is
+a skill that is absolutely necessary in conversational
+agents that claim to be open-domain.
+Models that can ground on knowledge, mean-
+while, do not suffer from this problem nearly as
+much ; the overall decrease in performance com-
+pared to a seen distribution is much smaller than
+models that cannot ground on knowledge – on
+WoW, BART-Large suffers decreases in perfor-
+mance on PPL, F1, and Knowledge F1 by 29%,
+11%, and 14%, respectively, while the RAG DPR-
+Poly model only suffers 16%, 5%, and 8% drops
+on the same metrics. Our best models achieve new
+state-of-the-art results on the Wizard of Wikipedia
+Test Unseen split, see Table 6 for a comparison.
+Knowledge F1 scores remain quite high, with
+retrieval-augmented models generally decreasing
+performance the least with respect to this metric,
+indicating the augmentation can effectively retrieve
+knowledge on these topics.
+4.4 How should generation be augmented?
+4.4.1 Conditioning on turns of dialogue
+Table 7 compares our RAG-Turn methods de-
+scribed in Section 3.4 to the standard RAG-
+Sequence and RAG-Token methods; we addition-
+ally include a comparison to standard RAG models
+trained with retrieval only on the most recent turn
+of dialogue. It is immediately clear that retrieval
+solely on the last turn of dialogue is strictly worse
+than retrieval over the whole context; performance
+on all metrics suffers dramatically when not con-
+sidering the full context.
+Secondly, we observe a noticeable trade-off
+when comparing RAG-Sequence and RAG-Token
+models: RAG-Sequence achieves lower regular F1
+scores but higher knowledge F1 scores than RAG-
+Token, which further emphasizes human evaluation
+results in Table 3 that the RAG-Sequence model is
+good at incorporating knowledge but poor at retain-
+ing conversational ability. The RAG-Turn models
+bridge this gap and offer a balanced trade-off of the
+WoW Test Unseen CMU_DoG Test Unseen
+Seq2Seq Model Retrieval Mechanism PPL F1 KF1 B4 RL PPL F1 KF1 B4 RL
+BART-Large None 18.9 18.7 15.0 0.9 18.4 20.7 15.3 5.7 0.6 18.3
+FiD 15.1 19.9 20.4 2.4 20.5 18.4 14.5 7.7 0.6 20.2
+RAG DPR 14.5 21.7 20.8 2.6 21.7 16.0 14.8 7.5 0.5 20.4
+RAG DPR-Poly 13.2 21.8 24.3 3.4 22.3 16.0 15.2 7.3 0.6 20.9
+FiD-RAG DPR 13.5 20.4 27.8 3.7 22.3 17.9 14.1 8.9 0.6 20.5
+FiD-RAG DPR-Poly 13.1 21.1 27.1 3.8 22.6 - - - - -
+T5-Large None 13.8 18.4 13.8 0.8 17.2 - - - - -
+RAG DPR 11.0 20.5 21.9 2.8 20.4 - - - - -
+FiD-RAG DPR 10.8 20.9 26.1 3.7 21.2 - - - - -
+Table 5: Comparison of Seq2Seq Models and Retrieval Mechanisms on Unseen Distributions using WoW
+Test Unseen and our modiﬁed CMU_DoG Test Unseen split. Perplexity (PPL) values are not comparable across
+different seq2seq architectures as they use different dictionaries. Retrieval models are retrieving 5 documents over
+all of Wikipedia. All RAG models are RAG-Token.
+Test Seen Test Unseen
+Method PPL F1 B4 RL PPL F1 B4 RL
+No Knowledge
+BlenderBot (Roller et al., 2020) 8.72 18.8 13 10.4 17.8 0.7
+BART (ours) 14.7 20.9 1.7 20.3 18.9 18.7 0.9 18.4
+Select from Wizard of Wikipedia Knowledge
+GPT-2 Finetune (Zhao et al., 2020c) 15.0 14.4 1.0 18.9 13.8 0.8
+E2E Transformer MemNet (Dinan et al., 2019b) 63.5 16.9 97.3 14.4
+DRD (Zhao et al., 2020a) 23.0 18.0 5.5 25.6 16.5 4.3
+Two-Stage Transformer MemNet (Dinan et al., 2019b) 46.5 18.9 84.8 17.3
+DialoGPT Finetune (Zhao et al., 2020c) 16.2 19.0 2.3 20.4 17.6 3.2
+SKT (Kim et al., 2020) 52.0 19.3 81.4 16.1
+BART FK (Bruyn et al., 2020) 12.2 20.1 14.9 19.3
+KnowledGPT (Zhao et al., 2020b) 19.2 22.0 22.3 20.5
+KIF (Fan et al., 2021) *25.9 *22.3
+KIF (wiki-only) (Fan et al., 2021) 23.9
+FiD-RAG (Ours; all WoW paragraphs) 10.5 23.2 4.4 24.2 10.7 23.2 4.6 24.4
+Retrieval over All of Wikipedia
+RAG DPR-Poly (Ours) 11.4 22.9 3.9 23.5 13.2 21.8 3.4 22.3
+FiD-RAG DPR-Poly (Ours) 10.7 22.9 4.1 23.8 12.0 22.1 3.7 23.1
+Table 6: WoW Comparison to Existing Results . Methods with * augmented their knowledge source with training
+utterances, which is useful on Test Seen data, but likely not as useful on Unseen data. Our models use BART as
+the base seq2seq model; the RAG and FiD-RAG models retrieve 5 documents, and the FiD-RAG DPR-Poly model
+retrieves 25.
+two. The RAG-Turn Doc-Then-Turn method yields
+F1 scores higher than the RAG-Sequence model,
+and higher Knowledge F1 scores than the RAG-
+Token model; the Doc-Only RAG-Turn method
+achieves the highest F1 on both the seen/unseen
+splits, and improves on Knowledge F1 scores of
+the RAG-Token model.
+While Table 7 displays results with T= 1, we
+note that increasing Tyields similar results; see
+results in Table 18 and discussion in Appendix B.
+4.4.2 Improving FiD-based generation
+Table 8 compares the usage of various retrievers in
+a FiD setup. It is clear that FiD is suboptimal out-
+of-the-box for knowledge-grounded dialogue, and
+incorporating retrievers trained via RAG improves
+performance considerably. Speciﬁcally, we seelarge decreases in perplexity, and signiﬁcant gains
+in Knowledge F1: FiD-RAG-Poly, with BART,
+improves Knowledge F1 by 33% and 41% on the
+seen/unseen splits respectively; FiD-RAG with T5
+sees gains of 37% and 25%.
+4.5 How effective are our retrieval
+augmentations? Is neural retrieval
+necessary?
+4.5.1 Comparison to non-neural retrievers
+The Wizard of Wikipedia dataset was built with
+a TFIDF-based retriever to provide knowledge to
+the “wizards”. Indeed, the original baselines were
+equipped with a TFIDF retriever to help general-
+ize to new topics. We thus compare directly our
+neural-based approaches by swapping a TFIDF re-
+Valid Seen Valid Unseen
+RAG Type PPL F1 Knowledge F1 B4 RL PPL F1 Knowledge F1 B4 RL
+Retrieve over Most Recent Turn
+Sequence 13.5 20.8 23.3 2.6 21.7 15.5 20.1 21.4 2.1 20.5
+Token 13.8 21.1 22.3 2.6 21.7 15.8 21.1 21.0 2.0 20.8
+Retrieve over Full Dialogue Context
+Sequence 11.1 21.5 27.9 3.9 23.0 12.6 20.3 24.6 2.9 21.3
+Token 11.6 22.5 26.0 4.0 23.5 13.4 21.8 22.7 2.7 21.7
+Turn-DTT 11.9 22.2 28.0 4.1 23.4 13.6 21.1 24.3 2.7 21.4
+Turn-DO 13.3 23.1 26.8 4.0 24.5 15.4 22.0 23.3 2.6 22.5
+Turn-Tok 11.5 21.0 24.3 3.1 21.6 13.2 20.5 21.5 2.0 20.0
+Turn-Seq 10.9 21.5 27.8 4.1 22.9 12.6 19.5 23.5 2.6 20.3
+Table 7: Comparison of RAG Model Types on WoW Valid Seen/Unseen. Retrieval models are retrieving 5 docu-
+ments over all of Wikipedia. We set T= 1for RAG-Turn models, i.e., the last turn is considered independently
+from the prior context turns. All models use BART as the base seq2seq model.
+Valid Seen Valid Unseen
+Model PPL F1 KF1 PPL F1 KF1
+BART
+FiD 13.7 21.2 22.5 15.4 20.5 20.5
+FID-RAG 11.9 21.1 30.0 13.5 20.8 27.5
+FID-RAG-Poly 11.6 22.1 29.7 13.0 22.0 28.4
+T5
+FID 11.6 20.3 21.0 12.4 20.4 20.8
+FID-RAG 9.5 22.6 28.8 10.9 21.7 26.0
+Table 8: Comparison of retrievers used in FiD on
+WoW Valid (Seen/Unseen). All models retrieve 20 doc-
+uments at train time, and 5 documents for inference.
+Perplexity (PPL) values are not comparable across dif-
+ferent seq2seq architectures as they use different dic-
+tionaries. We found that increasing number of docu-
+ments retrieved during inference improves PPL across
+the board, but Knowledge F1 suffers, so we use 5.
+Valid Seen Valid Unseen
+Retriever PPL F1 KF1 PPL F1 KF1
+TFIDF 13.1 21.6 23.0 15.2 21.1 21.6
+DPR 11.6 22.5 26.0 13.4 21.8 22.7
+Table 9: Comparison of neural and non-neural re-
+trievers on WoW Valid (Seen/Unseen). Each model
+uses BART as the base seq2seq model.
+triever over Wikipedia into our retrieval-augmented
+architectures. We see in Table 9 that TFIDF is a
+strong baseline, but is outperformed by a neural-
+based retriever. Neural methods can represent text
+in a much richer way using the deep layers of a
+Transformer architecture, and end-to-end training
+can adapt the representations to take into account
+the interplay between retriever and generator, op-
+timizing them to be maximally informative. In
+comparison, ﬁxed bag-of-words-based retrieval is
+strong at exact matches to rare words, but cannot
+extract more subtle or targeted signals.4.5.2 Comparison amongst re-rankers
+Table 10 outlines results on the Wizard of
+Wikipedia validation sets for our various
+retrieval/re-ranker augmentations. We see that
+using the code re-ranking approach via adding
+a Poly-encoder re-ranker on top of the standard
+DPR retriever for RAG yields the best performing
+model with respect to automated metrics on both
+splits of the validation set. End-to-end re-ranker
+mechanisms (ColBERT, PolyFAISS) yield strong
+results, but the DPR model provides a strong
+enough base that they do not prove to be more
+useful.
+Table 17 in Appendix A measures the raw re-
+trieval power of these methods, by measuring how
+often the gold knowledge sentence is included in
+the top kretrieved documents; we indeed see that
+additional re-ranking improves retrieval.
+4.6 Do different encoder-decoder
+architectures affect performance?
+We analyze several popular base encoder-decoder
+architectures as generators in our evaluations.
+Architecture Comparison We present results
+on Wizard of Wikipedia comparing across different
+encoder-decoder architectures in Table 11. We note
+that the common backbone generators for the stan-
+dard retrieval architectures - BART-Large and T5
+for FiD-RAG and RAG - are comparable in their
+performance when holding the retrieval aspect con-
+stant. While perplexity measures are not directly
+comparable due to dictionary differences, we see
+that generations from the models yield roughly the
+same generation metric results. We additionally ex-
+periment with substituting a model of similar size
+to BART-Large and T5-Large, that was pre-trained
+on a large dialogue corpus as in (Roller et al., 2020)
+Valid Seen Valid Unseen
+Retriever Re-ranker PPL F1 KF1 B4 RL PPL F1 KF1 B4 RL
+TFIDF None 13.1 21.6 23.0 3.3 22.5 15.2 21.1 21.6 2.4 21.1
+DPR None 11.6 22.5 26.0 4.0 23.5 13.4 21.8 22.7 2.7 21.7
+TFIDF DPR 12.5 21.8 23.1 3.4 22.6 14.5 21.4 20.2 2.2 20.9
+DPR Polyencoder 11.7 23.0 26.5 4.0 23.9 13.1 22.6 24.4 3.4 22.6
+Joint DPR Poly Polyencoder 11.6 23.0 27.4 4.3 23.9 13.1 22.1 24.7 3.1 22.1
+PolyFAISS - 12.1 22.9 24.8 3.7 23.6 14.2 21.6 20.6 2.5 21.2
+ColBERT - 12.4 21.8 25.3 3.3 23.1 13.5 21.9 24.7 3.2 22.4
+BREAD - 14.8 20.5 17.7 1.7 20.6 17.3 19.8 17.2 1.3 19.5
+ReGReT (Sep) None 11.9 22.6 26.9 3.9 23.9 13.6 21.6 24.1 2.9 21.9
+ReGReT (Same) None 12.0 22.6 25.9 4.0 23.9 13.8 21.5 23.2 2.7 21.6
+Table 10: Comparison of re-rankers for BART-based RAG-Token models on WoW Valid Seen/Unseen, using
+5 retrieved documents.
+Valid Seen Valid Unseen
+Generator Size PPL F1 KF1 PPL F1 KF1
+BlenderBot-90m 90m 13.4 21.4 23.9 15.9 21.1 21.3
+BlenderBot-400m 400m 9.2 21.1 23.2 10.4 19.9 20.5
+BlenderBot-3B 3B 8.2 21.1 20.2 9.1 20.9 18.7
+T5 Base 220m 11.5 21.9 25.5 13.6 21.2 22.4
+T5 Large 770m 9.7 22.6 25.2 11.2 21.7 22.9
+BART Large 400m 11.6 22.5 26.0 13.4 21.8 22.7
+Table 11: Comparison between different seq2seq models on WoW Valid Seen/Unseen. All models use RAG-
+Token architectures with DPR Retrieval, retrieving 5 documents at inference time. Perplexity (PPL) values are not
+comparable across different generator architectures as they use different dictionaries.
+called BlenderBot-400m; we see that this model is
+comparably worse to T5 and BART-Large on this
+task.
+Size Comparison We present results on Wizard
+of Wikipedia comparing across different model
+sizes in Table 11. With larger models we tend to see
+a decrease in perplexity, indicating that these mod-
+els become more ﬂuent with respect to the dataset;
+however, generation statistics remain roughly con-
+stant. In fact, for the BlenderBot models, increas-
+ing model size leads to decreasing performance in
+the Knowledge F1 metric. This is an intriguing
+result, that we believe further motivates the need
+for additional metrics beyond the standard ones
+when measuring prowess on dialogue-based tasks.
+One hypothesis here is that the large model is sac-
+riﬁcing knowledge use by instead relying on its
+conversational ﬂuency (given that its perplexity is
+signiﬁcantly lower).
+4.7 Is a neural model trained for retrieval
+necessary?
+The retrieval-augmented architectures we experi-
+mented with so far each required a separate module
+that performs retrieval to augment the context of
+the generator. However, prior work has demon-
+strated that the generator models encode enoughinformation in the context representations to act
+as quasi-retrievers themselves ((Fan et al., 2021;
+Khandelwal et al., 2020; Bruyn et al., 2020; Khan-
+delwal et al., 2021). As outlined in Section 3.3.3,
+here we experiment with an architecture such that a
+shared encoder is used for query/context encoding
+in the retrieval andgeneration steps.
+Table 12 shows the efﬁcacy of this approach,
+comparing across different sources of knowledge.
+When limiting the knowledge base to all topics
+from Wikipedia that are present in the WoW dataset
+– comprising 500k tokens across 3k documents – the
+BREAD (BART-Retriever-Encoder-And-Decoder)
+model obtains similar performance to its DPR-
+retrieval counterpart. When scaling to the ﬁrst two
+paragraphs of all topics from Wikipedia – compris-
+ing 1 billion tokens across 11 million documents, of
+the same order of magnitude as the full Wikipedia
+knowledge source – we see a slight reduction in
+performance, but the BREAD model still effec-
+tively retrieves relevant information, and improves
+upon a no-retrieval baseline. However, when scal-
+ing to the full knowledge source – comprising 3
+billion tokens over 21 million documents – we see
+that we are unable to surpass even a no-knowledge
+baseline; we hypothesize that the token-level simi-
+larities computed by the BREAD model become in-
+Valid Seen Valid Unseen
+Src Arch. PPL F1 KF1 PPL F1 KF1
+BART
+A RAG-DPR 11.6 22.5 26.0 13.4 21.8 22.7
+A FiD-RAG 13.1 22.0 22.1 15.1 21.6 20.4
+A BREAD 14.8 20.5 17.7 17.3 19.8 17.2
+B RAG-DPR 10.9 23.2 27.9 12.4 22.4 23.7
+B FiD-RAG 12.3 22.7 24.5 14.0 22.2 22.9
+B BREAD 13.7 21.7 22.9 15.3 21.1 21.6
+B BREAD-FiD 12.8 22.4 25.2 14.5 21.7 23.4
+C RAG-DPR 10.7 23.3 28.3 11.7 23.0 26.3
+C FiD-RAG 10.5 23.5 28.4 11.4 23.7 27.9
+C BREAD 12.1 23.2 28.5 13.4 23.0 27.6
+C BREAD-FiD 11.3 23.3 27.7 12.6 23.3 26.2
+T5
+C RAG-DPR 9.0 23.3 26.8 9.8 22.6 24.6
+C FiD-RAG 9.0 22.7 29.3 9.8 23.0 29.4
+C TREAD 11.0 22.1 24.1 12.8 21.8 22.9
+C TREAD-FiD 10.6 22.3 23.4 12.0 22.0 22.4
+Table 12: Comparison between DPR Retriever mod-
+els (RAG and FiD) and “retriever-less” BREAD and
+TREAD models on WoW Valid Seen/Unseen, with
+varying knowledge sources: A: All of Wikipedia; B:
+First 2 paragraphs from all of Wikipedia; C: First
+two paragraphs from all articles covered by the WoW
+dataset. All models retrieve 5 documents during train-
+ing and inference. Perplexity (PPL) values are not com-
+parable across different seq2seq architectures as they
+use different dictionaries.
+creasingly noisy as the knowledge source is scaled
+up: when a relevant Wikipedia article is spread
+across several “passages”, as in our unstructured
+knowledge source dump, it becomes difﬁcult for
+the BREAD model to identify precisely which sen-
+tence is relevant.
+We ﬁnd similar results when evaluating TREAD
+models on the smallest knowledge source listed
+in the previous paragraph. The TREAD mod-
+els substantially outperform their non-retrieval-
+augmented counterparts (e.g., F1 and knowledge
+F1 improve from 19.3 and 14.6 without retrieval
+to 22.1 and 24.1 with TREAD, respectively, on
+the WoW Valid Seen split), however we do see
+that their RAG/FiD counterparts perform better in
+terms of knowledge F1 and perplexity.
+4.8 Additional Relevant Ablations
+We outline several more important questions when
+considering these models; some results are left to
+the appendix, but we discuss relevant insights here.
+4.8.1 Does the decoding strategy affect
+performance?
+We compare model outputs with various decoding
+strategies in Table 19 in the Appendix. We compare
+three decoding methods: beam search, blocking
+repeated n-grams (we use n= 3); nucleus sam-
+pling (Holtzman et al., 2020) with varying valuesValid Seen Valid Unseen
+Pre-training
+Data PPL F1 KF1 PPL F1 KF1
+DPR
+NQ + TQA 11.6 22.5 26.0 13.4 21.8 22.7
+WoW 12.1 22.7 26.2 13.4 22.1 24.4
+NQ + TQA + WoW 12.1 22.7 25.8 13.7 22.0 23.0
+ColBERT
+MS-Marco 12.4 21.8 25.3 13.5 21.9 24.7
+WoW 12.6 21.8 26.1 13.6 21.4 24.9
+DPR-Poly and Joint DPR/Poly
+WikiTo 11.7 23.0 26.5 13.1 22.6 24.4
+NQ + TQA 11.6 23.0 27.4 13.1 22.1 24.7
+Table 13: Comparison between different
+retriever/re-ranker pre-training schemes on
+WoW Valid Seen/Unseen. All models use BART as the
+base seq2seq model.
+ofp; and top-k sampling (Fan et al., 2018) with
+k= 10 . We additionally compare whether to ap-
+ply beam-blocking to the context , i.e., blocking
+repeated n-grams that appear in the dialogue con-
+textonly –n-grams in the retrieved documents are
+not blocked.
+We ﬁnd that, across all retrieval schemes, beam-
+blocking the dialogue context hurts performance
+– presumably because the model may be blocked
+from discussing named entities from prior context
+turns – with beam search yielding the highest F1
+scores across the board. Despite the fact that beam
+search and nucleus sampling (with low p) yield
+comparable ROUGE-L and F1 scores, we see a no-
+ticeable different in knowledge F1, implying that
+nucleus sampling may still be good at producing
+ﬂuent/consistent generations while ultimately suf-
+fering increased hallucination. Using nucleus sam-
+pling with a higher pvalue (which increases the
+variety of sampling) and using top-k sampling both
+result in poor relative performance for all four met-
+rics, implying higher levels of hallucination and
+less coherent responses.
+4.8.2 Does retriever and/or re-ranker
+pre-training affect performance?
+We explore the effects of pre-training the neural re-
+triever to help prime it for dialogue-based retrieval.
+To do so, we consider WoW knowledge selection as
+an appropriate pre-training task: given a dialogue
+context and a set of candidate knowledge sentences,
+choose the sentence on which to next ground a
+response. For standard RAG-DPR methods, we
+try both ﬁne-tuning 1) a DPR model pre-trained
+on Natural Questions (Kwiatkowski et al., 2019)
+and Trivia QA (Joshi et al., 2017) and 2) a BERT
+model from scratch on the WoW knowledge selec-
+tion task, and substitute these in for the standard
+Valid Seen Valid Unseen
+Src Type PPL F1 KF1 PPL F1 KF1
+A P 11.6 22.5 26.0 13.4 21.8 22.7
+B P 10.9 23.2 27.9 12.4 22.4 23.7
+B S 13.2 22.3 23.9 15.5 21.5 20.1
+C P 10.7 23.3 28.3 11.7 23.0 26.3
+C S 12.8 22.2 24.8 14.4 21.5 21.7
+Table 14: Comparison between using different
+sources of knowledge on WoW Valid Seen/Unseen.
+All models are BART RAG-Token with DPR Retrieval.
+A: All of Wikipedia; B: ﬁrst two paragraphs from all
+articles in Wikipedia; C: ﬁrst two paragraphs from all
+articles in Wikipedia covering the WoW dataset. P: full
+passages are used; S: sentences are separate passages.
+QA-pre-trained DPR retriever from our base setup;
+we explore similar pre-training ablations with the
+ColBERT model. Results are in Table 13; we see
+minimal performance gains from such pre-training,
+and conclude that as long as the retriever is in a
+good state, it will work in the ﬁne-tuning setup.
+We see similar results when comparing pre-
+training strategies for the DPR-Poly re-ranker
+model in Table 13; pre-training the re-ranker does
+not yield noticeable downstream gains.
+4.8.3 Does the source of knowledge matter?
+We explore the downstream effect of swapping in
+different sources of knowledge. Because the distri-
+bution of the topics within Wizard of Wikipedia is
+known, we can limit our model’s source of knowl-
+edge to contain the smallest subset of Wikipedia
+yielding full coverage of the dataset, resulting in
+nearly 3000 documents from which to retrieve. As
+the retrieval task is now easier, we see noticeable
+performance gains when substituting this source of
+knowledge, see Table 14.
+4.8.4 How does the number of documents
+retrieved/re-ranked affect
+performance?
+We conclude our ablation studies with an analysis
+on the number of documents retrieved. Table 15
+outlines how each backbone architecture handles
+increasing the number of documents considered
+during inference.
+For backbone architectures designed to consider
+several documents jointly - namely, RAG-Token
+and FiD-RAG - increasing the number of retrieved
+documents yields improvements in perplexity and
+F1 measures. However, we see substantial dropoffs
+in Knowledge F1 measures, which might imply that
+the models begin to hallucinate more and more, aValid Seen Valid Unseen
+#Docs PPL F1 KF1 PPL F1 KF1
+RAG-Token
+1 12.8 21.9 27.6 23.8 20.5 23.8
+5 11.6 22.5 26.0 13.4 21.7 22.7
+25 11.6 22.6 24.5 13.0 21.7 21.1
+50 11.6 22.4 23.9 13.0 21.8 20.6
+RAG-Sequence
+1 12.5 22.1 27.4 14.6 21.1 24.3
+5 11.1 21.5 27.9 12.6 20.3 24.6
+25 10.6 21.3 27.8 11.4 20.0 24.3
+50 10.5 21.2 27.8 11.2 19.9 24.3
+RAG-Turn-DTT
+1 12.7 21.3 28.3 15.0 20.1 24.9
+5 11.8 21.9 27.7 13.6 21.1 24.3
+25 11.7 22.2 26.8 13.2 21.6 23.3
+50 11.9 22.2 26.4 13.7 21.7 22.7
+RAG-Turn-DO
+1 14.2 22.2 28.1 16.9 21.3 24.7
+5 13.3 23.1 26.8 15.5 22.0 23.3
+25 13.3 23.1 24.8 15.1 22.2 21.1
+50 13.3 22.6 23.7 15.2 22.0 20.0
+FiD-RAG
+1 13.0 21.5 28.5 15.5 20.5 23.0
+5 11.0 22.9 27.7 12.7 22.0 25.5
+25 11.1 22.3 21.2 12.1 22.7 22.3
+50 11.7 21.4 18.0 12.6 22.1 19.1
+100 12.7 20.4 15.9 13.6 21.4 16.6
+Table 15: Comparison of the effect of conditioning
+over different numbers of documents at inference
+time for different models on WoW Valid Seen/Unseen.
+All models use a DPR retriever, with BART as the base
+seq2seq model.
+claim that is supported in the human annotations,
+where we see in Table 3 that increasing the number
+of documents for these models yields higher levels
+of hallucination.
+For RAG-Sequence models, which consider each
+document separately, increasing the number of re-
+trieved documents improves perplexity measures
+and maintains both Knowledge F1 and BLEU mea-
+sures; however, F1 scores appear to drop for any
+amount of documents beyond a single one. We
+hypothesize that by considering more and more
+generations we are effectively increasing the beam
+size and ﬁnding generations that match the knowl-
+edge more and more, while straying further away
+from engaging, dialogue-like responses; indeed,
+the RAG-Sequence model in Table 3 only uses 5
+retrieved documents, and human evaluations indi-
+cate that the model still is less often engaging than
+its counterparts.
+Overall, the number of re-ranked documents
+does not seem to improve performance substan-
+tially, so we land on 25 documents re-ranked to
+keep computational overhead to a minimum.
+5 Conclusion
+In this work, we have studied the problem of knowl-
+edge hallucination in conversational agents, an im-
+portant problem as current systems often produce
+factually inaccurate generations. We have shown
+that this problem occurs independently of language
+model size or training data. Retrieval-augmented
+generation in particular is an intuitively promising
+solution to this problem, and in detailed experi-
+ments we have shown that this class of approaches
+signiﬁcantly reduces the hallucination problem in
+dialogue, and can help generalize beyond the train-
+ing data on previously unseen distributions as well.
+Moreover, our best systems manage to do this while
+maintaining conversational ability.
+Future work should explore this direction further
+to continue to ﬁnd the best retriever-generator ar-
+chitectures and training schemes. Separately, the
+choice of knowledge, in the form of unstructured
+text, would also be interesting to explore. Here,
+we only use Wikipedia but potentially any docu-
+ments can be used. Should dialogue models re-
+trieve over more than just factual knowledge? Or,
+in the general case, rather than seeing this as a set
+of documents, a natural extension would be seeing
+this more as a form of long-term memory (Weston
+et al., 2014), as presumably a model architecture
+with an appropriate long-term memory augmenta-
+tion, rather than just retrieval of given documents,
+would be able to reduce hallucinations as well.
+References
+Daniel Adiwardana, Minh-Thang Luong, David R So,
+Jamie Hall, Noah Fiedel, Romal Thoppilan, Zi Yang,
+Apoorv Kulshreshtha, Gaurav Nemade, Yifeng Lu,
+et al. 2020. Towards a human-like open-domain
+chatbot. arXiv preprint arXiv:2001.09977 .
+Akari Asai, Kazuma Hashimoto, Hannaneh Hajishirzi,
+Richard Socher, and Caiming Xiong. 2020. Learn-
+ing to retrieve reasoning paths over wikipedia graph
+for question answering. In International Conference
+on Learning Representations .
+Jason Baumgartner, Savvas Zannettou, Brian Kee-
+gan, Megan Squire, and Jeremy Blackburn. 2020.
+The pushshift reddit dataset. arXiv preprint
+arXiv:2001.08435 .
+Tom B Brown, Benjamin Mann, Nick Ryder, Melanie
+Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, et al. 2020. Language models are few-shot
+learners. arXiv preprint arXiv:2005.14165 .M. D. Bruyn, E. Lotﬁ, Jeska Buhmann, and W. Daele-
+mans. 2020. Bart for knowledge grounded conversa-
+tions. In Converse@KDD .
+Yuanyuan Cai, M. Zuo, Qingchuan Zhang, Haitao
+Xiong, and Ke Li. 2020. A bichannel transformer
+with context encoding for document-driven con-
+versation generation in social media. Complex. ,
+2020:3710104:1–3710104:13.
+Danqi Chen, Adam Fisch, Jason Weston, and Antoine
+Bordes. 2017. Reading wikipedia to answer open-
+domain questions. Proceedings of the 55th Annual
+Meeting of the Association for Computational Lin-
+guistics (Volume 1: Long Papers) .
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing. In Proceedings of the 2019 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long and Short Papers) ,
+pages 4171–4186, Minneapolis, Minnesota. Associ-
+ation for Computational Linguistics.
+Emily Dinan, Varvara Logacheva, Valentin Malykh,
+Alexander Miller, Kurt Shuster, Jack Urbanek,
+Douwe Kiela, Arthur Szlam, Iulian Serban, Ryan
+Lowe, and et al. 2019a. The second conversational
+intelligence challenge (convai2). The Springer
+Series on Challenges in Machine Learning , page
+187–208.
+Emily Dinan, Stephen Roller, Kurt Shuster, Angela
+Fan, Michael Auli, and Jason Weston. 2019b. Wiz-
+ard of wikipedia: Knowledge-powered conversa-
+tional agents. In Proceedings of the International
+Conference on Learning Representations .
+Angela Fan, Claire Gardent, Chloé Braud, and An-
+toine Bordes. 2021. Augmenting transformers with
+knn-based composite memory for dialog. Transac-
+tions of the Association for Computational Linguis-
+tics, 9:82–99.
+Angela Fan, Mike Lewis, and Yann Dauphin. 2018. Hi-
+erarchical neural story generation. Proceedings of
+the 56th Annual Meeting of the Association for Com-
+putational Linguistics (Volume 1: Long Papers) .
+Fabian Galetzka, Chukwuemeka Uchenna Eneh, and
+David Schlangen. 2020. A corpus of controlled
+opinionated and knowledgeable movie discussions
+for training neural conversation models. In Proceed-
+ings of the 12th Language Resources and Evaluation
+Conference , pages 565–573, Marseille, France. Eu-
+ropean Language Resources Association.
+Marjan Ghazvininejad, Chris Brockett, Ming-Wei
+Chang, Bill Dolan, Jianfeng Gao, Wen tau Yih, and
+Michel Galley. 2018. A knowledge-grounded neural
+conversation model. In AAAI , pages 5110–5117.
+Karthik Gopalakrishnan, Behnam Hedayatnia,
+Qinglang Chen, Anna Gottardi, Sanjeev Kwatra,
+Anu Venkatesh, Raefer Gabriel, Dilek Hakkani-Tür,
+and Amazon Alexa AI. 2019. Topical-chat: Towards
+knowledge-grounded open-domain conversations.
+InINTERSPEECH , pages 1891–1895.
+Edouard Grave, Armand Joulin, and Nicolas Usunier.
+2016. Improving neural language models with a con-
+tinuous cache. arXiv preprint arXiv:1612.04426 .
+Kelvin Guu, Kenton Lee, Zora Tung, Panupong Pasu-
+pat, and Ming-Wei Chang. 2020. Realm: Retrieval-
+augmented language model pre-training. arXiv
+preprint arXiv:2002.08909 .
+Behnam Hedayatnia, Karthik Gopalakrishnan,
+Seokhwan Kim, Yang Liu, Mihail Eric, and
+Dilek Hakkani-Tur. 2020. Policy-driven neural
+response generation for knowledge-grounded dialog
+systems. In Proceedings of the 13th International
+Conference on Natural Language Generation ,
+pages 412–421, Dublin, Ireland. Association for
+Computational Linguistics.
+Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and
+Yejin Choi. 2020. The curious case of neural text de-
+generation. In International Conference on Learn-
+ing Representations .
+Samuel Humeau, Kurt Shuster, Marie-Anne Lachaux,
+and Jason Weston. 2020. Poly-encoders: Architec-
+tures and pre-training strategies for fast and accurate
+multi-sentence scoring. In International Conference
+on Learning Representations .
+Gautier Izacard and Edouard Grave. 2020. Lever-
+aging passage retrieval with generative models for
+open domain question answering. arXiv preprint
+arXiv:2007.01282 .
+Gautier Izacard and Edouard Grave. 2021. Distilling
+knowledge from reader to retriever for question an-
+swering. In International Conference on Learning
+Representations .
+Jeff Johnson, Matthijs Douze, and Hervé Jégou. 2019.
+Billion-scale similarity search with gpus. IEEE
+Transactions on Big Data .
+Mandar Joshi, Eunsol Choi, Daniel Weld, and Luke
+Zettlemoyer. 2017. TriviaQA: A large scale dis-
+tantly supervised challenge dataset for reading com-
+prehension. In Proceedings of the 55th Annual Meet-
+ing of the Association for Computational Linguistics
+(Volume 1: Long Papers) , pages 1601–1611, Van-
+couver, Canada. Association for Computational Lin-
+guistics.
+Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick
+Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and
+Wen-tau Yih. 2020. Dense passage retrieval for
+open-domain question answering. Proceedings of
+the 2020 Conference on Empirical Methods in Natu-
+ral Language Processing (EMNLP) .Urvashi Khandelwal, Angela Fan, Dan Jurafsky, Luke
+Zettlemoyer, and Mike Lewis. 2021. Nearest neigh-
+bor machine translation. In International Confer-
+ence on Learning Representations .
+Urvashi Khandelwal, Omer Levy, Dan Jurafsky, Luke
+Zettlemoyer, and Mike Lewis. 2020. Generalization
+through memorization: Nearest neighbor language
+models. In International Conference on Learning
+Representations .
+Omar Khattab, Christopher Potts, and Matei Zaharia.
+2020. Relevance-guided supervision for openqa
+with colbert.
+Omar Khattab and Matei Zaharia. 2020. Colbert. Pro-
+ceedings of the 43rd International ACM SIGIR Con-
+ference on Research and Development in Informa-
+tion Retrieval .
+Byeongchang Kim, Jaewoo Ahn, and Gunhee Kim.
+2020. Sequential latent knowledge selection for
+knowledge-grounded dialogue. In International
+Conference on Learning Representations .
+Tom Kwiatkowski, Jennimaria Palomaki, Olivia Red-
+ﬁeld, Michael Collins, Ankur Parikh, Chris Alberti,
+Danielle Epstein, Illia Polosukhin, Matthew Kelcey,
+Jacob Devlin, Kenton Lee, Kristina N. Toutanova,
+Llion Jones, Ming-Wei Chang, Andrew Dai, Jakob
+Uszkoreit, Quoc Le, and Slav Petrov. 2019. Natu-
+ral questions: a benchmark for question answering
+research. Transactions of the Association of Compu-
+tational Linguistics .
+Mike Lewis, Yinhan Liu, Naman Goyal, Mar-
+jan Ghazvininejad, Abdelrahman Mohamed, Omer
+Levy, Veselin Stoyanov, and Luke Zettlemoyer.
+2020a. Bart: Denoising sequence-to-sequence pre-
+training for natural language generation, translation,
+and comprehension. Proceedings of the 58th Annual
+Meeting of the Association for Computational Lin-
+guistics .
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio
+Petroni, Vladimir Karpukhin, Naman Goyal, Hein-
+rich Küttler, Mike Lewis, Wen-tau Yih, Tim Rock-
+täschel, Sebastian Riedel, and Douwe Kiela. 2020b.
+Retrieval-augmented generation for knowledge-
+intensive nlp tasks. In Advances in Neural Infor-
+mation Processing Systems , volume 33, pages 9459–
+9474. Curran Associates, Inc.
+Chia-Wei Liu, Ryan Lowe, Iulian Serban, Mike Nose-
+worthy, Laurent Charlin, and Joelle Pineau. 2016.
+How not to evaluate your dialogue system: An em-
+pirical study of unsupervised evaluation metrics for
+dialogue response generation. Proceedings of the
+2016 Conference on Empirical Methods in Natural
+Language Processing .
+Longxuan Ma, Wei-Nan Zhang, Runxin Sun, and Ting
+Liu. 2020. A compare aggregate transformer for
+understanding document-grounded dialogue. Find-
+ings of the Association for Computational Linguis-
+tics: EMNLP 2020 .
+Joshua Maynez, Shashi Narayan, Bernd Bohnet, and
+Ryan McDonald. 2020. On faithfulness and factu-
+ality in abstractive summarization. In Proceedings
+of the 58th Annual Meeting of the Association for
+Computational Linguistics , pages 1906–1919, On-
+line. Association for Computational Linguistics.
+Shikib Mehri and Maxine Eskenazi. 2020. Usr: An un-
+supervised and reference free evaluation metric for
+dialog generation. Proceedings of the 58th Annual
+Meeting of the Association for Computational Lin-
+guistics .
+Stephen Merity, Caiming Xiong, James Bradbury, and
+Richard Socher. 2016. Pointer sentinel mixture mod-
+els.arXiv preprint arXiv:1609.07843 .
+Sabrina J Mielke, Arthur Szlam, Y-Lan Boureau,
+and Emily Dinan. 2020. Linguistic calibration
+through metacognition: aligning dialogue agent re-
+sponses with expected correctness. arXiv preprint
+arXiv:2012.14983 .
+Alexander Miller, Will Feng, Dhruv Batra, Antoine
+Bordes, Adam Fisch, Jiasen Lu, Devi Parikh, and
+Jason Weston. 2017. ParlAI: A dialog research soft-
+ware platform. In Proceedings of the 2017 Con-
+ference on Empirical Methods in Natural Language
+Processing: System Demonstrations , pages 79–84,
+Copenhagen, Denmark. Association for Computa-
+tional Linguistics.
+Sewon Min, Danqi Chen, Luke Zettlemoyer, and Han-
+naneh Hajishirzi. 2019. Knowledge guided text re-
+trieval and reading for open domain question answer-
+ing.
+Fabio Petroni, Aleksandra Piktus, Angela Fan, Patrick
+Lewis, Majid Yazdani, Nicola De Cao, James
+Thorne, Yacine Jernite, Vassilis Plachouras, Tim
+Rocktäschel, et al. 2020. Kilt: a benchmark for
+knowledge intensive language tasks. arXiv preprint
+arXiv:2009.02252 .
+Fabio Petroni, Tim Rocktäschel, Sebastian Riedel,
+Patrick Lewis, Anton Bakhtin, Yuxiang Wu, and
+Alexander Miller. 2019. Language models as knowl-
+edge bases? Proceedings of the 2019 Conference on
+Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natu-
+ral Language Processing (EMNLP-IJCNLP) .
+Peng Qi, Haejun Lee, OghenetegiriTGSido, and
+Christopher D. Manning. 2020. Retrieve, rerank,
+read, then iterate: Answering open-domain ques-
+tions of arbitrary complexity from text. ArXiv ,
+abs/2010.12527.
+Colin Raffel, Noam Shazeer, Adam Roberts, Kather-
+ine Lee, Sharan Narang, Michael Matena, Yanqi
+Zhou, Wei Li, and Peter J. Liu. 2020. Exploring
+the limits of transfer learning with a uniﬁed text-to-
+text transformer. Journal of Machine Learning Re-
+search , 21(140):1–67.Adam Roberts, Colin Raffel, and Noam Shazeer. 2020.
+How much knowledge can you pack into the param-
+eters of a language model? Proceedings of the 2020
+Conference on Empirical Methods in Natural Lan-
+guage Processing (EMNLP) .
+Stephen Roller, Emily Dinan, Naman Goyal, Da Ju,
+Mary Williamson, Yinhan Liu, Jing Xu, Myle Ott,
+Kurt Shuster, Eric M Smith, et al. 2020. Recipes
+for building an open-domain chatbot. arXiv preprint
+arXiv:2004.13637 .
+Haitian Sun, Tania Bedrax-Weiss, and William Cohen.
+2019. Pullnet: Open domain question answering
+with iterative retrieval on knowledge bases and text.
+Proceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and the
+9th International Joint Conference on Natural Lan-
+guage Processing (EMNLP-IJCNLP) .
+David Thulke, Nico Daheim, Christian Dugast, and
+Hermann Ney. 2021. Efﬁcient retrieval augmented
+generation from unstructured knowledge for task-
+oriented dialog.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N Gomez, Ł ukasz
+Kaiser, and Illia Polosukhin. 2017. Attention is all
+you need. In Advances in Neural Information Pro-
+cessing Systems , volume 30. Curran Associates, Inc.
+Ellen M V oorhees. 2001. The trec question answer-
+ing track. Natural Language Engineering , 7(4):361–
+378.
+Jason Weston, Sumit Chopra, and Antoine Bor-
+des. 2014. Memory networks. arXiv preprint
+arXiv:1410.3916 .
+Wenhan Xiong, Xiang Li, Srini Iyer, Jingfei Du, Patrick
+Lewis, William Yang Wang, Yashar Mehdad, Scott
+Yih, Sebastian Riedel, Douwe Kiela, and Barlas
+Oguz. 2021. Answering complex open-domain
+questions with multi-hop dense retrieval. In Inter-
+national Conference on Learning Representations .
+Wenhan Xiong, Mo Yu, Shiyu Chang, Xiaoxiao Guo,
+and William Yang Wang. 2019. Improving question
+answering over incomplete KBs with knowledge-
+aware reader. In Proceedings of the 57th Annual
+Meeting of the Association for Computational Lin-
+guistics , pages 4258–4264, Florence, Italy. Associa-
+tion for Computational Linguistics.
+Dani Yogatama, Cyprien de Masson d’Autume, and
+Lingpeng Kong. 2021. Adaptive semiparametric
+language models. arXiv preprint arXiv:2102.02557 .
+Rowan Zellers, Ari Holtzman, Hannah Rashkin,
+Yonatan Bisk, Ali Farhadi, Franziska Roesner, and
+Yejin Choi. 2019. Defending against neural fake
+news. In H. Wallach, H. Larochelle, A. Beygelz-
+imer, F. d'Alché-Buc, E. Fox, and R. Garnett, editors,
+Advances in Neural Information Processing Systems
+32, pages 9054–9065. Curran Associates, Inc.
+Xueliang Zhao, Wei Wu, Chongyang Tao, Can Xu,
+Dongyan Zhao, and Rui Yan. 2020a. Low-resource
+knowledge-grounded dialogue generation. In Inter-
+national Conference on Learning Representations .
+Xueliang Zhao, Wei Wu, Can Xu, Chongyang Tao,
+Dongyan Zhao, and Rui Yan. 2020b. Knowledge-
+grounded dialogue generation with pre-trained lan-
+guage models. Proceedings of the 2020 Conference
+on Empirical Methods in Natural Language Process-
+ing (EMNLP) .
+Yufan Zhao, Wei Wu, and Can Xu. 2020c. Are pre-
+trained language models knowledgeable to ground
+open domain dialogues?
+Chunting Zhou, Jiatao Gu, Mona Diab, Paco Guz-
+man, Luke Zettlemoyer, and Marjan Ghazvinine-
+jad. 2020. Detecting hallucinated content in condi-
+tional neural sequence generation. arXiv preprint
+arXiv:2011.02593 .
+Kangyan Zhou, Shrimai Prabhumoye, and Alan W
+Black. 2018. A dataset for document grounded con-
+versations. Proceedings of the 2018 Conference on
+Empirical Methods in Natural Language Process-
+ing.A Retriever Performance
+We measure the performance of the various retriev-
+ers considered by evaluating how often the top doc-
+ument retrieved is the correct document or in the
+top 5; that is, how often the gold knowledge sen-
+tence used in WoW is contained within the passage
+retrieved. Results are in Table 17.
+B RAG Turn Further Explorations
+We compare different values for T, the effective
+number of context turns considered by RAG-Turn,
+in Table 18. We note that perplexity values in
+general increase, while generation statistics stay
+roughly the same or drop slightly. Knowledge F1
+stays roughly the same, with marginal increases or
+decreases depending on the model.
+C Automated Metrics and Human
+Evaluation
+We calculate the Pearson correlation coefﬁcient be-
+tween human evaluations and various automated
+metrics, visualized in Figure 2. The models con-
+sidered are those listed in Table 3. We ﬁnd that
+improvements in PPL, Knowledge F1, and Rare F1
+correlate with an increase in the perceived knowl-
+edge use and a reduction in hallucination. F1 had
+relatively low correlation with all of the human
+evaluation criteria considered.
+Seen Test Unseen Test
+Method PPL F1 Knowledge F1 B4 RL PPL F1 Knowledge F1 B4 RL
+Baselines
+Movie titles only 16.33 15.79 6.619 .7684 19.71 20.70 15.34 5.742 .6391 18.34
+Gold passage + Full Context 14.80 15.49 8.568 .8164 19.61 15.34 15.98 7.359 .8267 19.05
+NQ + TQA retriever pre-training
+Rag-Token 13.67 14.79 8.247 .6236 20.90 15.98 14.83 7.535 .534 20.42
+DPR-Poly 13.73 15.12 8.376 .8298 21.38 15.98 15.18 7.346 .6494 20.93
+FiD 14.45 14.81 8.327 .7289 21.65 18.35 14.49 7.693 .6161 20.20
+FiD-DPR 14.04 14.67 9.104 .738 21.52 17.91 14.11 8.902 .5682 20.52
+Wizard of Wikipedia retriever pre-training
+Rag-Token 14.05 14.84 8.11 .6902 20.78 16.85 14.66 7.28 .6158 19.85
+DPR-Poly 13.51 15.05 7.914 .7224 21.08 15.14 15.02 7.422 .6337 21.80
+FiD 14.71 14.75 7.575 .6852 21.15 20.72 14.50 6.327 .5238 20.32
+FiD-DPR 13.69 14.96 8.919 .7571 21.66 17.13 14.37 8.742 .5879 20.76
+Table 16: Comparison of Architectures on CMU_DoG Seen/Unseen. BART is used as the base Seq2Seq Model.
+Retriever Retriever Valid Seen Valid Unseen
+Retriever Pre-Training Fine-Tuning R@1 R@5 R@1 R@5
+DPR NQ + TQA Zero-shot 5.8 13.8 4.9 11.1
+DPR WoW Zero-shot 13.1 23.9 11.6 17.5
+DPR NQ + TQA + WoW Zero-shot 13.1 23.9 11.1 16.6
+RAG-DPR NQ + TQA WoW 28.1 36.8 25.7 33.7
+RAG-DPR WoW WoW 25.9 35.6 22.9 33.4
+RAG-DPR NQ + TQA + WoW WoW 26.2 35.1 23.3 34.0
+DPR-Poly NQ + TQA WoW 29.3 37.6 26.9 34.0
+PolyFAISS WoW WoW 23.9 32.0 19.7 28.3
+ColBERT MS-Marco WoW 25.7 33.3 27.5 33.8
+ColBERT WoW WoW 26.1 33.6 26.4 33.7
+ReGReT (Separate) NQ + TQA WoW 25.3 35.1 24.0 32.5
+ReGRet (Same) NQ + TQA WoW 26.6 35.7 23.7 33.2
+Table 17: Comparison of Retrieval Ability of Architectures on WoW Valid Seen/Unseen . Each model retrieves
+5 documents from an unstructured document set of 21m 100-word passages in Wikipedia. We measure passage
+Recall@k (R@k) measures how often the gold sentence used by the wizard is contained in the top k retrieved
+documents. All models use BART as a base seq2seq model
+Valid Seen Valid Unseen
+RAG Turn Type TPPL F1 Knowledge F1 B4 RL PPL F1 Knowledge F1 B4 RL
+Doc then Turn 1 11.8 21.9 27.7 4.1 23.2 13.6 21.1 24.3 2.7 21.4
+3 12.1 21.7 27.3 4.0 22.9 13.8 20.8 24.3 2.6 21.2
+Doc Only 1 13.3 23.1 26.8 4.0 24.5 15.5 22.0 23.3 2.6 22.5
+3 14.4 22.7 27.1 3.9 24.1 16.7 21.9 22.8 2.9 22.3
+Token 1 11.5 21.0 24.3 3.1 21.6 13.2 20.5 21.5 2.0 20.0
+3 11.7 22.3 25.2 3.7 23.0 13.9 21.1 20.8 2.3 20.8
+Sequence 1 10.9 21.5 27.8 4.1 22.9 12.6 19.5 23.5 2.6 20.3
+Table 18: Comparison of TValues For RAG-Turn on WoW Valid Seen/Unseen. All models use BART as a base
+seq2seq model, and retrieve 5 documents over all of Wikipedia.
+PPL F1 Knowledge F1 Rare Word F1
+Consistency
+Engaging
+Knowledge
+Hallucinate-0.3 0.65 0.13 0.75
+0.6 0.1 -0.66 -0.4
+-0.82 0.61 0.94 0.87
+0.89 -0.55 -0.95 -0.84
+Figure 2: Correlation of Automatic Metrics with Human Judgments . We plot the Pearson correlation coefﬁ-
+cient between the human evaluations from Table 3 and automated metrics from the WoW Valid Unseen data. We
+observe correlation between the Knowledge F1 and Rare F1 metrics with Knowledge and Hallucination human
+evaluations, especially when compared to standard F1.
+No Retrieval RAG DPR-Poly FiD-RAG DPR-Poly
+Decoding Strategy Context Block F1 KF1 B4 RL F1 KF1 B4 RL F1 KF1 B4 RL
+Beam No 20.9 17.6 1.7 20.7 23.1 26.5 4.0 24.0 22.8 27.8 4.1 24.1
+Beam Yes 20.6 17.1 1.7 20.4 22.9 25.9 4.1 23.9 22.5 26.7 3.9 23.8
+Nucleus: p= 0:3 No 20.6 16.0 1.4 20.3 23.0 24.0 3.6 24.2 22.5 23.5 3.5 23.6
+Nucleus: p= 0:3 Yes 20.1 15.6 1.4 19.9 22.9 23.9 3.7 24.1 22.0 22.9 3.4 23.1
+Nucleus: p= 0:9 No 17.1 13.6 0.6 17.0 19.3 19.3 1.9 19.8 19.4 20.2 2.3 20.0
+Nucleus: p= 0:9 Yes 16.6 13.2 0.6 16.8 19.2 18.9 1.8 19.6 19.6 19.8 2.3 20.4
+Top-k: k= 10 No 18.0 14.4 0.7 18.0 19.8 19.0 1.8 20.3 20.2 19.9 2.2 20.8
+Top-k: k= 10 Yes 17.5 14.0 0.5 17.5 19.7 18.8 1.8 20.1 19.7 20.2 2.2 20.2
+Table 19: Comparison of Decoding Strategies For models with and without retrieval-augmentation. Evaluations
+are conducted on the WoW Valid Seen. Retrieval models are retrieving 5 documents over all of Wikipedia. We
+set the minimum beam length to 20, and block tri-grams during beam search. All models use BART as the base
+seq2seq model.
+Retrieval Mechanism PPL F1 Knowledge F1 BLEU-4 ROUGE-L
+None 14.7 15.6 4.3 0.7 15.6
+FiD 15.3 15.4 4.4 0.6 15.6
+RAG DPR 15.0 15.3 4.7 0.6 15.6
+RAG DPR-Poly 14.7 15.1 4.8 0.7 14.9
+FiD-RAG DPR 14.3 15.3 4.9 0.7 15.7
+Table 20: Comparison of Retrieval Augmentations on CMU_DoG (Valid), original split. Retrieval models are
+retrieving over all of Wikipedia. All RAG models are RAG-Token and use BART as the base seq2seq model.
+Method PPL F1 B4 RL
+No Knowledge
+BART (ours) 14.6 15.9 0.8 16.9
+CMU_DoG Knowledge
+BCTCE (Cai et al., 2020) 17.8 1.4
+CAT (Ma et al., 2020) 15.2 1.2 11.2
+GPT-2 Finetune (Zhao et al., 2020c) 16.5 9.4 0.6
+DRD (Zhao et al., 2020a) 54.4 10.7 1.2
+DialoGPT Finetune (Zhao et al., 2020c) 15.9 13.7 1.5
+KnowledGPT (Zhao et al., 2020b) 20.6 13.5
+All of Wikipedia
+RAG DPR-Poly (Ours) 14.4 15.8 0.9 16.9
+FiD-RAG (Ours) 14.4 15.8 0.8 16.9
+Table 21: CMU_DoG Comparison to Existing Results (Test), original data split. Our models use BART as the
+base seq2seq model. The RAG DPR-Poly model retrieves 5 documents, and the FiD-RAG model retrieves 10.

@@ -1,0 +1,2531 @@
+Title: Gender Bias in Machine Translation
+
+Gender Bias in Machine Translation
+Beatrice Savoldi1,2, Marco Gaido1,2, Luisa Bentivogli2, Matteo Negri2, Marco Turchi2
+1University of Trento
+2Fondazione Bruno Kessler
+fbsavoldi,mgaido,bentivo,negri,turchi g@fbk.eu
+Abstract
+Machine translation (MT) technology has
+facilitated our daily tasks by providing ac-
+cessible shortcuts for gathering, processing
+and communicating information. However,
+it can suffer from biases that harm users and
+society at large. As a relatively new ﬁeld of
+inquiry, studies of gender bias in MT still
+lack cohesion. This advocates for a uniﬁed
+framework to ease future research. To this
+end, we: i)critically review current concep-
+tualizations of bias in light of theoretical in-
+sights from related disciplines, ii)summarize
+previous analyses aimed at assessing gender
+bias in MT, iii)discuss the mitigating strate-
+gies proposed so far, and iv)point toward
+potential directions for future work.
+1 Introduction
+Interest in understanding, assessing, and mitigating
+gender bias is steadily growing within the natu-
+ral language processing (NLP) community, with
+recent studies showing how gender disparities af-
+fect language technologies. Sometimes, for exam-
+ple, coreference resolution systems fail to recog-
+nize women doctors (Zhao et al., 2017; Rudinger
+et al., 2018), image captioning models do not detect
+women sitting next to a computer (Hendricks et al.,
+2018), and automatic speech recognition works
+better with male voices (Tatman, 2017). Despite a
+prior disregard for such phenomena within research
+agendas (Cislak et al., 2018), it is now widely rec-
+ognized that NLP tools encode and reﬂect con-
+troversial social asymmetries for many seemingly
+neutral tasks, machine translation (MT) included.
+Admittedly, the problem is not new (Frank et al.,
+2004). A few years ago, Schiebinger (2014) crit-
+icized the phenomenon of “masculine default” in
+MT after running one of her interviews through a
+commercial translation system. In spite of several
+feminine mentions in the text, she was repeatedlyreferred to by masculine pronouns. Gender-related
+concerns have also been voiced by online MT users,
+who noticed how commercial systems entrench so-
+cial gender expectations, e.g., translating engineers
+as masculine and nurses as feminine (Olson, 2018).
+With language technologies entering widespread
+use and being deployed at a massive scale, their so-
+cietal impact has raised concern both within (Hovy
+and Spruit, 2016; Bender et al., 2021) and outside
+(Dastin, 2018) the scientiﬁc community. To take
+stock of the situation, Sun et al. (2019) reviewed
+NLP studies on the topic. However, their survey
+is based on monolingual applications, whose un-
+derlying assumptions and solutions may not be
+directly applicable to languages other than English
+(Zhou et al., 2019; Zhao et al., 2020; Takeshita
+et al., 2020) and cross-lingual settings. Moreover,
+MT is a multifaceted task, which requires resolving
+multiple gender-related subtasks at the same time
+(e.g., coreference resolution, named entity recogni-
+tion). Hence, depending on the languages involved
+and the factors accounted for, gender bias has been
+conceptualized differently across studies. To date,
+gender bias in MT has been tackled by means of a
+narrow, problem-solving oriented approach. While
+technical countermeasures are needed, failing to
+adopt a wider perspective and engage with related
+literature outside of NLP can be detrimental to the
+advancement of the ﬁeld (Blodgett et al., 2020).
+In this paper, we intend to put such literature to
+use for the study of gender bias in MT. We go be-
+yond surveys restricted to monolingual NLP (Sun
+et al., 2019) or more limited in scope (Costa-juss `a,
+2019; Monti, 2020), and present the ﬁrst compre-
+hensive review of gender bias in MT. In particular,
+we1)offer a uniﬁed framework that introduces
+the concepts, sources, and effects of bias in MT,
+clariﬁed in light of relevant notions on the relation
+between gender and different languages; 2)criti-
+cally discuss the state of the research by identifying
+blind spots and key challenges.arXiv:2104.06001v3  [cs.CL]  7 May 2021
+2 Bias statement
+Bias is a fraught term with partially overlapping, or
+even competing, deﬁnitions (Campolo et al., 2017).
+In cognitive science, bias refers to the possible
+outcome of heuristics, i.e., mental shortcuts that
+can be critical to support prompt reactions (Tver-
+sky and Kahneman, 1973, 1974). AI research bor-
+rowed from such a tradition (Rich and Gureckis,
+2019; Rahwan et al., 2019) and conceived bias as
+the divergence from an ideal or expected value
+(Glymour and Herington, 2019; Shah et al., 2020),
+which can occur if models rely on spurious cues
+and unintended shortcut strategies to predict out-
+puts (Schuster et al., 2019; McCoy et al., 2019;
+Geirhos et al., 2020). Since this can lead to sys-
+tematic errors and/or adverse social effects, bias
+investigation is not only a scientiﬁc and techni-
+cal endeavour but also an ethical one, given the
+growing societal role of NLP applications (Bender
+and Friedman, 2018). As Blodgett et al. (2020)
+recently called out, and has been endorsed in other
+venues (Hardmeier et al., 2021), analysing bias
+is an inherently normative process which requires
+identifying what is deemed as harmful behavior,
+how, and to whom . Hereby, we stress a human-
+centered, sociolinguistically-motivated framing of
+bias. By drawing on the deﬁnition by Friedman
+and Nissenbaum (1996), we consider as biased an
+MT model that systematically andunfairly discrim-
+inates against certain individuals or groups in favor
+of others. We identify bias per speciﬁc model’s
+behaviors, which are assessed by envisaging their
+potential risks when the model is deployed (Bender
+et al., 2021) and the harms that could ensue (Craw-
+ford, 2017), with people in focus (Bender, 2019).
+Since MT systems are daily employed by millions
+of individuals, they could impact a wide array of
+people in different ways.
+As a guide, we rely on Crawford (2017), who
+deﬁnes two main categories of harms produced by
+a biased system: i)Representational harms (R)
+– i.e., detraction from the representation of social
+groups and their identity, which, in turn, affects
+attitudes and beliefs; ii)Allocational harms (A)
+– i.e., a system allocates or withholds opportuni-
+ties or resources to certain groups. Considering
+the so far reported real-world instances of gender
+bias (Schiebinger, 2014; Olson, 2018) and those
+addressed in the MT literature reviewed in this
+paper, (R)can be further distinguished into under-
+representation andstereotyping .Under-representation refers to the reduction of
+the visibility of certain social groups through lan-
+guage by i)producing a disproportionately low rep-
+resentation of women (e.g., most feminine entities
+in a text are misrepresented as male in translation);
+orii)not recognizing the existence of non-binary
+individuals (e.g., when a system does not account
+for gender neutral forms). For such cases, the mis-
+representation occurs in the language employed to
+talk “about” such groups.1Also, this harm can
+imply the reduced visibility of the language used
+“by” speakers of such groups by iii)failing to re-
+ﬂect their identity and communicative repertoires.
+In these cases, an MT ﬂattens their communica-
+tion and produces an output that indexes unwanted
+gender identities and social meanings (e.g. women
+and non-binary speakers are not referred to by their
+preferred linguistic expressions of gender).
+Stereotyping regards the propagation of negative
+generalizations of a social group, e.g., belittling
+feminine representation to less prestigious occu-
+pations (teacher (Feminine) vs. lecturer (Mascu-
+line)), or in association with attractiveness judg-
+ments (pretty lecturer (Feminine)).
+Such behaviors are harmful as they can directly
+affect the self-esteem of members of the target
+group (Bourguignon et al., 2015). Additionally,
+they can propagate to indirect stakeholders. For
+instance, if a system fosters the visibility of the
+way of speaking of the dominant group, MT users
+can presume that such a language represents the
+most appropriate or prestigious variant2– at the
+expense of other groups and communicative reper-
+toires. These harms can aggregate, and the ubiq-
+uitous embedding of MT in web applications pro-
+vides us with paradigmatic examples of how the
+two types of (R)can interplay. For example, if
+women or non-binary3scientists are the subjects
+of a query, automatically translated pages run the
+risk of referring to them via masculine-inﬂected
+job qualiﬁcations. Such misrepresentations can
+lead to experience feelings of identity invalidation
+(Zimman et al., 2017). Also, users may not be
+aware of being exposed to MT mistakes due to the
+deceptively ﬂuent output of a system (Martindale
+and Carpuat, 2018). In the long run, stereotypi-
+1See also the classiﬁcations by Dinan et al. (2020).
+2For an analogy on how technology shaped the perception
+of feminine voices as shrill and immature, see Tallon (2019).
+3Throughout the paper, we use non-binary as an umbrella
+term for referring to all gender identities between or outside
+the masculine/feminine binary categories.
+cal assumptions and prejudices (e.g., only men are
+qualiﬁed for high-level positions) will be reinforced
+(Levesque, 2011; R ´egner et al., 2019).
+Regarding (A), MT services are consumed by
+the general public and can thus be regarded as re-
+sources in their own right. Hence, (R)can directly
+imply (A)as a performance disparity across users
+in the quality of service , i.e., the overall efﬁciency
+of the service. Accordingly, a woman attempting
+to translate her biography by relying on an MT sys-
+tem requires additional energy and time to revise
+wrong masculine references. If such disparities are
+not accounted for, the MT ﬁeld runs the risk of
+producing systems that prevent certain groups from
+fully beneﬁting from such technological resources.
+In the following, we operationalize such cate-
+gories to map studies on gender bias to their moti-
+vations and societal implications (Table 1 and 2).
+3 Understanding Bias
+To confront bias in MT, it is vital to reach out to
+other disciplines that foregrounded how the socio-
+cultural notions of gender interact with language(s),
+translation, and implicit biases. Only then can
+we discuss the multiple factors that concur to en-
+code and amplify gender inequalities in language
+technology. Note that, except for Saunders et al.
+(2020), current studies on gender bias in MT have
+assumed an (often implicit) binary vision of gender.
+As such, our discussion is largely forced into this
+classiﬁcation. Although we reiterate on bimodal
+feminine/masculine linguistic forms and social cat-
+egories, we emphasize that gender encompasses
+multiple biosocial elements not to be conﬂated with
+sex (Risman, 2018; Fausto-Sterling, 2019), and that
+some individuals do not experience gender, at all,
+or in binary terms (Glen and Hurrell, 2012).
+3.1 Gender and Language
+The relation between language and gender is not
+straightforward. First, the linguistic structures used
+to refer to the extra-linguistic reality of gender vary
+across languages (x3.1.1). Moreover, how gender
+is assigned and perceived in our verbal practices de-
+pends on contextual factors as well as assumptions
+about social roles, traits, and attributes ( x3.1.2). At
+last, language is conceived as a tool for articulating
+and constructing personal identities ( x3.1.3).
+3.1.1 Linguistic Encoding of Gender
+Drawing on (Corbett, 1991; Craig, 1994; Comrie,
+1999; Hellinger and Bußman, 2001, 2002, 2003;Corbett, 2013; Gygax et al., 2019) we hereby de-
+scribe the linguistic forms (lexical, pronominal,
+grammatical) that bear a relation with the extra-
+linguistic reality of gender. Following Stahlberg
+et al. (2007), we identify three language groups:
+Genderless languages (e.g., Finnish, Turkish).
+In such languages, the gender-speciﬁc repertoire
+is at its minimum, only expressed for basic lexical
+pairs, usually kinship or address terms (e.g., in
+Finnish sisko /sister vs. veli/brother).
+Notional gender languages4(e.g., Danish, En-
+glish). On top of lexical gender ( mom /dad), such
+languages display a system of pronominal gender
+(she/he ,her/him ). English also hosts some marked
+derivative nouns ( actor /actress ) and compounds
+(chairman /chairwoman ).
+Grammatical gender languages (e.g., Arabic,
+Spanish). In these languages, each noun pertains
+to a class such as masculine, feminine, and neuter
+(if present). Although for most inanimate objects
+gender assignment is only formal,5for human ref-
+erents masculine/feminine markings are assigned
+on a semantic basis. Grammatical gender is deﬁned
+by a system of morphosyntactic agreement, where
+several parts of speech beside the noun (e.g., verbs,
+determiners, adjectives) carry gender inﬂections.
+In light of the above, the English sentence
+“He/She is a good friend” has no overt expression
+of gender in a genderless language like Turkish (“ O
+iyi bir arkada s ¸”), whereas Spanish spreads several
+masculine or feminine markings (“ El/laesun/a
+buen/ aamig o/a”). Although general, such macro-
+categories allow us to highlight typological differ-
+ences across languages. These are crucial to frame
+gender issues in both human and machine transla-
+tion. Also, they exhibit to what extent speakers of
+each group are led to think and communicate via bi-
+nary distinctions,6as well as underline the relative
+complexity in carving out a space for lexical in-
+novations which encode non-binary gender (Hord,
+2016; Conrod, 2020). In this sense, while English
+is bringing the singular they in common use and
+developing neo-pronouns (Bradley et al., 2019), for
+grammatical gender languages like Spanish neu-
+4Also referred to as natural gender languages. Following
+McConnell-Ginet (2013), we prefer notional to avoid termino-
+logical overlapping with “natural”, i.e., biological/anatomical
+sexual categories. For a wider discussion on the topic, see
+Nevalainen and Raumolin-Brunberg (1993); Curzan (2003).
+5E.g., “moon” is masculine in German, feminine in French.
+6Outside of the Western paradigm, there are cultures whose
+languages traditionally encode gender outside of the binary
+(Epple, 1998; Murray, 2003; Hall and O’Donovan, 2014).
+trality requires the development of neo-morphemes
+(“Elleesunebuene amigue ”).
+3.1.2 Social Gender Connotations
+To understand gender bias, we have to grasp not
+only the structure of different languages, but also
+how linguistic expressions are connoted, deployed,
+and perceived (Hellinger and Motschenbacher,
+2015). In grammatical gender languages, feminine
+forms are often subject to a so-called semantic dero-
+gation (Schulz, 1975), e.g., in French, couturier
+(fashion designer) vs. couturi `ere(seamstress). En-
+glish is no exception (e.g., governor /governess ).
+Moreover, bias can lurk underneath seemingly
+neutral forms. Such is the case of epicene (i.e., gen-
+der neutral) nouns where gender is not grammati-
+cally marked. Here, gender assignment is linked
+to (typically binary) social gender, i.e., “the so-
+cially imposed dichotomy of masculine and femi-
+nine role and character traits” (Kramarae and Tre-
+ichler, 1985). As an illustration, Danish speakers
+tend to pronominalize dommer (judge) with han
+(he) when referring to the whole occupational cate-
+gory (Gomard, 1995; Nissen, 2002). Social gender
+assignment varies across time and space (Lyons,
+1977; Romaine, 1999; Cameron, 2003) and regards
+stereotypical assumptions about what is typical or
+appropriate for men and women. Such assumptions
+impact our perceptions (Hamilton, 1988; Gygax
+et al., 2008; Kreiner et al., 2008) and inﬂuence our
+behavior – e.g., leading individuals to identify with
+and fulﬁll stereotypical expectations (Wolter and
+Hannover, 2016; Sczesny et al., 2018) – and verbal
+communication, e.g., women are often misquoted
+in the academic community (Krawczyk, 2017).
+Translation studies highlight how social gender
+assignment inﬂuences translation choices (Jakob-
+son, 1959; Chamberlain, 1988; Comrie, 1999;
+Di Sabato and Perri, 2020). Primarily, the prob-
+lem arises from typological differences across lan-
+guages and their gender systems. Nonetheless,
+socio-cultural factors also inﬂuence how transla-
+tors deal with such differences. Consider the char-
+acter of the cook in Daphne du Maurier’s “Re-
+becca”, whose gender is never explicitly stated in
+the whole book. In the lack of any available in-
+formation, translators of ﬁve grammatical gender
+languages represented the character as either a man
+or a woman (Wandruszka, 1969; Nissen, 2002).
+Although extreme, this case can illustrate the sit-
+uation of uncertainty faced by MT: the mapping
+of one-to-many forms in gender prediction. But,as discussed inx4.1, mistranslations occur when
+contextual gender information is available as well.
+3.1.3 Gender and Language Use
+Language use varies between demographic groups
+and reﬂects their backgrounds, personalities, and
+social identities (Labov, 1972; Trudgill, 2000; Pen-
+nebaker and Stone, 2003). In this light, the study of
+gender and language variation has received much
+attention in socio- and corpus linguistics (Holmes
+and Meyerhoff, 2003; Eckert and McConnell-Ginet,
+2013). Research conducted in speech and text
+analysis highlighted several gender differences,
+which are exhibited at the phonological and lexical-
+syntactic level. For example, women rely more
+on hedging strategies (“it seems that”), purpose
+clauses (“in order to”), ﬁrst-person pronouns, and
+prosodic exclamations (Mulac et al., 2001; Mon-
+dorf, 2002; Brownlow et al., 2003). Although some
+correspondences between gender and linguistic fea-
+tures hold across cultures and languages (Smith,
+2003; Johannsen et al., 2015), it should be kept in
+mind that they are far from universal7and should
+not be intended in a stereotyped and oversimpliﬁed
+manner (Bergvall et al., 1996; Nguyen et al., 2016;
+Koolen and van Cranenburgh, 2017).
+Drawing on gender-related features proved use-
+ful to build demographically informed NLP tools
+(Garimella et al., 2019) and personalized MT mod-
+els (Mirkin et al., 2015; Bawden et al., 2016; Ra-
+binovich et al., 2017). However, using personal
+gender as a variable requires a prior understanding
+of which categories may be salient, and a critical
+reﬂection on how gender is intended and ascribed
+(Larson, 2017). Otherwise, if we assume that the
+only relevant (sexual) categories are “male” and
+“female”, our models will inevitably fulﬁll such a
+reductionist expectation (Bamman et al., 2014).
+3.2 Gender Bias in MT
+To date, an overview of how several factors may
+contribute to gender bias in MT does not exist. We
+identify and clarify concurring problematic causes,
+accounting for the context in which systems are
+developed and used ( x2). To this aim, we rely on
+the three overarching categories of bias described
+by Friedman and Nissenbaum (1996), which fore-
+7It has been largely debated whether gender-related differ-
+ences are inherently biological or cultural and social products
+(Mulac et al., 2001). Currently, the idea that they depend on
+biological reasons is largely rejected (Hyde, 2005) in favor of
+a socio-cultural or performative perspective (Butler, 1990).
+ground different sources that can lead to machine
+bias. These are: pre-existing bias – rooted in our
+institutions, practices and attitudes ( x3.2.1), techni-
+cal bias – due to technical constraints and decisions
+(x3.2.2), and emergent bias – arising from the in-
+teraction between systems and users ( x3.2.3). We
+consider such categories as placed along a contin-
+uum, rather than being discrete.
+3.2.1 Pre-existing Bias
+MT models are known to reﬂect gender dispari-
+ties present in the data. However, reﬂections on
+such generally invoked disparities are often over-
+looked. Treating data as an abstract, monolithic
+entity (Gitelman, 2013) – or relying on “overly
+broad/overloaded terms like training data bias ”8
+(Suresh and Guttag, 2019) – do not encourage rea-
+soning on the many factors of which data are the
+product. First and foremost, the historical, socio-
+cultural context in which they are generated.
+A starting point to tackle these issues is the Eu-
+roparl corpus (Koehn, 2005), where only 30% of
+sentences are uttered by women (Vanmassenhove
+et al., 2018). Such an imbalance is a direct window
+into the glass ceiling that has hampered women’s
+access to parliamentary positions. This case exem-
+pliﬁes how data might be “tainted with historical
+bias”, mirroring an “unequal ground truth” (Hacker,
+2018). However, other gender variables are harder
+to spot and quantify.
+Empirical linguistics research pointed out that
+subtle gender asymmetries are rooted in languages’
+use and structure. For instance, an important aspect
+regards how women are referred to. Femaleness is
+often explicitly invoked when there is no textual
+need to do so, even in languages that do not require
+overt gender marking. A case in point regards
+Turkish, which differentiates cocuk (child) and kiz
+cocugu (female child) (Braun, 2000). Similarly, in
+a corpus search, Romaine (2001) found 155 explicit
+female markings for doctor (female, woman or lady
+doctor), compared to only 14 male doctor . Feminist
+language critique provided extensive analysis of
+such a phenomenon by highlighting how referents
+in discourse are considered men by default unless
+explicitly stated (Silveira, 1980; Hamilton, 1991).
+Finally, prescriptive top-down guidelines limit the
+linguistic visibility of gender diversity, e.g., the
+Real Academia de la Lengua Espa ˜nola recently
+discarded the ofﬁcial use of non-binary innovations
+8See (Johnson, 2020a; Samar, 2020) for a discussion on
+how such narrative can be counterproductive for tackling bias.and claimed the functionality of masculine generics
+(Mundo, 2018; L ´opez et al., 2020).
+By stressing such issues, we are not condoning
+the reproduction of pre-existing bias in MT. Rather,
+the above-mentioned concerns are the starting point
+to account for when dealing with gender bias.
+3.2.2 Technical Bias
+Technical bias comprises aspects related to data
+creation, models design, training and testing pro-
+cedures. If present in training and testing samples,
+asymmetries in the semantics of language use and
+gender distribution are respectively learnt by MT
+systems and rewarded in their evaluation. However,
+as just discussed, biased representations are not
+merely quantitative, but also qualitative. Accord-
+ingly, straightforward procedures – e.g., balancing
+the number of speakers in existing datasets – do
+not ensure a fairer representation of gender in MT
+outputs. Since datasets are a crucial source of bias,
+it is also crucial to advocate for a careful data cu-
+ration (Mehrabi et al., 2019; Paullada et al., 2020;
+Hanna et al., 2021; Bender et al., 2021), guided
+by pragmatically- and socially-informed analyses
+(Hitti et al., 2019; Sap et al., 2020; Devinney et al.,
+2020) and annotation practices (Gaido et al., 2020).
+Overall, while data can mirror gender inequali-
+ties and offer adverse shortcut learning opportuni-
+ties, it is “quite clear that data alone rarely constrain
+a model sufﬁciently” (Geirhos et al., 2020) nor ex-
+plain the fact that models overamplify (Shah et al.,
+2020) such inequalities in their outputs. Focusing
+on models’ components, Costa-juss `a et al. (2020b)
+demonstrate that architectural choices in multilin-
+gual MT impact the systems’ behavior: shared
+encoder-decoders retain less gender information
+in the source embeddings and less diversion in the
+attention than language-speciﬁc encoder-decoders
+(Escolano et al., 2021), thus disfavoring the gen-
+eration of feminine forms. While discussing the
+loss and decay of certain words in translation, Van-
+massenhove et al. (2019, 2021) attest to the ex-
+istence of an algorithmic bias that leads under-
+represented forms in the training data – as it may
+be the case for feminine references – to further
+decrease in the MT output. Speciﬁcally, Roberts
+et al. (2020) prove that beam search – unlike sam-
+pling – is skewed toward the generation of more
+frequent (masculine) pronouns, as it leads models
+to an extreme operating point that exhibits zero
+variability.
+Thus, efforts towards understating and mitigat-
+ing gender bias should also account for the model
+front. To date, this remains largely unexplored.
+3.2.3 Emergent Bias
+Emergent bias may arise when a system is used
+in a different context than the one it was designed
+for, e.g., when it is applied to another demographic
+group. From car crash dummies to clinical trials,
+we have evidence of how not accounting for gender
+differences brings to the creation of male-grounded
+products with dire consequences (Liu and Dipi-
+etro Mager, 2016; Criado-Perez, 2019), such as
+higher death and injury risks in vehicle crash and
+less effective medical treatments for women. Simi-
+larly, unbeknownst to their creators, MT systems
+that are not intentionally envisioned for a diverse
+range of users will not generalize for the feminine
+segment of the population. Hence, in the interac-
+tion with an MT system, a woman will likely be
+misgendered or not have her linguistic style pre-
+served (Hovy et al., 2020). Other conditions of
+users/system mismatch may be the result of chang-
+ing societal knowledge and values. A case in point
+regards Google Translate’s historical decision to
+adjust its system for instances of gender ambigu-
+ity. Since its launch twenty years ago, Google
+had provided only one translation for single-word
+gender-ambiguous queries (e.g., professor trans-
+lated in Italian with the masculine professore ). In
+a community increasingly conscious of the power
+of language to hardwire stereotypical beliefs and
+women’s invisibility (Lindqvist et al., 2019; Beuke-
+boom and Burgers, 2019), the bias exhibited by
+the system was confronted with a new sensitivity.
+The service’s decision (Kuczmarski, 2018) to pro-
+vide a double feminine/masculine output ( profes-
+sor!professoressajprofessore ) stems from current
+demands for gender-inclusive resolutions. For the
+recognition of non-binary groups (Richards et al.,
+2016), we invite studies on how such modeling
+could be integrated with neutral strategies ( x6).
+4 Assessing Bias
+First accounts on gender bias in MT date back to
+Frank et al. (2004). Their manual analysis pointed
+out how English-German MT suffers from a dearth
+of linguistic competence, as it shows severe difﬁ-
+culties in recovering syntactic and semantic infor-
+mation to correctly produce gender agreement.
+Similar inquiries were conducted on other tar-
+get grammatical gender languages for several com-
+mercial MT systems (Abu-Ayyash, 2017; Monti,2017; Rescigno et al., 2020). While these stud-
+ies focused on contrastive phenomena, Schiebinger
+(2014)9went beyond linguistic insights, calling for
+a deeper understanding of gender bias. Her article
+on Google Translate’s “masculine default” behav-
+ior emphasized how such a phenomenon is related
+to the larger issue of gender inequalities, also per-
+petuated by socio-technical artifacts (Selbst et al.,
+2019). All in all, these qualitative analyses demon-
+strated that gender problems encompass all three
+MT paradigms (neural, statistical, and rule-based),
+preparing the ground for quantitative work.
+To attest the existence and scale of gender bias
+across several languages, dedicated benchmarks,
+evaluations, and experiments have been designed.
+We ﬁrst discuss large scale analyses aimed at as-
+sessing gender bias in MT, grouped according to
+two main conceptualizations: i)works focusing
+on the weight of prejudices and stereotypes in MT
+(x4.1); ii)studies assessing whether gender is prop-
+erly preserved in translation ( x4.2). In accordance
+with the human-centered approach embraced in this
+survey, in Table 1 we map each work to the harms
+(seex2) ensuing from the biased behaviors they
+assess. Finally, we review existing benchmarks for
+comparing MT performance across genders ( x4.3).
+4.1 MT and Gender Stereotypes
+In MT, we record prior studies concerned with pro-
+noun translation and coreference resolution across
+typologically different languages accounting for
+both animate and inanimate referents (Hardmeier
+and Federico, 2010; Le Nagard and Koehn, 2010;
+Guillou, 2012). For the speciﬁc analysis on gender
+bias, instead, such tasks are exclusively studied in
+relation to human entities.
+Prates et al. (2018) and Cho et al. (2019) design
+a similar setting to assess gender bias. Prates et al.
+(2018) investigate pronoun translation from 12 gen-
+derless languages into English. Retrieving 1,000
+job positions from the U.S. Bureau of Labor Statis-
+tics, they build simple constructions like the Hun-
+garian “ ˝oegym´ern¨ok” (“he/she is an engineer ”).
+Following the same template, Cho et al. (2019)
+extend the analysis to Korean-English including
+both occupations and sentiment words (e.g., kind).
+As their samples are ambiguous by design, the ob-
+served predictions of he/she pronouns should be
+9See also Schiebinger’s project
+Gendered Innovations : http://
+genderedinnovations :stanford :edu/case-
+studies/nlp :html
+random, yet they show a strong masculine skew.10
+To further analyze the under-representation of
+shepronouns, Prates et al. (2018) focus on 22
+macro-categories of occupation areas and compare
+the proportion of pronoun predictions against the
+real-world proportion of men and women employed
+in such sectors. In this way, they ﬁnd that MT
+not only yields a masculine default, but it also un-
+derestimates feminine frequency at a greater rate
+than occupation data alone suggest. Such an analy-
+sis starts by acknowledging pre-existing bias (see
+x3.2.1) – e.g., low rates of women in STEM – to
+attest the existence of machine bias, and deﬁnes it
+as the exacerbation of actual gender disparities.
+Going beyond word lists and simple synthetic
+constructions, Gonen and Webster (2020) inspect
+the translation into Russian, Spanish, German, and
+French of natural yet ambiguous English sentences.
+Their analysis on the ratio and type of generated
+masculine/feminine job titles consistently exhibits
+social asymmetries for target grammatical gender
+languages (e.g., lecturer masculine vs. teacher
+feminine). Finally, Stanovsky et al. (2019) assess
+that MT is skewed to the point of actually ignoring
+explicit feminine gender information in source En-
+glish sentences. For instance, MT systems yield a
+wrong masculine translation of the job title baker ,
+although it is referred to by the pronoun she. Beside
+the overlook of overt gender mentions, the model’s
+reliance on unintended (and irrelevant) cues for gen-
+der assignment is further conﬁrmed by the fact that
+adding a socially connoted – but formally epicene –
+adjective (the pretty baker) pushes models toward
+feminine inﬂections in translation.
+We observe that the propagation of stereotypes
+is a widely researched form of gender asymmetries
+in MT, one that so far has been largely narrowed
+down to occupational stereotyping. After all, occu-
+pational stereotyping has been studied by different
+disciplines (Greenwald et al., 1998) attested across
+cultures (Lewis and Lupyan, 2020), and it can be
+easily detected in MT across multiple language di-
+rections with consistent results. Current research
+should not neglect other stereotyping dynamics, as
+in the case of Stanovsky et al. (2019) and Cho et al.
+10Cho et al. (2019) highlight that a higher frequency of fem-
+inine references in the MT output does not necessarily imply a
+bias reduction. Rather, it may reﬂect gender stereotypes, as for
+hairdresser that is skewed toward feminine. This observation
+points to the tension between frequency count, suitable for
+testing under-representation, and qualitative-oriented analysis
+on bias conceptualized in terms of stereotyping.(2019), who include associations to physical char-
+acteristics or psychological traits. Also, the intrinsi-
+cally contextual nature of societal expectations ad-
+vocates for the study of culture-speciﬁc dimensions
+of bias. Finally, we signal that the BERT-based
+perturbation method by Webster et al. (2019) iden-
+tiﬁes other bias-susceptible nouns that tend to be
+assigned to a speciﬁc gender (e.g., ﬁghter as mas-
+culine). As Blodgett (2021) underscores, however,
+“the existence of these undesirable correlations is
+not sufﬁcient to identify them as normatively un-
+desirable”. It should thus be investigated whether
+such statistical preferences can cause harms, e.g.,
+by checking if they map to existing harmful associ-
+ations or quality of service disparities.
+4.2 MT and Gender Preservation
+Vanmassenhove et al. (2018) and Hovy et al. (2020)
+investigate whether speakers’ gender11is properly
+reﬂected in MT. This line of research is preceded
+by ﬁndings on gender personalization of statisti-
+cal MT (Mirkin et al., 2015; Bawden et al., 2016;
+Rabinovich et al., 2017), which claim that gender
+“signals” are weakened in translation.
+Hovy et al. (2020) conjecture the existence of
+age and gender stylistic bias due to models’ under-
+exposure to the writings of women and younger
+segments of the population. To test this hypoth-
+esis, they automatically translate a corpus of on-
+line reviews with available metadata about users
+(Hovy et al., 2015). Then, they compare such demo-
+graphic information with the prediction of age and
+gender classiﬁers run on the MT output. Results
+indicate that different commercial MT models sys-
+tematically make authors “sound” older and male.
+Their study thus concerns the under-representation
+of the language used “by” certain speakers and
+how it is perceived (Blodgett, 2021). However,
+the authors do not inspect which linguistic choices
+MT overproduces, nor which stylistic features may
+characterize different socio-demographic groups.
+Still starting from the assumption that demo-
+graphic factors inﬂuence language use, Vanmassen-
+hove et al. (2018) probe MT’s ability to preserve
+speaker’s gender translating from English into ten
+languages. To this aim, they develop gender-
+informed MT models (see x5.1), whose outputs
+are compared with those obtained by their base-
+line counterparts. Tested on a set for spoken lan-
+11Note that these studies distinguish speakers into fe-
+male/male. As discussed in x3.1.3, we invite a reﬂection
+on the appropriateness and use of such categories.
+guage translation (Koehn, 2005), their enhanced
+models show consistent gains in terms of overall
+quality when translating into grammatical gender
+languages, where speaker’s references are often
+marked. For instance, the French translation of
+“I’m happy ” is either “Je suis heureuse “ or “Je
+suishereux ” for a female/male speaker respectively.
+Through a focused cross-gender analysis – carried
+out by splitting their English-French test set into
+1st person male vs. female data – they assess that
+the largest margin of improvement for their gender-
+informed approach concerns sentences uttered by
+women, since the results of their baseline disclose a
+quality of service disparity in favor of male speak-
+ers. Besides morphological agreement, they also
+attribute such improvement to the fact that their
+enhanced model produces gendered preferences in
+other word choices. For instance, it opts for think
+rather than believe , which is in concordance with
+corpus studies claiming a tendency for women to
+use less assertive speech (Newman et al., 2008).
+Note that the authors rely on manual analysis to
+ascribe performance differences to gender-related
+features. In fact, global evaluations on generic test
+sets alone are inadequate to pointedly measure gen-
+der bias.
+4.3 Existing Benchmarks
+MT outputs are typically evaluated against refer-
+ence translations employing standard metrics such
+as BLEU (Papineni et al., 2002) or TER (Snover
+et al., 2006). This procedure poses two chal-
+lenges. First, these metrics provide coarse-grained
+scores for translation quality, as they treat all er-
+rors equally and are rather insensitive to speciﬁc
+linguistic phenomena (Sennrich, 2017). Second,
+generic test sets containing the same gender imbal-
+ance present in the training data can reward biased
+predictions. Hereby, we describe the publicly avail-
+able MT Gender Bias Evaluation Testsets (GBETs)
+(Sun et al., 2019), i.e., benchmarks designed to
+probe gender bias by isolating the impact of gender
+from other factors that may affect systems’ perfor-
+mance. Note that different benchmarks and met-
+rics respond to different conceptualizations of bias
+(Barocas et al., 2019). Common to them all in MT,
+however, is that biased behaviors are formalized
+by using some variants of averaged performance12
+12This is a value-laden option (Birhane et al., 2020), and
+not the only possible one (Mitchell et al., 2020). For a broader
+discussion on measurement and bias we refer the reader also
+to (Jacobs, 2021; Jacobs et al., 2020).disparities across gender groups, comparing the ac-
+curacy of gender predictions on an equal number
+of masculine, feminine, and neutral references.
+Escud ´e Font and Costa-juss `a (2019) developed
+the bilingual English-Spanish Occupations test
+set. It consists of 1,000 sentences equally dis-
+tributed across genders. The phrasal structure
+envisioned for their sentences is “I’ve known
+fherjhimj<proper noun >gfor a long time, my
+friend works asfajang<occupation >”. The evalu-
+ation focuses on the translation of the noun friend
+into Spanish ( amig o/a). Since gender information
+is present in the source context and sentences are
+the same for both masculine/feminine participants,
+an MT system exhibits gender bias if it disregards
+relevant context and cannot provide the correct
+translation of friend at the same rate across genders.
+Stanovsky et al. (2019) created WinoMT by
+concatenating two existing English GBETs for
+coreference resolution (Rudinger et al., 2018; Zhao
+et al., 2018a). The corpus consists of 3,888 Wino-
+gradesque sentences presenting two human entities
+deﬁned by their role and a subsequent pronoun that
+needs to be correctly resolved to one of the entities
+(e.g., “The lawyer yelled at the hairdresser because
+hedid a bad job”). For each sentence, there are two
+variants with either heorshepronouns, so as to
+cast the referred annotated entity ( hairdresser ) into
+a proto- or anti-stereotypical gender role. By trans-
+lating WinoMT into grammatical gender languages,
+one can thus measure systems’ ability to resolve
+the anaphoric relation and pick the correct femi-
+nine/masculine inﬂection for the occupational noun.
+On top of quantifying under-representation as the
+difference between the total amount of translated
+feminine and masculine references, the subdivision
+of the corpus into proto- and anti-stereotypical sets
+also allows verifying if MT predictions correlate
+with occupational stereotyping.
+Finally, Saunders et al. (2020) enriched the origi-
+nal version of WinoMT in two different ways. First,
+they included a third gender-neutral case based on
+the singular they pronoun, thus paving the way
+to account for non-binary referents. Second, they
+labeled the entity in the sentence which is not coref-
+erent with the pronoun ( lawyer ). The latter anno-
+tation is used to verify the shortcomings of some
+mitigating approaches as discussed in x5.
+The above-mentioned corpora are known as chal-
+lenge sets , consisting of sentences created ad hoc
+for diagnostic purposes. In this way, they can
+Study Benchmark Gender Harms
+(Prates et al., 2018) Synthetic, U.S. Bureau of Labor Statistics b R: under-rep, stereotyping
+(Cho et al., 2019) Synthetic equity evaluation corpus (EEC) b R: under-rep, stereotyping
+(Gonen and Webster, 2020) BERT-based perturbations on natural sentences b R: under-rep, stereotyping
+(Stanovsky et al., 2019) WinoMT b R: under-rep, stereotyping
+(Vanmassenhove et al., 2018) Europarl (generic) b A: quality
+(Hovy et al., 2020) Trustpilot (reviews with gender and age) b R: under-rep
+Table 1: For each Study , the Table shows on which Benchmark gender bias is assessed, how Gender is intended (here only
+in binary (b) terms). Finally, we indicate which (R)epresentational – under-representation andstereotyping – or (A)llocational
+Harm – as reduced quality of service – is addressed in the study.
+be used to quantify bias related to stereotyping
+and under-representation in a sound environment.
+However, since they consist of a limited variety of
+synthetic gender-related phenomena, they hardly
+address the variety of challenges posed by real-
+world language and are relatively easy to overﬁt.
+As recognized by Rudinger et al. (2018) “they may
+demonstrate the presence of gender bias in a sys-
+tem, but not prove its absence”.
+The Arabic Parallel Gender Corpus (Habash
+et al., 2019) includes an English-Arabic test set13
+retrieved from OpenSubtitles natural language data
+(Lison and Tiedemann, 2016). Each of the 2,448
+sentences in the set exhibits a ﬁrst person sin-
+gular reference to the speaker (e.g., “I’m rich”).
+Among them,200 English sentences require gen-
+der agreement to be assigned in translation. These
+were translated into Arabic in both gender forms,
+obtaining a quantitatively and qualitatively equal
+amount of sentence pairs with annotated mascu-
+line/feminine references. This natural corpus thus
+allows for cross-gender evaluations on MT produc-
+tion of correct speaker’s gender agreement.
+MuST-SHE (Bentivogli et al., 2020) is a natu-
+ral benchmark for three language pairs (English-
+French/Italian/Spanish). Built on TED talks data
+(Cattoni et al., 2021), for each language pair it
+comprises1,000 ( audio ,transcript ,translation )
+triplets, thus allowing evaluation for both MT and
+speech translation (ST). Its samples are balanced
+between masculine and feminine phenomena, and
+incorporate two types of constructions: i)sentences
+referring to the speaker (e.g., “ Iwasborn in Mum-
+bai”), and ii)sentences that present contextual in-
+formation to disambiguate gender (e.g., “My mum
+wasborn in Mumbai”). Since every gender-marked
+word in the target language is annotated in the cor-
+pus, MuST-SHE grants the advantage of comple-
+menting BLEU- and accuracy-based evaluations on
+13Overall, the corpus comprises over 12,000 annotated sen-
+tences and 200,000 synthetic sentences.gender translation for a great variety of phenomena.
+Unlike challenge sets, natural corpora quantify
+whether MT yields reduced feminine representa-
+tion in authentic conditions and whether the quality
+of service varies across speakers of different gen-
+ders. However, as they treat all gender-marked
+words equally, it is not possible to identify if the
+model is propagating stereotypical representations.
+All in all, we stress that each test set and metric
+is only a proxy for framing a phenomenon or an
+ability (e.g., anaphora resolution), and an approxi-
+mation of what we truly intend to gauge. Thus, as
+we discuss inx6, advances in MT should account
+for the observation of gender bias in real-world
+conditions to avoid that achieving high scores on
+a mathematically formalized esteem could lead to
+a false sense of security. Still, benchmarks remain
+valuable tools to monitor models’ behavior. As
+such, we remark that evaluation procedures ought
+to cover both models’ general performance and
+gender-related issues. This is crucial to establish
+the capabilities and limits of mitigating strategies.
+5 Mitigating Bias
+To attenuate gender bias in MT, different strategies
+dealing with input data, learning algorithms, and
+model outputs have been proposed. As attested
+by Birhane et al. (2020), since advancements are
+oftentimes exclusively reported in terms of values
+internal to the machine learning ﬁeld (e.g efﬁciency,
+performance), it is not clear how such strategies
+are meeting societal needs by reducing MT-related
+harms. In order to conciliate technical perspectives
+with the intended social purpose, in Table 2 we map
+each mitigating approach to the harms (see x2) they
+are meant to alleviate, as well as to the benchmark
+their effectiveness is evaluated against. Comple-
+mentarily, we hereby describe each approach by
+means of two categories: model debiasing ( x5.1)
+and debiasing through external components ( x5.2).
+Approach Authors Benchmark Gender Harms
+Gender tagging
+(sentence-level)Vanmassenhove et al. Europarl (generic) b R: under-rep, A: quality
+Elaraby et al. Open subtitles (generic) b R: under-rep, A: quality
+Gender tagging
+(word-level)Saunders et al. expanded WinoMT nb R: under-rep, stereotyping
+Stafanovi ˇcs et al. WinoMT b R: under-rep, stereotyping
+Adding context Basta et al. WinoMT b R: under-rep, stereotyping
+Word-embeddings Escud ´e Font and Costa-juss `aOccupation test set b R: under-rep
+Fine-tuning Costa-juss `a and de Jorge WinoMT b R: under-rep, stereotyping
+Black-box injection Moryossef et al. Open subtitles (selected sample) b R: under-rep, A: quality
+Lattice-rescoring Saunders and Byrne WinoMT b R: under-rep, steretoyping
+Re-inﬂection Habash et al.; Alhafni et al. Arabic Parallel Gender Corpus b R: under-rep, A: quality
+Table 2: For each Approach and related Authors , the Table shows on which Benchmark it is tested, if Gender is intended
+in binary terms (b), or including non-binary (nb) identities. Finally, we indicate which (R)epresentational – under-representation
+andstereotyping – or (A)llocational Harm – as reduced quality of service – the approach attempts to mitigate.
+5.1 Model Debiasing
+This line of work focuses on mitigating gender bias
+through architectural changes of general-purpose
+MT models or via dedicated training procedures.
+Gender tagging. To improve the generation
+of speaker’s referential markings, Vanmassenhove
+et al. (2018) prepend a gender tag (M or F) to each
+source sentence, both at training and inference time.
+As their model is able to leverage this additional
+information, the approach proves useful to handle
+morphological agreement when translating from
+English into French. However, this solution re-
+quires additional metadata regarding the speakers’
+gender that might not always be feasible to ac-
+quire. Automatic annotation of speakers’ gender
+(e.g., based on ﬁrst names) is not advisable, as it
+runs the risk of introducing additional bias by mak-
+ing unlicensed assumptions about one’s identity.
+Elaraby et al. (2018) bypass this risk by deﬁning
+a comprehensive set of cross-lingual gender agree-
+ment rules based on POS tagging. In this way, they
+identify speakers’ and listeners’ gender references
+in an English-Arabic parallel corpus, which is con-
+sequently labeled and used for training. The idea,
+originally developed for spoken language transla-
+tion in a two-way conversational setting, can be
+adapted for other languages and scenarios by creat-
+ing new dedicated rules. However, in realistic de-
+ployment conditions where reference translations
+are not available, gender information still has to be
+externally supplied as metadata at inference time.
+Stafanovi ˇcs et al. (2020) and Saunders et al.
+(2020) explore the use of word-level gender tags.
+While Stafanovi ˇcs et al. (2020) just report a gen-
+der translation improvement, Saunders et al. (2020)
+rely on the expanded version of WinoMT to iden-
+tify a problem concerning gender tagging: it intro-duces noise if applied to sentences with references
+to multiple participants, as it pushes their transla-
+tion toward the same gender. Saunders et al. (2020)
+also include a ﬁrst non-binary exploration of neu-
+tral translation by exploiting an artiﬁcial dataset,
+where neutral tags are added and gendered inﬂec-
+tions are replaced by placeholders. The results are
+however inconclusive, most likely due to the small
+size and synthetic nature of their dataset.
+Adding context. Without further information
+needed for training or inference, Basta et al. (2020)
+adopt a generic approach and concatenate each sen-
+tence with its preceding one. By providing more
+context, they attest a slight improvement in gender
+translations requiring anaphorical coreference to be
+solved in English-Spanish. This ﬁnding motivates
+exploration at the document level, but it should be
+validated with manual (Castilho et al., 2020) and in-
+terpretability analyses since the added context can
+be beneﬁcial for gender-unrelated reasons, such as
+acting as a regularization factor (Kim et al., 2019).
+Debiased word embeddings. The two above-
+mentioned mitigations share the same intent: sup-
+ply the model with additional gender knowledge.
+Instead, Escud ´e Font and Costa-juss `a (2019) lever-
+age pre-trained word embeddings, which are debi-
+ased by using the hard-debiasing method proposed
+by Bolukbasi et al. (2016) or the GN-GloVe algo-
+rithm (Zhao et al., 2018b). These methods respec-
+tively remove gender associations or isolate them
+from the representations of English gender-neutral
+words. Escud ´e Font and Costa-juss `a (2019) employ
+such embeddings on the decoder side, the encoder
+side, and both sides of an English-Spanish model.
+The best results are obtained by leveraging GN-
+GloVe embeddings on both encoder and decoder
+sides, increasing BLEU scores and gender accuracy.
+The authors generically apply debiasing methods
+developed for English also to their target language.
+However, being Spanish a grammatical gender lan-
+guage, other language-speciﬁc approaches should
+be considered to preserve the quality of the original
+embeddings (Zhou et al., 2019; Zhao et al., 2020).
+We also stress that it is debated whether depriving
+systems of some knowledge and “blind” their per-
+ceptions is the right path toward fairer language
+models (Dwork et al., 2012; Caliskan et al., 2017;
+Gonen and Goldberg, 2019; Nissim and van der
+Goot, 2020). Also, Goldfarb-Tarrant et al. (2020)
+ﬁnd that there is no reliable correlation between in-
+trinsic evaluations of bias in word-embeddings and
+cascaded effects on MT models’ biased behavior.
+Balanced ﬁne-tuning. Costa-juss `a and de Jorge
+(2020) rely on Gebiotoolkit (Costa-juss `a et al.,
+2020c) to build gender-balanced datasets (i.e., fea-
+turing an equal amount of masculine/feminine ref-
+erences) based on Wikipedia biographies. By ﬁne-
+tuning their models on such natural and more even
+data, the generation of feminine forms is overall
+improved. However, the approach is not as effec-
+tive for gender translation on the anti-stereotypical
+WinoMT set. As discussed in x3.2.2, they employ
+a straightforward method that aims to increase the
+amount of feminine Wikipedia pages in their train-
+ing data. However, such coverage increase does not
+mitigate stereotyping harms, as it does not account
+for the qualitative different ways in which men and
+women are portrayed (Wagner et al., 2015).
+5.2 Debiasing through External Components
+Instead of directly debiasing the MT model, these
+mitigating strategies intervene in the inference
+phase with external dedicated components. Such
+approaches do not imply retraining, but introduce
+the additional cost of maintaining separate modules
+and handling their integration with the MT model.
+Black-box injection. Moryossef et al. (2019)
+attempt to control the production of feminine refer-
+ences to the speaker and numeral inﬂections (plural
+or singular) for the listener(s) in an English-Hebrew
+spoken language setting. To this aim, they rely on
+a short construction, such as “ shesaid to them ”,
+which is prepended to the source sentence and then
+removed from the MT output. Their approach is
+simple, it can handle two types of information (gen-
+der and number) for multiple entities (speaker and
+listener), and improves systems’ ability to gener-
+ate feminine target forms. However, as in the case
+of Vanmassenhove et al. (2018) and Elaraby et al.(2018), it requires metadata about speakers and
+listeners.
+Lattice re-scoring. Saunders and Byrne (2020)
+propose to post-process the MT output with a lat-
+tice re-scoring module. This module exploits a
+transducer to create a lattice by mapping gender
+marked words in the MT output to all their possi-
+ble inﬂectional variants. Developed for German,
+Spanish, and Hebrew, all the sentences correspond-
+ing to the paths in the lattice are re-scored with
+another model, which has been gender-debiased
+but at the cost of lower generic translation quality.
+Then, the sentence with the highest probability is
+picked as the ﬁnal output. When tested on WinoMT,
+such an approach leads to an increase in the ac-
+curacy of gender forms selection. Note that the
+gender-debiased system is created by ﬁne-tuning
+the model on an ad hoc built tiny set containing
+a balanced amount of masculine/feminine forms.
+Such an approach, also known as counterfactual
+data augmentation (Lu et al., 2020), requires to
+create identical pairs of sentences differing only
+in terms of gender references. In fact, Saunders
+and Byrne (2020) compile English sentences fol-
+lowing this schema: “The <profession >ﬁnished
+<hisjher>work”. Then, the sentences are auto-
+matically translated and manually checked. In this
+way, they obtain gender-balanced parallel corpus.
+Thus, to implement their method for other language
+pairs, the generation of new data is necessary. For
+the ﬁne-tuning set, the effort required is limited
+as the goal is to alleviate stereotypes by focusing
+on a pre-deﬁned occupational lexicon. However,
+data augmentation is very demanding for complex
+sentences that represent a rich variety of gender
+agreement phenomena14such as those occurring in
+natural language scenarios.
+Gender re-inﬂection. Habash et al. (2019)
+and Alhafni et al. (2020) confront the problem
+of speaker’s gender agreement in Arabic with a
+post-processing component that re-inﬂects 1st per-
+son references into masculine/feminine forms. In
+Alhafni et al. (2020), the preferred gender of the
+speaker and the translated Arabic sentence are fed
+to the component, which re-inﬂects the sentence
+in the desired form. In Habash et al. (2019) the
+component can be: i) a two-step system that ﬁrst
+identiﬁes the gender of 1st person references in
+14Zmigrod et al. (2019) proposed an automatic approach for
+augmenting data into morphologically-rich languages, but it
+is only viable for simple constructions with one single entity.
+an MT output, and then re-inﬂects them in the op-
+posite form; ii) a single-step system that always
+produces both forms from an MT output. Their
+method does not necessarily require speakers’ gen-
+der information: if metadata are supplied, the MT
+output is re-inﬂected accordingly; differently, both
+feminine/masculine inﬂections are offered (leaving
+to the user the choice of the appropriate one). The
+implementation of the re-inﬂection component was
+made possible by the Arabic Parallel Gender Cor-
+pus (seex4.3), which demanded an expensive work
+of manual data creation. However, such corpus
+grants research on English-Arabic the beneﬁts of
+a wealth of gender-informed natural language data
+that have been curated to avoid hetero-centrist inter-
+pretations and preconceptions (e.g., proper names
+and speakers of sentences like “that’s my wife” are
+ﬂagged as gender-ambiguous). Along the same
+line, Google Translate also delivers two outputs for
+short gender-ambiguous queries (Johnson, 2020b).
+Among languages with grammatical gender, the ser-
+vice is currently available only for English-Spanish.
+In light of the above, we remark that there is no
+conclusive state-of-the-art method for mitigating
+bias. The discussed interventions in MT tend to re-
+spond to speciﬁc aspects of the problem with mod-
+ular solutions, but if and how they can be integrated
+within the same MT system remains unexplored.
+As we have discussed through the survey, the um-
+brella term “gender bias” refers to a wide array of
+undesirable phenomena. Thus, it is unlikely that a
+one-size-ﬁts-all solution will be able tackle prob-
+lems that differ from one another, as they depend
+on e.g., how bias is conceptualized, the language
+combinations, the kinds of corpora used. As a re-
+sult, we believe that generalization and scalability
+should not be the only criteria against which miti-
+gating strategies are valued. Conversely, we should
+make room for openly context-aware interventions.
+Finally, gender bias in MT is a socio-technical
+problem. We thus highlight that engineering in-
+terventions alone are not a panacea (Chang, 2019)
+and should be integrated with long-term multidisci-
+plinary commitment and practices (D’Ignazio and
+Klein, 2020; Gebru, 2020) necessary to address
+bias in our community, hence in its artifacts, too.
+6 Conclusion and Key Challenges
+As studies confronting gender bias in MT are
+rapidly emerging, in this paper we presented them
+within a uniﬁed framework to critically overviewcurrent conceptualizations and approaches to the
+problem. Since gender bias is a multifaceted and
+interdisciplinary issue, in our discussion we inte-
+grated knowledge from related disciplines, which
+can be instrumental to guide future research and
+make it thrive. We conclude by suggesting several
+directions that can help this ﬁeld going forward.
+Model de-biasing. Neural networks rely on
+easy-to-learn shortcuts or “cheap tricks” (Levesque,
+2014), as picking up on spurious correlations of-
+fered by training data can be easier for machines
+than learning to actually solve a speciﬁc task. What
+is “easy to learn” for a model depends on the induc-
+tive bias (Sinz et al., 2019; Geirhos et al., 2020) re-
+sulting from architectural choices, training data and
+learning rules. We think that explainability tech-
+niques (Belinkov et al., 2020) represent a useful
+tool to identify spurious cues (features) exploited
+by the model during inference. Discerning them
+can provide the research community with guid-
+ance on how to improve models’ generalization
+by working on data, architectures, loss functions
+and optimizations. For instance, data responsi-
+ble for spurious features (e.g., stereotypical cor-
+relations) might be recognized and their weight
+at training time might be lowered (Karimi Ma-
+habadi et al., 2020). Besides, state-of-the-art ar-
+chitectural choices and algorithms in MT have
+mostly been studied in terms of overall transla-
+tion quality without speciﬁc analyses regarding
+gender translation. For instance, current systems
+segment text into subword units with statistical
+methods that can break the morphological struc-
+ture of words, thus losing relevant semantic and
+syntactic information in morphologically-rich lan-
+guages (Niehues et al., 2016; Ataman et al., 2017).
+Several languages show complex feminine forms,
+typically derivative and created by adding a suf-
+ﬁx to the masculine form, such as Lehrer/Lehrer in
+(de), studente/studente ssa(it). It would be relevant
+to investigate whether, compared to other segmenta-
+tion techniques, statistical approaches disadvantage
+(rarer and more complex) feminine forms. The MT
+community should not overlook focused hypothe-
+ses of such kind, as they can deepen our compre-
+hension of the gender bias conundrum.
+Non-textual modalities. Gender bias for non-
+textual automatic translations (e.g., audiovisual)
+has been largely neglected. In this sense, ST repre-
+sents a small niche (Costa-juss `a et al., 2020a). For
+the translation of speaker-related gender phenom-
+ena, Bentivogli et al. (2020) prove that direct ST
+systems exploit speaker’s vocal characteristics as a
+gender cue to improve feminine translation. How-
+ever, as addressed by Gaido et al. (2020), relying
+on physical gender cues (e.g., pitch) for such task
+implies reductionist gender classiﬁcations (Zim-
+man, 2020) making systems potentially harmful
+for a diverse range of users. Similarly, although
+image-guided translation has been claimed useful
+for gender translation since it relies on visual in-
+puts for disambiguation (Frank et al., 2018; Ive
+et al., 2019), it could bend toward stereotypical
+assumptions about appearance. Further research
+should explore such directions to identify potential
+challenges and risks, by drawing on bias in im-
+age captioning (van Miltenburg, 2019) and consoli-
+dated studies from the ﬁelds of automatic gender
+recognition and human-computer interaction (HCI)
+(Hamidi et al., 2018; Keyes, 2018; May, 2019).
+Beyond Dichotomies. Besides a few notable
+exceptions for English NLP tasks (Manzini et al.,
+2019; Cao and Daum ´e III, 2020; Sun et al., 2021)
+and one in MT (Saunders et al., 2020), the discus-
+sion around gender bias has been reduced to the
+binary masculine/feminine dichotomy. Although
+research in this direction is currently hampered by
+the absence of data, we invite considering inclu-
+sive solutions and exploring nuanced dimensions
+of gender. Starting from language practices, Indi-
+rect Non-binary Language (INL) overcomes gen-
+der speciﬁcations (e.g., using service, humankind
+rather than waiter/waitress ormankind ).15Whilst
+more challenging, INL can be achieved also for
+grammatical gender languages (Motschenbacher,
+2014; Lindqvist et al., 2019), and it is endorsed
+for ofﬁcial EU documents (Papadimoulis, 2018).
+Accordingly, MT models could be brought to avoid
+binary forms and move toward gender-unspeciﬁed
+solutions, e.g., adversarial networks including a
+discriminator that classiﬁes speaker’s linguistic ex-
+pression of gender (masculine or feminine) could
+be employed to “neutralize” speaker-related forms
+(Li et al., 2018; Delobelle et al., 2020). Conversely,
+Direct Non-binary Language (DNL) aims at in-
+creasing the visibility of non-binary individuals
+via neologisms and neomorphemes (Bradley et al.,
+2019; Papadopoulos, 2019; Knisely, 2020). With
+DNL starting to circulate (Shroy, 2016; Santiago,
+2018; L ´opez, 2019), the community is presented
+15INL suggestions have also been recently implemented
+within Microsoft text editors (Langston, 2020).with the opportunity to promote the creation of
+inclusive data.
+Finally, as already highlighted in legal and so-
+cial science theory, discrimination can arise from
+the intersection of multiple identity categories (e.g.,
+race and gender) (Crenshaw, 1989) which are not
+additive and cannot always be detected in isolation
+(Schlesinger et al., 2017). Following the MT work
+by Hovy et al. (2020), as well as other intersec-
+tional analyses from NLP (Herbelot et al., 2012;
+Jiang and Fellbaum, 2020) and AI-related ﬁelds
+(Buolamwini and Gebru, 2018), future studies may
+account for the interaction of gender attributes with
+other sociodemographic classes.
+Human-in-the-loop. Research on gender bias
+in MT is still restricted to lab tests. As such, un-
+like other studies that rely on participatory design
+(Turner et al., 2015; Cercas Curry et al., 2020;
+Liebling et al., 2020), the advancement of the ﬁeld
+is not measured with people’s experience in fo-
+cus or in relation to speciﬁc deployment contexts.
+However, these are fundamental considerations to
+guide the ﬁeld forward and, as HCI studies show
+(V orvoreanu et al., 2019), to propel the creation of
+gender-inclusive technology. In particular, repre-
+sentational harms are intrinsically difﬁcult to es-
+timate and available benchmarks only provide a
+rough idea of their extent. This advocates for fo-
+cused studies16on their individual or aggregate
+effects in everyday life. Also, we invite the whole
+development process to be paired with bias-aware
+research methodology (Havens et al., 2020) and
+HCI approaches (Stumpf et al., 2020), which can
+help to operationalize sensitive attributes like gen-
+der (Keyes et al., 2021). Finally, MT is not only
+built for people, but also by people. Thus, it is vital
+to reﬂect on the implicit biases and backgrounds of
+the people involved in MT pipelines at all stages
+and how they could be reﬂected in the model. This
+means starting from bottom-level countermeasures,
+engaging with translators (De Marco and Toto,
+2019; Lessinger, 2020), annotators (Waseem, 2016;
+Geva et al., 2019), considering everyone’s subjec-
+tive positionality and, crucially, also the lack of
+diversity within technology teams (Schluter, 2018;
+Waseem et al., 2020).
+16To the best of our knowledge, the Gender-Inclusive
+Language Models Survey is the ﬁrst project of this kind that
+includes MT. At time of writing it is available at: https://
+docs.google.com/forms/d/e/1FAIpQLSfKenp4RKtDhKA0W
+LqPﬂGSBV2VdBA9h3F8MwqRex 4kiCf9Q/viewform
+Acknowledgments
+We would like to thank the anonymous reviewers
+and the TACL Action Editors. Their insightful
+comments helped us improve on the current version
+of the paper.
+References
+Emad A. S. Abu-Ayyash. 2017. Errors and Non-
+errors in English-Arabic Machine Translation
+of Gender-Bound Constructs in Technical Texts.
+Procedia Computer Science , 117:73–80.
+Bashar Alhafni, Nizar Habash, and Houda
+Bouamor. 2020. Gender-Aware Reinﬂection us-
+ing Linguistically Enhanced Neural Models. In
+Proceedings of the Second Workshop on Gen-
+der Bias in Natural Language Processing , pages
+139–150, Online. Association for Computational
+Linguistics.
+Duygu Ataman, Matteo Negri, Marco Turchi, and
+Marcello Federico. 2017. Linguistically Mo-
+tivated V ocabulary Reduction for Neural Ma-
+chine Translation from Turkish to English. The
+Prague Bulletin of Mathematical Linguistics ,
+108(1):331–342.
+David Bamman, Jacob Eisenstein, and Tyler Sch-
+noebelen. 2014. Gender identity and lexical vari-
+ation in social media. Journal of Sociolinguis-
+tics, 18(2):135–160.
+Solon Barocas, Moritz Hardt, and Arvind
+Narayanan. 2019. Fairness and Ma-
+chine Learning . fairmlbook.org.
+http://www :fairmlbook :org.
+Christine Basta, Marta R. Costa-juss `a, and Jos ´e
+A. R. Fonollosa. 2020. Towards Mitigating Gen-
+der Bias in a Decoder-based Neural Machine
+Translation model by Adding Contextual In-
+formation. In Proceedings of the The Fourth
+Widening Natural Language Processing Work-
+shop , pages 99–102, Seattle, USA. Association
+for Computational Linguistics.
+Rachel Bawden, Guillaume Wisniewski, and
+H´el`ene Maynard. 2016. Investigating Gender
+Adaptation for Speech Translation. In Proceed-
+ings of the 23 `eme Conf ´erence sur le Traitement
+Automatique des Langues Naturelles , volume 2,
+pages 490–497, Paris, FR.Yonatan Belinkov, Nadir Durrani, Fahim Dalvi,
+Hassan Sajjad, and James Glass. 2020. On the
+Linguistic Representational Power of Neural Ma-
+chine Translation Models. Computational Lin-
+guistics , 46(1):1–52.
+Emily M. Bender. 2019. A Typology of Ethical
+Risks in Language Technology with an Eye To-
+wards where Transparent Documentation might
+help. In CRAASH. The future of Artiﬁcial In-
+telligence: Language, Ethics, Technology , Cam-
+bridge, UK.
+Emily M. Bender and Batya Friedman. 2018. Data
+Statements for Natural Language Processing: To-
+ward Mitigating System Bias and Enabling Bet-
+ter Science. Transactions of the Association for
+Computational Linguistics , 6:587–604.
+Emily M. Bender, Timnit Gebru, Angelina
+McMillan-Major, and Shmargaret Shmitchell.
+2021. On the Dangers of Stochastic Parrots: Can
+Language Models be too Big? In Proceedings
+of the Conference on Fairness, Accountability,
+and Transparency (FAccT ’21) , pages 610–623,
+Online. ACM.
+Luisa Bentivogli, Beatrice Savoldi, Matteo Negri,
+Mattia A. Di Gangi, Roldano Cattoni, and Marco
+Turchi. 2020. Gender in Danger? Evaluating
+Speech Translation Technology on the MuST-
+SHE Corpus. In Proceedings of the 58th Annual
+Meeting of the Association for Computational
+Linguistics , pages 6923–6933, Online. Associa-
+tion for Computational Linguistics.
+Victoria L. Bergvall, Janet M. Bing, and Alice F.
+Freed. 1996. Rethinking Language and Gen-
+der Research: Theory and Practice . Addison
+Wesley Longman, London, UK.
+Camiel J. Beukeboom and Christian Burgers. 2019.
+How Stereotypes are shared through Language:
+A Review and Introduction of the Social Cate-
+gories and Stereotypes Communication (SCSC)
+Framework. Review of Communication Re-
+search , 7:1–37.
+Abeba Birhane, Pratyusha Kalluri, Dallas Card,
+William Agnew, Ravit Dotan, and Michelle Bao.
+2020. The Underlying Values of Machine Learn-
+ing Research. In Resistance AI Workshop @
+NeurIPS , Online.
+Su Lin Blodgett. 2021. Sociolinguistically Driven
+Approaches for Just Natural Language Process-
+ing. Doctoral Dissertations. 2092.
+Su Lin Blodgett, Solon Barocas, Hal Daum ´e III,
+and Hanna Wallach. 2020. Language (Technol-
+ogy) is Power: A Critical Survey of “Bias” in
+NLP. In Proceedings of the 58th Annual Meet-
+ing of the Association for Computational Lin-
+guistics , pages 5454–5476, Online. Association
+for Computational Linguistics.
+Tolga Bolukbasi, Kai-Wei Chang, James Y . Zou,
+Venkatesh Saligrama, and Adam T. Kalai. 2016.
+Man is to Computer Programmer as Woman is to
+Homemaker? Debiasing Word Embeddings. In
+Proceedings of the 30th Conference on Neural
+Information Processing Systems (NIPS 2016) ,
+volume 29, pages 4349–4357, Barcelona, ES.
+Curran Associates, Inc.
+David Bourguignon, Vincent Y . Yzerbyt, Catia P.
+Teixeira, and Ginette Herman. 2015. When does
+it hurt? Intergroup permeability moderates the
+link between discrimination and self-esteem. Eu-
+ropean Journal of Social Psychology , 45(1):3–9.
+Evan D. Bradley, Julia Salkind, Ally Moore, and
+Soﬁ Teitsort. 2019. Singular ‘they’ and novel
+pronouns: gender-neutral, nonbinary, or both?
+Proceedings of the Linguistic Society of America ,
+4(1):36–1.
+Friederike Braun. 2000. Geschlecht im T ¨urkischen:
+Untersuchungen zum sprachlichen Umgang mit
+einer sozialen Kategorie . Turcologica Series.
+Otto Harrassowitz Verlag, Wiesbaden, DE.
+Sheila Brownlow, Julie A. Rosamond, and Jen-
+nifer A. Parker. 2003. Gender-linked Linguistic
+Behavior in Television Interviews. Sex Roles ,
+49(3-4):121–132.
+Joy Buolamwini and Timnit Gebru. 2018. Gender
+Shades: Intersectional Accuracy Disparities in
+Commercial Gender Classiﬁcation. In Proceed-
+ings of the 1st Conference on Fairness, Account-
+ability and Transparency , volume 81 of Proceed-
+ings of Machine Learning Research , pages 77–
+91, New York, USA. PMLR.
+Judith Butler. 1990. Gender Trouble: Feminism
+and the Subversion of Identity . Routledge, New
+York, USA.Aylin Caliskan, Joanna J. Bryson, and Arvind
+Narayanan. 2017. Semantics Derived Automat-
+ically from Language Corpora contain Human-
+like Biases. Science , 356(6334):183–186.
+Deborah Cameron. 2003. Gender Issues in Lan-
+guage Change. Annual Review of Applied Lin-
+guistics , 23:187–201.
+Alex Campolo, Madelyn R. Sanﬁlippo, Meredith
+Whittaker, and Kate Crawford. 2017. AI Now
+Report 2017. New York: AI Now Institute .
+Yang T. Cao and Hal Daum ´e III. 2020. Toward
+Gender-Inclusive Coreference Resolution. In
+Proceedings of the 58th Annual Meeting of
+the Association for Computational Linguistics ,
+pages 4568–4595, Online. Association for Com-
+putational Linguistics.
+Sheila Castilho, Maja Popovi ´c, and Andy Way.
+2020. On Context Span Needed for Machine
+Translation Evaluation. In Proceedings of the
+12th Language Resources and Evaluation Con-
+ference , pages 3735–3742, Marseille, FR. Euro-
+pean Language Resources Association.
+Roldano Cattoni, Mattia A. Di Gangi, Luisa Ben-
+tivogli, Matteo Negri, and Marco Turchi. 2021.
+MuST-C: A multilingual corpus for end-to-end
+speech translation. Computer Speech & Lan-
+guage , 66:101155.
+Amanda Cercas Curry, Judy Robertson, and Ver-
+ena Rieser. 2020. Conversational Assistants
+and Gender Stereotypes: Public Perceptions and
+Desiderata for V oice Personas. In Proceedings
+of the Second Workshop on Gender Bias in Nat-
+ural Language Processing , pages 72–78, Online.
+Association for Computational Linguistics.
+Lori Chamberlain. 1988. Gender and the
+Metaphorics of Translation. Signs: Journal of
+Women in Culture and Society , 13(3):454–472.
+Kai-Wei Chang. 2019. Bias and Fairness in Nat-
+ural Language Processing. Tutorial at the 2019
+Conference on Empirical Methods in Natural
+Language Processing (EMNLP).
+Won Ik Cho, Ji Won Kim, Seok Min Kim, and
+Nam Soo Kim. 2019. On Measuring Gender
+bias in Translation of Gender-neutral Pronouns.
+InProceedings of the First Workshop on Gen-
+der Bias in Natural Language Processing , pages
+173–181, Florence, IT. Association for Compu-
+tational Linguistics.
+Aleksandra Cislak, Magdalena Formanowicz, and
+Tamar Saguy. 2018. Bias Against Research on
+Gender Bias. Scientometrics , 115(1):189–200.
+Bernard Comrie. 1999. Grammatical Gender Sys-
+tems: A Linguist’s Assessment. Journal of Psy-
+cholinguistic Research , 28:457–466.
+Kirby Conrod. 2020. Pronouns and Gender in Lan-
+guage. The Oxford Handbook of Language and
+Sexuality .
+Greville G. Corbett. 1991. Gender . Cambridge
+Textbooks in Linguistics. Cambridge University
+Press, Cambridge, UK.
+Greville G. Corbett. 2013. The Expression of Gen-
+der. De Gruyter Mouton, Berlin, DE.
+Marta R. Costa-juss `a. 2019. An Analysis of Gen-
+der Bias Studies in Natural Language Processing.
+Nature Machine Intelligence , 1:495–496.
+Marta R. Costa-juss `a, Christine Basta, and Ger-
+ard I. G ´allego. 2020a. Evaluating gender
+bias in speech translation. arXiv preprint
+arXiv:2010.14465 .
+Marta R. Costa-juss `a, Carlos Escolano, Christine
+Basta, Javier Ferrando, Roser Batlle, and Ksenia
+Kharitonova. 2020b. Gender Bias in Multilin-
+gual Neural Machine Translation: The Architec-
+ture Matters. arXiv preprint arXiv:2012.13176 .
+Marta R. Costa-juss `a and Adri `a de Jorge. 2020.
+Fine-tuning Neural Machine Translation on
+Gender-Balanced Datasets. In Proceedings of
+the Second Workshop on Gender Bias in Natu-
+ral Language Processing , pages 26–34, Online.
+Association for Computational Linguistics.
+Marta R. Costa-juss `a, Pau Li Lin, and Cristina
+Espa ˜na-Bonet. 2020c. GeBioToolkit: Auto-
+matic Extraction of Gender-Balanced Multilin-
+gual Corpus of Wikipedia Biographies. In Pro-
+ceedings of the 12th Language Resources and
+Evaluation Conference , pages 4081–4088, Mar-
+seille, FR. European Language Resources Asso-
+ciation.
+Colette G. Craig. 1994. Classiﬁer Languages. In
+Ronald E. Asher & James M. Y . Simpson, editor,The Encyclopedia of Language and Linguistics ,
+volume 2, pages 565–569. Pergamon Press, Ox-
+ford, UK.
+Kate Crawford. 2017. The Trouble with Bias. In
+Conference on Neural Information Processing
+Systems (NIPS) – Keynote , Long Beach, USA.
+Kimberl ´e Crenshaw. 1989. Demarginalizing the
+Intersection of Race and Sex: A Black Feminist
+Critique of Antidiscrimination Doctrine, Femi-
+nist Theory and Antiracist Politics. University
+of Chicago Legal Forum , 1989:139–167.
+Caroline Criado-Perez. 2019. Invisible Women:
+Exposing Data Bias in a World Designed for
+Men. Chatto & Windus, London, UK.
+Anne Curzan. 2003. Gender Shifts in the History
+of English . Cambridge University Press, Cam-
+bridge, UK.
+Jeffrey Dastin. 2018. Amazon scraps secret AI
+recruiting tool that showed bias against women.
+https://www :reuters :com/article/
+us-amazon-com-jobs-automation-
+insight-idUSKCN1MK08G . Accessed:
+2021-02-25.
+Marcella De Marco and Piero Toto. 2019. Intro-
+duction: The Potential of Gender Training in the
+Translation Classroom. In Gender Approaches
+in the Translation Classroom: Training the Do-
+ers, pages 1–7. Palgrave Macmillan, Cham, CH.
+Pieter Delobelle, Paul Temple, Gilles Perrouin,
+Beno ˆıt Fr ´enay, Patrick Heymans, and Bettina
+Berendt. 2020. Ethical Adversaries: Towards
+Mitigating Unfairness with Adversarial Machine
+Learning. In Informal Proceedings of the Bias
+and Fairness in AI Workshop at ECML-PKDD
+(BIAS 2020) . BIAS 2020.
+Hannah Devinney, Jenny Bj ¨orklund, and Henrik
+Bj¨orklund. 2020. Semi-Supervised Topic Mod-
+eling for Gender Bias Discovery in English and
+Swedish. In Proceedings of the Second Work-
+shop on Gender Bias in Natural Language Pro-
+cessing , pages 79–92, Online. Association for
+Computational Linguistics.
+Bruna Di Sabato and Antonio Perri. 2020. Gram-
+matical gender and translation: A cross-
+linguistic overview. In Luise von Flotow and
+Hala Kamal, editors, The Routledge Handbook
+of Translation, Feminism and Gender . Rout-
+ledge, New York, USA.
+Catherine D’Ignazio and Lauren F. Klein. 2020.
+Data feminism . MIT Press, London, UK.
+Emily Dinan, Angela Fan, Ledell Wu, Jason We-
+ston, Douwe Kiela, and Adina Williams. 2020.
+Multi-Dimensional Gender Bias Classiﬁcation.
+InProceedings of the 2020 Conference on Em-
+pirical Methods in Natural Language Processing
+(EMNLP) , pages 314–331, Online. Association
+for Computational Linguistics.
+Cynthia Dwork, Moritz Hardt, Toniann Pitassi,
+Omer Reingold, and Richard Zemel. 2012. Fair-
+ness through Awareness. In Proceedings of the
+3rd Innovations in Theoretical Computer Science
+Conference , ITCS ’12, pages 214–226, New
+York, USA. Association for Computing Machin-
+ery.
+Penelope Eckert and Sally McConnell-Ginet. 2013.
+Language and Gender . Cambridge University
+Press, Cambridge, UK.
+Mostafa Elaraby, Ahmed Y . Tawﬁk, Mahmoud
+Khaled, Hany Hassan, and Aly Osama. 2018.
+Gender Aware Spoken Language Translation Ap-
+plied to English-Arabic. In Proceedings of the
+2nd International Conference on Natural Lan-
+guage and Speech Processing (ICNLSP) , pages
+1–6, Algiers, DZ.
+Carolyn Epple. 1998. Coming to Terms with
+Navajo N ´adleeh ´ı: A Critique of Berdache,
+“Gay”, “Alternate Gender”, and “Two-spirit”.
+American Ethnologist , 25(2):267–290.
+Carlos Escolano, Marta R. Costa-juss `a, Jos ´e A. R.
+Fonollosa, and Mikel Artetxe. 2021. Multilin-
+gual Machine Translation: Closing the Gap be-
+tween Shared and Language-speciﬁc Encoder-
+Decoders. In Proceedings of the 16th conference
+of the European Chapter of the Association for
+Computational Linguistics (EACL) , Online.
+Joel Escud ´e Font and Marta R. Costa-juss `a. 2019.
+Equalizing Gender Bias in Neural Machine
+Translation with Word Embeddings Techniques.
+InProceedings of the First Workshop on Gen-
+der Bias in Natural Language Processing , pages
+147–154, Florence, IT. Association for Compu-
+tational Linguistics.Anne Fausto-Sterling. 2019. Gender/Sex, Sexual
+Orientation, and Identity Are in the Body: How
+Did They Get There? The Journal of Sex Re-
+search , 56(4-5):529–555.
+Anke Frank, Christiane Hoffmann, and Maria Stro-
+bel. 2004. Gender Issues in Machine Translation.
+University of Bremen .
+Stella Frank, Desmond Elliott, and Lucia Specia.
+2018. Assessing multilingual multimodal image
+description: Studies of native speaker prefer-
+ences and translator choices. Natural Language
+Engineering , 24(3):393–413.
+Batya Friedman and Helen Nissenbaum. 1996.
+Bias in Computer Systems. ACM Transactions
+on Information Systems (TOIS) , 14(3):330–347.
+Marco Gaido, Beatrice Savoldi, Luisa Bentivogli,
+Matteo Negri, and Marco Turchi. 2020. Breed-
+ing Gender-aware Direct Speech Translation Sys-
+tems. In Proceedings of the 28th International
+Conference on Computational Linguistics , pages
+3951–3964, Online. International Committee on
+Computational Linguistics.
+Aparna Garimella, Carmen Banea, Dirk Hovy, and
+Rada Mihalcea. 2019. Women’s Syntactic Re-
+silience and Men’s Grammatical Luck: Gender-
+Bias in Part-Of-Speech Tagging and Dependency
+Parsing. In Proceedings of the 57th Annual
+Meeting of the Association for Computational
+Linguistics , pages 3493–3498, Florence, IT. As-
+sociation for Computational Linguistics.
+Timnit Gebru. 2020. Race and gender. In
+Markus D. Dubber, Frank Pasquale, and Sunit
+Das, editors, The Oxford Handbook of Ethics of
+AI. Oxford Handbook Online.
+Robert Geirhos, J ¨orn-Henrik Jacobsen, Claudio
+Michaelis, Richard Zemel, Wieland Brendel,
+Matthias Bethge, and Felix A. Wichmann. 2020.
+Shortcut Learning in Deep Neural Networks.
+Nature Machine Intelligence , 2(11):665–673.
+Mor Geva, Yoav Goldberg, and Jonathan Berant.
+2019. Are We Modeling the Task or the Annota-
+tor? An Investigation of Annotator Bias in Nat-
+ural Language Understanding Datasets. In Pro-
+ceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and
+the 9th International Joint Conference on Nat-
+ural Language Processing (EMNLP-IJCNLP) ,
+pages 1161–1166, Hong Kong, CN. Association
+for Computational Linguistics.
+Lisa Gitelman. 2013. Raw Data is an Oxymoron .
+MIT press.
+Fiona Glen and Karen Hurrell. 2012.
+Measuring gender identity. https:
+//www :equalityhumanrights :com/
+sites/default/files/
+technical note final :pdf. Accessed:
+2021-02-25.
+Bruce Glymour and Jonathan Herington. 2019.
+Measuring the Biases That Matter: The Ethical
+and Casual Foundations for Measures of Fair-
+ness in Algorithms. In Proceedings of the Con-
+ference on Fairness, Accountability, and Trans-
+parency , FAT* ’19, pages 269–278, New York,
+USA. Association for Computing Machinery.
+Seraphina Goldfarb-Tarrant, Rebecca Marchant,
+Ricardo Mu ˜noz Sanchez, Mugdha Pandya, and
+Adam Lopez. 2020. Intrinsic Bias Metrics Do
+Not Correlate with Application Bias. arXiv
+preprint arXiv:2012.15859 .
+Kirsten Gomard. 1995. The (Un)equal Treatment
+of Women in Language: a Comparative Study of
+Danish, English, and German. Working Papers
+on Language, Gender and Sexism , 5(1):5–25.
+Hila Gonen and Yoav Goldberg. 2019. Lipstick
+on a Pig: Debiasing Methods Cover up System-
+atic Gender Biases in Word Embeddings But do
+not Remove Them. In Proceedings of the 2019
+Conference of the North American Chapter of
+the Association for Computational Linguistics:
+Human Language Technologies, Volume 1 (Long
+and Short Papers) , pages 609–614, Minneapolis,
+Minnesota, USA. Association for Computational
+Linguistics.
+Hila Gonen and Kellie Webster. 2020. Automat-
+ically Identifying Gender Issues in Machine
+Translation using Perturbations. In Findings of
+the Association for Computational Linguistics:
+EMNLP 2020 , pages 1991–1995, Online. Asso-
+ciation for Computational Linguistics.
+Anthony G. Greenwald, Debbie E. McGhee, and
+Jordan L. K. Schwartz. 1998. Measuring in-
+dividual differences in implicit cognition: The
+Implicit Association Test. Journal of personality
+and social psychology , 74(6):1464.Liane Guillou. 2012. Improving Pronoun Trans-
+lation for Statistical Machine Translation. In
+Proceedings of the Student Research Workshop
+at the 13th Conference of the European Chapter
+of the Association for Computational Linguis-
+tics, pages 1–10, Avignon, FR. Association for
+Computational Linguistics.
+Pascal M. Gygax, Daniel Elmiger, Sandrine Zuf-
+ferey, Alan Garnham, Sabine Sczesny, Lisa von
+Stockhausen, Friederike Braun, and Jane Oakhill.
+2019. A Language Index of Grammatical Gen-
+der Dimensions to Study the Impact of Gram-
+matical Gender on the Way We Perceive Women
+and Men. Frontiers in Psychology , 10:1604.
+Pascal M. Gygax, Ute Gabriel, Oriane Sarrasin,
+Jane Oakhill, and Alan Garnham. 2008. Gener-
+ically Intended, but Speciﬁcally Interpreted:
+When Beauticians, Musicians and Mechanics
+are all Men. Language and Cognitive Processes ,
+23:464–485.
+Nizar Habash, Houda Bouamor, and Christine
+Chung. 2019. Automatic Gender Identiﬁcation
+and Reinﬂection in Arabic. In Proceedings of
+the First Workshop on Gender Bias in Natural
+Language Processing , pages 155–165, Florence,
+IT. Association for Computational Linguistics.
+Philipp Hacker. 2018. Teaching Fairness to Artiﬁ-
+cial Intelligence: Existing and Novel Strategies
+against Algorithmic Discrimination under EU
+Law. Common market law review , 55(4):1143–
+1185.
+Kira Hall and Veronica O’Donovan. 2014. Shifting
+gender positions among Hindi-speaking hijras.
+Rethinking language and gender research: The-
+ory and practice , pages 228–266.
+Foad Hamidi, Morgan K. Scheuerman, and
+Stacy M. Branham. 2018. Gender Recognition
+or Gender Reductionism? The Social Implica-
+tions of Embedded Gender Recognition Systems.
+InProceedings of the 2018 CHI Conference on
+Human Factors in Computing Systems , CHI ’18,
+pages 1–13, New York, USA. Association for
+Computing Machinery.
+Mykol C. Hamilton. 1988. Using masculine gener-
+ics: Does generic he increase male bias in the
+user’s imagery? Sex roles , 19(11-12):785–799.
+Mykol C. Hamilton. 1991. Masculine Bias in
+the Attribution of Personhood: People = Male,
+Male = People. Psychology of Women Quarterly ,
+15(3):393–402.
+Alex Hanna, Andrew Smart, Ben Hutchinson,
+Christina Greer, Emily Denton, Margaret
+Mitchell, Oddur Kjartansson, and Parker Barnes.
+2021. Towards Accountability for Machine
+Learning Datasets. In Proceedings of the Con-
+ference on Fairness, Accountability, and Trans-
+parency (FAccT ’21) , pages 560–575, Online.
+ACM.
+Christian Hardmeier, Marta R. Costa-juss `a, Kel-
+lie Webster, Will Radford, and Su Lin Blod-
+gett. 2021. How to Write a Bias Statement:
+Recommendations for Submissions to the Work-
+shop on Gender Bias in NLP. arXiv preprint
+arXiv:2104.03026 .
+Christian Hardmeier and Marcello Federico. 2010.
+Modelling Pronominal Anaphora in Statistical
+Machine Translation. In Proceedings of the sev-
+enth International Workshop on Spoken Lan-
+guage Translation (IWSLT) , pages 283–289,
+Paris, FR.
+Lucy Havens, Melissa Terras, Benjamin Bach, and
+Beatrice Alex. 2020. Situated Data, Situated
+Systems: A Methodology to Engage with Power
+Relations in Natural Language Processing Re-
+search. In Proceedings of the Second Workshop
+on Gender Bias in Natural Language Processing ,
+pages 107–124, Online. Association for Compu-
+tational Linguistics.
+Marlis Hellinger and Hadumond Bußman. 2001.
+Gender across Languages: The linguistic repre-
+sentation of women and men , volume 1. John
+Benjamins Publishing, Amsterdam, NL.
+Marlis Hellinger and Hadumond Bußman. 2002.
+Gender across Languages: The linguistic repre-
+sentation of women and men , volume 2. John
+Benjamins Publishing, Amsterdam, NL.
+Marlis Hellinger and Hadumond Bußman. 2003.
+Gender across Languages: The linguistic repre-
+sentation of women and men , volume 3. John
+Benjamins Publishing, Amsterdam, NL.
+Marlis Hellinger and Heiko Motschenbacher. 2015.
+Gender Across Languages. The Linguistic Rep-resentation of Women and Men , volume 4. John
+Benjamins, Amsterdam, NL.
+Lisa A. Hendricks, Kaylee Burns, Kate Saenko,
+Trevor Darrell, and Anna Rohrbach. 2018.
+Women also Snowboard: Overcoming Bias in
+Captioning Model. In Proceedings of the Euro-
+pean Conference on Computer Vision (ECCV) ,
+pages 740–755, Munich, DE.
+Aur´elie Herbelot, Eva von Redecker, and Johanna
+M¨uller. 2012. Distributional Techniques for
+Philosophical Enquiry. In Proceedings of the
+6th Workshop on Language Technology for Cul-
+tural Heritage, Social Sciences, and Humanities ,
+pages 45–54, Avignon, FR. Association for Com-
+putational Linguistics.
+Yasmeen Hitti, Eunbee Jang, Ines Moreno, and
+Carolyne Pelletier. 2019. Proposed Taxonomy
+for Gender Bias in Text; A Filtering Methodol-
+ogy for the Gender Generalization Subtype. In
+Proceedings of the First Workshop on Gender
+Bias in Natural Language Processing , pages 8–
+17, Florence, IT. Association for Computational
+Linguistics.
+Janet Holmes and Miriam Meyerhoff. 2003. The
+Handbook of Language and Gender . Blackwell
+Publishing Ltd, Malden, USA.
+Levi C. R. Hord. 2016. Bucking the linguistic
+binary: Gender neutral language in English,
+Swedish, French, and German. Western Papers
+in Linguistics / Cahiers linguistiques de Western ,
+3(1):4.
+Dirk Hovy, Federico Bianchi, and Tommaso Forna-
+ciari. 2020. “You Sound Just Like Your Father”
+Commercial Machine Translation Systems In-
+clude Stylistic Biases. In Proceedings of the
+58th Annual Meeting of the Association for Com-
+putational Linguistics , pages 1686–1690, Online.
+Association for Computational Linguistics.
+Dirk Hovy, Anders Johannsen, and Anders Søgaard.
+2015. User Review Sites as a Resource for
+Large-Scale Sociolinguistic Studies. In Proceed-
+ings of the 24th International Conference on
+World Wide Web , WWW ’15, pages 452–461,
+Geneva, CH. International World Wide Web
+Conferences Steering Committee.
+Dirk Hovy and Shannon L. Spruit. 2016. The So-
+cial Impact of Natural Language Processing. In
+Proceedings of the 54th Annual Meeting of the
+Association for Computational Linguistics (Vol-
+ume 2: Short Papers) , pages 591–598, Berlin,
+DE. Association for Computational Linguistics.
+Janet S. Hyde. 2005. The Gender Similarities
+Hypothesis. American psychologist , 60(6):581–
+592.
+Julia Ive, Pranava Madhyastha, and Lucia Specia.
+2019. Distilling Translations with Visual Aware-
+ness. In Proceedings of the 57th Annual Meeting
+of the Association for Computational Linguistics ,
+pages 6525–6538, Florence, IT. Association for
+Computational Linguistics.
+Abigail Z. Jacobs. 2021. Measurement and Fair-
+ness. In Proceedings of the 2021 ACM Con-
+ference on Fairness, Accountability, and Trans-
+parency , FAccT ’21, pages 375–385, New York,
+USA. Association for Computing Machinery.
+Abigail Z. Jacobs, Su Lin Blodgett, Solon Baro-
+cas, Hal Daum ´e III, and Hanna Wallach. 2020.
+The Meaning and Measurement of Bias: Lessons
+from Natural Language Processing. In Proceed-
+ings of the 2020 Conference on Fairness, Ac-
+countability, and Transparency , FAT* ’20, page
+706, New York, USA. Association for Comput-
+ing Machinery.
+Roman Jakobson. 1959. On Linguistic Aspects of
+Translation. In Reuben A. Brower, editor, On
+translation , pages 232–239. Harvard University
+Press, Cambridge, USA.
+May Jiang and Christiane Fellbaum. 2020. Inter-
+dependencies of Gender and Race in Contex-
+tualized Word Embeddings. In Proceedings of
+the Second Workshop on Gender Bias in Natu-
+ral Language Processing , pages 17–25, Online.
+Association for Computational Linguistics.
+Anders Johannsen, Dirk Hovy, and Anders Søgaard.
+2015. Cross-lingual Syntactic Variation over
+Age and Gender. In Proceedings of the Nine-
+teenth Conference on Computational Natural
+Language Learning , pages 103–112, Beijing,
+CN.
+Kari Johnson. 2020a. AI Weekly: A deep learning
+pioneer’s teachable moment on AI bias. https:
+//venturebeat :com/2020/06/26/ai-
+weekly-a-deep-learning-pioneers-teachable-moment-on-ai-bias/ . Ac-
+cessed: 2021-02-25.
+Melvin Johnson. 2020b. A Scalable Approach
+to Reducing Gender Bias in Google Translate.
+https://ai :googleblog :com/2020/04/
+a-scalable-approach-to-reducing-
+gender :html . Accessed: 2021-02-25.
+Rabeeh Karimi Mahabadi, Yonatan Belinkov, and
+James Henderson. 2020. End-to-End Bias Miti-
+gation by Modelling Biases in Corpora. In Pro-
+ceedings of the 58th Annual Meeting of the As-
+sociation for Computational Linguistics , pages
+8706–8716, Online. Association for Computa-
+tional Linguistics.
+Os Keyes. 2018. The Misgendering Machines:
+Trans/HCI Implications of Automatic Gender
+Recognition. Proceedings of the ACM on
+Human-Computer Interaction , 2(CSCW).
+Os Keyes, Chandler May, and Annabelle Carrell.
+2021. You Keep Using That Word: Ways of
+Thinking about Gender in Computing Research.
+Proceedings of the ACM on Human-Computer
+Interaction , 5(CSCW).
+Yunsu Kim, Duc Thanh Tran, and Hermann Ney.
+2019. When and Why is Document-level Con-
+text Useful in Neural Machine Translation? In
+Proceedings of the Fourth Workshop on Dis-
+course in Machine Translation (DiscoMT 2019) ,
+pages 24–34, Hong Kong, CN. Association for
+Computational Linguistics.
+Kris Aric Knisely. 2020. Le fran c ¸ais non-binaire:
+Linguistic forms used by non-binary speakers of
+French. Foreign Language Annals , 53(4):850–
+876.
+Philipp Koehn. 2005. Europarl: A Parallel Corpus
+for Statistical Machine Translation. In Proceed-
+ings of the tenth Machine Translation Summit ,
+pages 79–86, Phuket, TH. AAMT.
+Corina Koolen and Andreas van Cranenburgh.
+2017. These are not the Stereotypes You are
+Looking for: Bias and Fairness in Authorial Gen-
+der Attribution. In Proceedings of the First ACL
+Workshop on Ethics in Natural Language Pro-
+cessing , pages 12–22, Valencia, ES. Association
+for Computational Linguistics.
+Cheris Kramarae and Paula A. Treichler. 1985. A
+Feminist Dictionary . Pandora Press, London,
+UK.
+Michał Krawczyk. 2017. Are all Researchers
+Male? Gender Misattributions in Citations. Sci-
+entometrics , 110(3):1397–1402.
+Hamutal Kreiner, Patrick Sturt, and Simon Garrod.
+2008. Processing Deﬁnitional and Stereotypi-
+cal Gender in Reference Resolution: Evidence
+from Eye-Movements. Journal of Memory and
+Language , 58:239–261.
+James Kuczmarski. 2018. Reducing
+Gender Bias in Google Translate.
+https://www :blog :google/products/
+translate/reducing-gender-bias-
+google-translate/ . Accessed: 2021-02-
+25.
+William Labov. 1972. Sociolinguistic Patterns . 4.
+University of Pennsylvania Press.
+Jennifer Langston. 2020. New AI tools
+help writers be more clear, concise and
+inclusive in Ofﬁce and across the Web.
+https://blogs :microsoft :com/ai/
+microsoft-365-ai-tools/ . Accessed:
+2021-02-25.
+Brian Larson. 2017. Gender as a Variable in
+Natural-Language Processing: Ethical Consid-
+erations. In Proceedings of the First ACL Work-
+shop on Ethics in Natural Language Processing ,
+pages 1–11, Valencia, ES. Association for Com-
+putational Linguistics.
+Ronan Le Nagard and Philipp Koehn. 2010. Aiding
+Pronoun Translation with Co-reference Resolu-
+tion. In Proceedings of the Joint Fifth Workshop
+on Statistical Machine Translation and Metric-
+sMATR , pages 252–261, Uppsala, SE. Associa-
+tion for Computational Linguistics.
+Enora Lessinger. 2020. Le pr ´esident est une
+femme: The Challenges of Translating Gender in
+UN texts. In Luise von Flotow and Hala Kamal,
+editors, The Routledge Handbook of Translation,
+Feminism and Gender . Routledge, New York,
+USA.
+Hector J. Levesque. 2014. On Our Best Behaviour.
+Artiﬁcial Intelligence , 212(1):27–35.Roger J. R. Levesque. 2011. Sex Roles and Gender
+Roles . Springer, New York, USA.
+Molly Lewis and Gary Lupyan. 2020. Gender
+stereotypes are reﬂected in the distributional
+structure of 25 languages. Nature human be-
+haviour , 4(10):1021–1028.
+Yitong Li, Timothy Baldwin, and Trevor Cohn.
+2018. Towards Robust and Privacy-preserving
+Text Representations. In Proceedings of the 56th
+Annual Meeting of the Association for Compu-
+tational Linguistics (Volume 2: Short Papers) ,
+pages 25–30, Melbourne, AU. Association for
+Computational Linguistics.
+Daniel J. Liebling, Michal Lahav, Abigail Evans,
+Aaron Donsbach, Jess Holbrook, Boris Smus,
+and Lindsey Boran. 2020. Unmet Needs and
+Opportunities for Mobile Translation AI. In Pro-
+ceedings of the 2020 CHI Conference on Human
+Factors in Computing Systems , CHI ’20, page
+1–13, New York, USA. Association for Comput-
+ing Machinery.
+Anna Lindqvist, Emma A. Renstr ¨om, and Marie
+Gustafsson Send ´en. 2019. Reducing a Male
+Bias in Language? Establishing the Efﬁciency of
+three Different Gender-fair Language Strategies.
+Sex Roles , 81(1-2):109–117.
+Pierre Lison and J ¨org Tiedemann. 2016. OpenSub-
+titles2016: Extracting Large Parallel Corpora
+from Movie and TV Subtitles. In Proceedings of
+the Tenth International Conference on Language
+Resources and Evaluation (LREC’16) , pages
+923–929, Portoro ˇz, SI. European Language Re-
+sources Association (ELRA).
+Katherine A. Liu and Natalie A. Dipietro Mager.
+2016. Women’s Involvement in Clinical Trials:
+Historical Perspective and Future Implications.
+Pharmacy Practice , 14(1):708.
+´Artemis L ´opez. 2019. T ´u, yo, elle
+y el lenguaje no binario. http://
+www:lalinternadeltraductor :org/n19/
+traducir-lenguaje-no-binario :html .
+Accessed: 2021-02-25.
+´Artemis L ´opez, Susana Rodr ´ıguez Barcia, and
+Mar´ıa del Carmen Cabeza Pereiro. 2020.
+Visibilizar o interpretar: respuesta al Informe
+de la Real Academia Espa ˜nola sobre el
+lenguaje inclusivo y cuestiones conexas.
+http://www :ngenespanol :com/el-
+mundo/la-rae-rechaza-nuevamente-
+el-lenguaje-inclusivo/ . Accessed:
+2021-02-25.
+Kaiji Lu, Piotr Mardziel, Fangjing Wu, Preetam
+Amancharla, and Anupam Datta. 2020. Gender
+Bias in Neural Natural Language Processing. In
+Logic, Language, and Security , volume 12300
+ofLecture Notes in Computer Science , pages
+189–202. Springer.
+John Lyons. 1977. Semantics , volume 2. Cam-
+bridge University Press, Cambrdige, UK.
+Thomas Manzini, Lim Yao Chong, Alan W. Black,
+and Yulia Tsvetkov. 2019. Black is to Crim-
+inal as Caucasian is to Police: Detecting and
+Removing Multiclass Bias in Word Embeddings.
+InProceedings of the 2019 Conference of the
+North American Chapter of the Association for
+Computational Linguistics: Human Language
+Technologies, Volume 1 (Long and Short Papers) ,
+pages 615–621, Minneapolis, USA. Association
+for Computational Linguistics.
+Marianna Martindale and Marine Carpuat. 2018.
+Fluency Over Adequacy: A Pilot Study in Mea-
+suring User Trust in Imperfect MT. In Proceed-
+ings of the 13th Conference of the Association
+for Machine Translation in the Americas (Vol-
+ume 1: Research Track) , pages 13–25, Boston,
+USA. Association for Machine Translation in
+the Americas.
+Chandler May. 2019. Deconstructing Gender Pre-
+diction in NLP. In Conference on Neural Infor-
+mation Processing Systems (NIPS) – Keynote ,
+Vancouver, CA.
+Sally McConnell-Ginet. 2013. Gender and its Re-
+lation to Sex: The Myth of ‘Natural’ Gender. In
+Greville G. Corbett, editor, The Expression of
+Gender , pages 3–38. De Gruyter Mouton, Berlin,
+DE.
+Tom McCoy, Ellie Pavlick, and Tal Linzen. 2019.
+Right for the Wrong Reasons: Diagnosing Syn-
+tactic Heuristics in Natural Language Inference.
+InProceedings of the 57th Annual Meeting of
+the Association for Computational Linguistics ,
+pages 3428–3448, Florence, IT. Association for
+Computational Linguistics.Ninareh Mehrabi, Fred Morstatter, Nripsuta Sax-
+ena, Kristina Lerman, and Aram Galstyan. 2019.
+A Survey on Bias and Fairness in Machine Learn-
+ing.
+Emiel van Miltenburg. 2019. Pragmatic factors
+in (automatic) image description . Ph.D. thesis,
+Vrije Universiteit, Amsterdam, NL.
+Shachar Mirkin, Scott Nowson, Caroline Brun,
+and Julien Perez. 2015. Motivating Personality-
+Aware Machine Translation. In Proceedings of
+the 2015 Conference on Empirical Methods in
+Natural Language Processing , pages 1102–1108,
+Lisbon, PT. Association for Computational Lin-
+guistics.
+Margaret Mitchell, Dylan Baker, Nyalleng
+Moorosi, Emily Denton, Ben Hutchinson, Alex
+Hanna, Timnit Gebru, and Jamie Morgenstern.
+2020. Diversity and Inclusion Metrics in Sub-
+set Selection. In Proceedings of the AAAI/ACM
+Conference on AI, Ethics, and Society , AIES ’20,
+pages 117–123, New York, USA. Association
+for Computing Machinery.
+Britta Mondorf. 2002. Gender Differences in En-
+glish Syntax. Journal of English Linguistics ,
+30:158–180.
+Johanna Monti. 2017. Questioni di Genere in
+Traduzione Automatica. Al femminile. Scritti
+linguistici in onore di Cristina Vallini , 139:411–
+431.
+Johanna Monti. 2020. Gender Issues in Machine
+Translation: An Unsolved Problem? In Luise
+von Flotow and Hala Kamal, editors, The Rout-
+ledge Handbook of Translation, Feminism and
+Gender , pages 457–468. Routledge.
+Amit Moryossef, Roee Aharoni, and Yoav Gold-
+berg. 2019. Filling Gender & Number Gaps
+in Neural Machine Translation with Black-Box
+Context Injection. In Proceedings of the First
+Workshop on Gender Bias in Natural Language
+Processing , pages 49–54, Florence, IT. Associa-
+tion for Computational Linguistics.
+Heiko Motschenbacher. 2014. Grammatical gen-
+der as a challenge for language policy: The
+(im)possibility of non-heteronormative language
+use in German versus English. Language policy ,
+13(3):243–261.
+Anthony Mulac, James J. Bradac, and Pamela Gib-
+bons. 2001. Empirical Support for the Gender-
+as-Culture Hypothesis. Human Communication
+Research , 27:121– 152.
+El Mundo. 2018. La RAE rechaza
+nuevamente el lenguaje inclusivo.
+https://www :ngenespanol :com/el-
+mundo/la-rae-rechaza-nuevamente-
+el-lenguaje-inclusivo/ . Accessed:
+2021-02-25.
+David A. B. Murray. 2003. Who is Takat ¯apui?
+M¯aori Language, Sexuality and Identity in
+Aotearoa/New Zealand. Anthropologica , pages
+233–244.
+Terttu Nevalainen and Helena Raumolin-Brunberg.
+1993. Its Strength and the Beauty of it: The
+Standardization of the Third Person Neuter Pos-
+sessive in Early Modern English. In Dieter Stein
+and Ingrid Tieken-Boon van Ostade, editors, To-
+wards a Standard English , pages 171–216. De
+Gruyter, Berlin, DE.
+Matthew L Newman, Carla J Groom, Lori D Han-
+delman, and James W Pennebaker. 2008. Gen-
+der differences in language use: An analysis
+of 14,000 text samples. Discourse Processes ,
+45(3):211–236.
+Dong Nguyen, A. Seza Do ˘gru¨oz, Carolyn P. Ros ´e,
+and Franciska de Jong. 2016. Computational
+Sociolinguistics: A Survey. Computational lin-
+guistics , 42(3):537–593.
+Jan Niehues, Eunah Cho, Thanh-Le Ha, and Alex
+Waibel. 2016. Pre-Translation for Neural Ma-
+chine Translation. In Proceedings of COLING
+2016, the 26th International Conference on Com-
+putational Linguistics: Technical Papers , pages
+1828–1836, Osaka, JP. The COLING 2016 Or-
+ganizing Committee.
+Uwe Kjær Nissen. 2002. Aspects of Translating
+Gender. Linguistik Online , 11(2).
+Malvina Nissim and Rob van der Goot. 2020. Fair
+is Better than Sensational: Man is to Doctor as
+Woman is to Doctor. Computational Linguistics ,
+46(2):487–497.
+Parmy Olson. 2018. The Algorithm That Helped
+Google Translate Become Sexist. https:
+//www :forbes :com/sites/parmyolson/2018/02/15/the-algorithm-that-
+helped-google-translate-become-
+sexist/?sh=d675b9c7daa2 . Accessed:
+2021-02-25.
+Dimitrios Papadimoulis. 2018. GENDER-
+NEUTRAL LANGUAGE in the European Par-
+liament . European Parliament 2018.
+Benjamin Papadopoulos. 2019. Morphological
+Gender Innovations in Spanish of Genderqueer
+Speakers . UC Berkeley: Library.
+Kishore Papineni, Salim Roukos, Todd Ward, and
+Wei-Jing Zhu. 2002. Bleu: a Method for Auto-
+matic Evaluation of Machine Translation. In
+Proceedings of the 40th Annual Meeting of
+the Association for Computational Linguistics ,
+pages 311–318, Philadelphia, USA. Association
+for Computational Linguistics.
+Amandalynne Paullada, Inioluwa D. Raji, Emily M.
+Bender, Emily Denton, and Alex Hanna. 2020.
+Data and its (dis)contents: A survey of dataset
+development and use in machine learning re-
+search. In NeurIPS 2020 Workshop: ML Retro-
+spectives, Surveys & Meta-analyses (ML-RSA) ,
+Vitual.
+James Pennebaker and Lori Stone. 2003. Words
+of Wisdom: Language Use Over the Life Span.
+Journal of personality and social psychology ,
+85:291–301.
+Marcelo O. R. Prates, Pedro H. C. Avelar, and
+Lu´ıs C. Lamb. 2018. Assessing gender bias in
+machine translation: a case study with Google
+Translate. Neural Computing and Applications ,
+pages 1–19.
+Ella Rabinovich, Raj N. Patel, Shachar Mirkin, Lu-
+cia Specia, and Shuly Wintner. 2017. Personal-
+ized Machine Translation: Preserving Original
+Author Traits. In Proceedings of the 15th Con-
+ference of the European Chapter of the Associ-
+ation for Computational Linguistics: Volume 1,
+Long Papers , pages 1074–1084, Valencia, ES.
+Association for Computational Linguistics.
+Iyad Rahwan, Manuel Cebrian, Nick Obradovich,
+Josh Bongard, Jean-Fran c ¸ois Bonnefon, Cyn-
+thia Breazeal, Jacob W. Crandall, Nicholas A.
+Christakis, Iain D. Couzin, Matthew O. Jack-
+son, et al. 2019. Machine Behaviour. Nature ,
+568(7753):477–486.
+Isabelle R ´egner, Catherine Thinus-Blanc, Agn `es
+Netter, Toni Schmader, and Pascal Huguet. 2019.
+Committees with implicit biases promote fewer
+women when they do not believe gender bias
+exists. Nature human behaviour , 3(11):1171–
+1179.
+Argentina A. Rescigno, Johanna Monti, Andy Way,
+and Eva Vanmassenhove. 2020. A Case Study
+of Natural Gender Phenomena in Translation:
+A Comparison of Google Translate, Bing Mi-
+crosoft Translator and DeepL for English to Ital-
+ian, French and Spanish. In Proceedings of the
+Workshop on the Impact of Machine Translation
+(iMpacT 2020) , pages 62–90, Online. Associa-
+tion for Machine Translation in the Americas.
+Alexander S. Rich and Todd M. Gureckis. 2019.
+Lessons for artiﬁcial intelligence from the study
+of natural stupidity. Nature Machine Intelli-
+gence , 1(4):174–180.
+Christina Richards, Walter P. Bouman, Leighton
+Seal, Meg J. Barker, Timo O. Nieder, and Guy
+T’Sjoen. 2016. Non-binary or Genderqueer
+Genders. International Review of Psychiatry ,
+28(1):95–102.
+Barbara J. Risman. 2018. Gender as a Social Struc-
+ture. In Barbara Risman, Carissa Froyum, and
+William J Scarborough, editors, Handbook of the
+Sociology of Gender , pages 19–43. Springer.
+Nicholas Roberts, Davis Liang, Graham Neubig,
+and Zachary C. Lipton. 2020. Decoding and Di-
+versity in Machine Translation. In Proceedings
+of the Resistance AI Workshop at 34th Confer-
+ence on Neural Information Processing Systems
+(NeurIPS 2020) , Vancouver, CA.
+Suzanne Romaine. 1999. Communicating Gender .
+Lawrence Erlbaum, Mahwah, USA.
+Suzanne Romaine. 2001. A Corpus-Based View of
+Gender in British and American English. Gen-
+der across languages , 1:153–175.
+Rachel Rudinger, Jason Naradowsky, Brian
+Leonard, and Benjamin Van Durme. 2018. Gen-
+der Bias in Coreference Resolution. In Proceed-
+ings of the 2018 Conference of the North Amer-
+ican Chapter of the Association for Computa-
+tional Linguistics: Human Language Technolo-
+gies, Volume 2 (Short Papers) , pages 8–14, NewOrleans, Louisiana. Association for Computa-
+tional Linguistics.
+Ram Samar. 2020. Machines Are Indif-
+ferent, We Are Not: Yann LeCun’s
+Tweet Sparks ML Bias Debate. https:
+//analyticsindiamag :com/yann-lecun-
+machine-learning-bias-debate/ . Ac-
+cessed: 2021-02-25.
+Kalinowsky Santiago. 2018. Todos/Todas/Todes.
+Interview with Megan Figueroa, host; Carrie
+Gillon, host. In The Vocal Fries [Podcast] , Van-
+couver, CA.
+Maarten Sap, Saadia Gabriel, Lianhui Qin, Dan
+Jurafsky, Noah A. Smith, and Yejin Choi. 2020.
+Social Bias Frames: Reasoning about Social and
+Power Implications of Language. In Proceed-
+ings of the 58th Annual Meeting of the Associa-
+tion for Computational Linguistics , pages 5477–
+5490, Online. Association for Computational
+Linguistics.
+Danielle Saunders and Bill Byrne. 2020. Reducing
+Gender Bias in Neural Machine Translation as a
+Domain Adaptation Problem. In Proceedings of
+the 58th Annual Meeting of the Association for
+Computational Linguistics , pages 7724–7736,
+Online. Association for Computational Linguis-
+tics.
+Danielle Saunders, Rosie Sallis, and Bill Byrne.
+2020. Neural Machine Translation Doesn’t
+Translate Gender Coreference Right Unless You
+Make It. In Proceedings of the Second Workshop
+on Gender Bias in Natural Language Processing ,
+pages 35–43, Online. Association for Computa-
+tional Linguistics.
+Londa Schiebinger. 2014. Scientiﬁc Research
+Must Take Gender into Account. Nature ,
+507(9).
+Ari Schlesinger, W. Keith Edwards, and Rebecca E.
+Grinter. 2017. Intersectional HCI: Engaging
+Identity through Gender, Race, and Class. In
+Proceedings of the 2017 CHI Conference on Hu-
+man Factors in Computing Systems , CHI ’17,
+pages 5412–5427, New York, USA. Association
+for Computing Machinery.
+Natalie Schluter. 2018. The Glass Ceiling in NLP.
+InProceedings of the 2018 Conference on Empir-
+ical Methods in Natural Language Processing ,
+pages 2793–2798, Brussels, BE. Association for
+Computational Linguistics.
+Muriel R. Schulz. 1975. The Semantic Derogation
+of Woman. In Barrie Thorne and Nancy Henley,
+editors, Sex and language. Difference and domi-
+nance , pages 64–75. Newbury House, Rowley,
+USA.
+Tal Schuster, Darsh Shah, Yun Jie Serene Yeo,
+Daniel Roberto Filizzola Ortiz, Enrico Santus,
+and Regina Barzilay. 2019. Towards Debias-
+ing Fact Veriﬁcation Models. In Proceedings
+of the 2019 Conference on Empirical Meth-
+ods in Natural Language Processing and the
+9th International Joint Conference on Natural
+Language Processing (EMNLP-IJCNLP) , pages
+3419–3425, Hong Kong, CN. Association for
+Computational Linguistics.
+Sabine Sczesny, Christa Nater, and Alice H. Eagly.
+2018. Agency and communion: Their implica-
+tions for gender stereotypes and gender identi-
+ties. In Agency and Communion in Social Psy-
+chology , pages 103–116. Taylor and Francis.
+Andrew D. Selbst, Danah Boyd, Sorelle A. Friedler,
+Suresh Venkatasubramanian, and Janet Vertesi.
+2019. Fairness and Abstraction in Sociotechni-
+cal Systems. In Proceedings of the Conference
+on Fairness, Accountability, and Transparency ,
+FAT* ’19, pages 59–68, New York, USA. Asso-
+ciation for Computing Machinery.
+Rico Sennrich. 2017. How Grammatical is
+Character-Level Neural Machine Translation?
+Assessing MT Quality with Contrastive Trans-
+lation Pairs. In Proceedings of the 15th Confer-
+ence of the European Chapter of the Association
+for Computational Linguistics: Volume 2, Short
+Papers , pages 376–382, Valencia, ES. Associa-
+tion for Computational Linguistics.
+Deven S. Shah, Hansen A. Schwartz, and Dirk
+Hovy. 2020. Predictive Biases in Natural Lan-
+guage Processing Models: A Conceptual Frame-
+work and Overview. In Proceedings of the 58th
+Annual Meeting of the Association for Compu-
+tational Linguistics , pages 5248–5264, Online.
+Association for Computational Linguistics.
+Alyx J. Shroy. 2016. Innovations in gender-neutral
+French: Language practices of nonbinary French
+speakers on Twitter. Ms., University of Califor-
+nia, Davis .Jeanette Silveira. 1980. Generic Masculine Words
+and Thinking. Women’s Studies International
+Quarterly , 3(2-3):165–178.
+Fabian H. Sinz, Xaq Pitkow, Jacob Reimer,
+Matthias Bethge, and Andreas S. Tolias. 2019.
+Engineering a Less Artiﬁcial Intelligence. Neu-
+ron, 103(6):967–979.
+Janet Smith. 2003. Gendered Structures in
+Japanese. Gender across languages: The lin-
+guistic representation of women and men , 3:201–
+227.
+Matthew Snover, Bonnie Dorr, Richard Schwartz,
+Linnea Micciulla, and John Makhoul. 2006. A
+Study of Translation Edit Rate with Targeted Hu-
+man Annotation. In Proceedings of the 7th Con-
+ference of the Association for Machine Transla-
+tion in the Americas , pages 223–231, Cambridge,
+USA. The Association for Machine Translation
+in the Americas.
+Art¯urs Stafanovi ˇcs, M ¯arcis Pinnis, and Toms
+Bergmanis. 2020. Mitigating Gender Bias in
+Machine Translation with Target Gender Anno-
+tations. In Proceedings of the Fifth Conference
+on Machine Translation , pages 629–638, Online.
+Association for Computational Linguistics.
+Dagmar Stahlberg, Friederike Braun, Lisa Irmen,
+and Sabine Sczesny. 2007. Representation of
+the Sexes in Language. Social Communication ,
+pages 163–187.
+Gabriel Stanovsky, Noah A. Smith, and Luke
+Zettlemoyer. 2019. Evaluating Gender Bias in
+Machine Translation. In Proceedings of the 57th
+Annual Meeting of the Association for Computa-
+tional Linguistics , pages 1679–1684, Florence,
+IT. Association for Computational Linguistics.
+Simone Stumpf, Anicia Peters, Shaowen Bardzell,
+Margaret Burnett, Daniela Busse, Jessica
+Cauchard, and Elizabeth Churchill. 2020.
+Gender-inclusive HCI research and design: A
+conceptual review. Foundations and Trends in
+Human–Computer Interaction , 13(1):1–69.
+Tony Sun, Andrew Gaut, Shirlyn Tang, Yuxin
+Huang, Mai ElSherief, Jieyu Zhao, Diba
+Mirza, Elizabeth Belding, Kai-Wei Chang, and
+William Yang Wang. 2019. Mitigating Gender
+Bias in Natural Language Processing: Litera-
+ture Review. In Proceedings of the 57th Annual
+Meeting of the Association for Computational
+Linguistics , pages 1630–1640, Florence, IT. As-
+sociation for Computational Linguistics.
+Tony Sun, Kellie Webster, Apu Shah, William Y .
+Wang, and Melvin Johnson. 2021. They, Them,
+Theirs: Rewriting with Gender-Neutral English.
+arXiv preprint arXiv:2102.06788 .
+Harini Suresh and John V . Guttag. 2019. A
+framework for understanding unintended con-
+sequences of machine learning. arXiv preprint
+arXiv:1901.10002 .
+Masashi Takeshita, Yuki Katsumata, Rafal Rzepka,
+and Kenji Araki. 2020. Can Existing Methods
+Debias Languages Other than English? First At-
+tempt to Analyze and Mitigate Japanese Word
+Embeddings. In Proceedings of the Second
+Workshop on Gender Bias in Natural Language
+Processing , pages 44–55, Online. Association
+for Computational Linguistics.
+Tina Tallon. 2019. A Century of “Shrill”: How
+Bias in Technology Has Hurt Women’s V oices.
+The New Yorker .
+Rachael Tatman. 2017. Gender and Dialect Bias in
+YouTube’s Automatic Captions. In Proceedings
+of the First ACL Workshop on Ethics in Natural
+Language Processing , pages 53–59, Valencia,
+ES. Association for Computational Linguistics.
+Peter Trudgill. 2000. Sociolinguistics: An Introduc-
+tion to Language and Society . Penguin Books,
+London, UK.
+Anne M. Turner, Megumu K. Brownstein, Kate
+Cole, Hilary Karasz, and Katrin Kirchhoff. 2015.
+Modeling Workﬂow to Design Machine Trans-
+lation Applications for Public Health practice.
+Journal of Biomedical Informatics , 53:136–146.
+Amos Tversky and Daniel Kahneman. 1973. Avail-
+ability: A heuristic for judging frequency and
+probability. Cognitive psychology , 5(2):207–
+232.
+Amos Tversky and Daniel Kahneman. 1974. Judg-
+ment under Uncertainty: Heuristics and Biases.
+Science , 185(4157):1124–1131.
+Eva Vanmassenhove, Christian Hardmeier, and
+Andy Way. 2018. Getting Gender Right in Neu-
+ral Machine Translation. In Proceedings of the2018 Conference on Empirical Methods in Nat-
+ural Language Processing , pages 3003–3008,
+Brussels, BE. Association for Computational
+Linguistics.
+Eva Vanmassenhove, Dimitar Shterionov, and
+Matthew Gwilliam. 2021. Machine Transla-
+tionese: Effects of Algorithmic Bias on Linguis-
+tic Complexity in Machine Translation. In Pro-
+ceedings of the 16th Conference of the European
+Chapter of the Association for Computational
+Linguistics: Main Volume , pages 2203–2213.
+Eva Vanmassenhove, Dimitar Shterionov, and
+Andy Way. 2019. Lost in Translation: Loss and
+Decay of Linguistic Richness in Machine Trans-
+lation. In Proceedings of Machine Translation
+Summit XVII Volume 1: Research Track , pages
+222–232, Dublin, IE. European Association for
+Machine Translation.
+Mihaela V orvoreanu, Lingyi Zhang, Yun-Han
+Huang, Claudia Hilderbrand, Zoe Steine-
+Hanson, and Margaret Burnett. 2019. From Gen-
+der Biases to Gender-Inclusive Design: An Em-
+pirical Investigation. In Proceedings of the 2019
+CHI Conference on Human Factors in Comput-
+ing Systems , CHI ’19, page 1–14, New York,
+USA. Association for Computing Machinery.
+Claudia Wagner, David Garcia, Mohsen Jadidi,
+and Markus Strohmaier. 2015. It’s a man’s
+Wikipedia? Assessing gender inequality in an
+online encyclopedia. In Proceedings of the In-
+ternational AAAI Conference on Web and Social
+Media , volume 9.
+Mario Wandruszka. 1969. Sprachen: Vergleichbar
+und Vnvergleichlich . R. Piper & Co. Verlag,
+Munich, DE.
+Zeerak Waseem. 2016. Are You a Racist or Am
+I Seeing Things? Annotator Inﬂuence on Hate
+Speech Detection on Twitter. In Proceedings of
+the First Workshop on NLP and Computational
+Social Science , pages 138–142, Austin, USA.
+Association for Computational Linguistics.
+Zeerak Waseem, Smarika Lulz, Joachim Bingel,
+and Isabelle Augenstein. 2020. Disembodied
+Machine Learning: On the Illusion of Objectiv-
+ity in NLP. OpenReview Preprint.
+Kellie Webster, Marta R. Costa-juss `a, Christian
+Hardmeier, and Will Radford. 2019. Gendered
+ambiguous pronoun (GAP) shared task at the
+gender bias in NLP workshop 2019. In Proceed-
+ings of the First Workshop on Gender Bias in
+Natural Language Processing , pages 1–7, Flo-
+rence, IT. Association for Computational Lin-
+guistics.
+Ilka B. Wolter and Bettina Hannover. 2016. Gender
+role self-concept at school start and its impact
+on academic self-concept and performance in
+mathematics and reading. European Journal of
+Developmental Psychology , 13(6):681–703.
+Jieyu Zhao, Subhabrata Mukherjee, Saghar
+Hosseini, Kai-Wei Chang, and Ahmed Has-
+san Awadallah. 2020. Gender Bias in Multi-
+lingual Embeddings and Cross-Lingual Transfer.
+InProceedings of the 58th Annual Meeting of
+the Association for Computational Linguistics ,
+pages 2896–2907, Online. Association for Com-
+putational Linguistics.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente
+Ordonez, and Kai-Wei Chang. 2017. Men also
+like Shopping: Reducing Gender Bias Ampliﬁ-
+cation using Corpus-Level Constraints. In Pro-
+ceedings of the 2017 Conference on Empirical
+Methods in Natural Language Processing , pages
+2979–2989, Copenhagen, DK. Association for
+Computational Linguistics.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente
+Ordonez, and Kai-Wei Chang. 2018a. Gender
+Bias in Coreference Resolution: Evaluation and
+Debiasing Methods. In Proceedings of the 2018
+Conference of the North American Chapter of
+the Association for Computational Linguistics:
+Human Language Technologies, Volume 2 (Short
+Papers) , pages 15–20, New Orleans, USA. As-
+sociation for Computational Linguistics.
+Jieyu Zhao, Yichao Zhou, Zeyu Li, Wei Wang,
+and Kai-Wei Chang. 2018b. Learning Gender-
+Neutral Word Embeddings. In Proceedings of
+the 2018 Conference on Empirical Methods in
+Natural Language Processing , pages 4847–4853,
+Brussels, BE. Association for Computational
+Linguistics.
+Pei Zhou, Weijia Shi, Jieyu Zhao, Kuan-Hao
+Huang, Muhao Chen, Ryan Cotterell, and Kai-
+Wei Chang. 2019. Examining Gender Bias in
+Languages with Grammatical Gender. In Pro-
+ceedings of the 2019 Conference on EmpiricalMethods in Natural Language Processing and
+the 9th International Joint Conference on Nat-
+ural Language Processing (EMNLP-IJCNLP) ,
+pages 5276–5284, Hong Kong, CN. Association
+for Computational Linguistics.
+Lal Zimman. 2020. Transgender language, trans-
+gender moment: Toward a trans linguistics. In
+Kira Hall and Rusty Barrett, editors, The Oxford
+Handbook of Language and Sexuality . Oxford
+University Press.
+Lal Zimman, Evan Hazenberg, and Miriam Mey-
+erhoff. 2017. Trans people’s linguistic self-
+determination and the dialogic nature of iden-
+tity. Representing trans: Linguistic, legal and
+everyday perspectives , pages 226–248.
+Ran Zmigrod, Sabrina J. Mielke, Hanna Wal-
+lach, and Ryan Cotterell. 2019. Counterfac-
+tual Data Augmentation for Mitigating Gender
+Stereotypes in Languages with Rich Morphol-
+ogy. In Proceedings of the 57th Annual Meeting
+of the Association for Computational Linguistics ,
+pages 1651–1661, Florence, IT. Association for
+Computational Linguistics.
