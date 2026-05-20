@@ -1,0 +1,915 @@
+Title: Exploiting Structured Knowledge in Text via Graph-Guided Representation Learning
+
+EXPLOITING STRUCTURED KNOWLEDGE IN TEXT VIA
+GRAPH -GUIDED REPRESENTATION LEARNING
+Tao Shen
+University of Technology Sydney
+tao.shen@student.uts.edu.auYi Mao, Pengcheng He
+Microsoft Dynamics 365 AI
+fmaoyi,penheg@microsoft.com
+Guodong Long
+University of Technology Sydney
+guodong.long@uts.edu.auAdam Trischler
+Microsoft Research, Montr ´eal
+adtrisch@microsoft.com
+Weizhu Chen
+Microsoft Dynamics 365 AI
+fwzcheng@microsoft.com
+ABSTRACT
+In this work, we aim at equipping pre-trained language models with structured
+knowledge. We present two self-supervised tasks learning over raw text with the
+guidance from knowledge graphs. Building upon entity-level masked language
+models, our ﬁrst contribution is an entity masking scheme that exploits relational
+knowledge underlying the text. This is fulﬁlled by using a linked knowledge graph
+to select informative entities and then masking their mentions. In addition we
+use knowledge graphs to obtain distractors for the masked entities, and propose
+a novel distractor-suppressed ranking objective which is optimized jointly with
+masked language model. In contrast to existing paradigms, our approach uses
+knowledge graphs implicitly, only during pre-training, to inject language mod-
+els with structured knowledge via learning from raw text. It is more efﬁcient than
+retrieval-based methods that perform entity linking and integration during ﬁnetun-
+ing and inference, and generalizes more effectively than the methods that directly
+learn from concatenated graph triples. Experiments show that our proposed model
+achieves improved performance on ﬁve benchmark datasets, including question
+answering and knowledge base completion tasks.
+1 I NTRODUCTION
+Self-supervised pre-trained language models (LMs) like ELMo (Peters et al., 2018) and BERT (De-
+vlin et al., 2019) learn powerful contextualized representations. With task-speciﬁc modules and ﬁne-
+tuning, they have achieved state-of-the-art results on a wide range of natural language processing
+tasks. Nevertheless, open questions remain about what these models have learned and improvements
+can be made along several directions. One such direction is, when downstream task performance de-
+pends on structured relational knowledge – the kind modeled by knowledge graphs1(KGs) – directly
+ﬁnetuning a pre-trained LM often yields sub-optimal results, even though some works (Petroni et al.,
+2019; Davison et al., 2019) show pre-trained LMs have been partially equipped with such knowl-
+edge.
+To address this shortcoming, several recent works attempt to integrate KGs into pre-trained LMs.
+These approaches can be coarsely categorized into two classes, as shown in Figure 1. The ﬁrst
+line of methods retrieve a KG subgraph (Liu et al., 2019a; Lin et al., 2019; Lv et al., 2019) and/or
+pre-trained graph embeddings (Zhang et al., 2019; Peters et al., 2019) via entity linking during both
+Work done while the author was an intern at Microsoft.
+1“Knowledge graph (KG)” and “knowledge base (KB)” are exchangeable in this paper, denoting triple-
+formatted curated graph.
+1arXiv:2004.14224v1  [cs.CL]  29 Apr 2020
+Figure 1: Taxonomy of different approaches to integrating pre-trained LMs with knowledge graphs.
+training and inference on downstream tasks. While these methods inject domain-speciﬁc knowledge
+directly into language representations, they rely heavily on the performance of the linking algorithm
+and/or the quality of graph embeddings. Graph embeddings, to be tractable over large-scale KGs,
+are often learned using shallow models (e.g., TransE (Bordes et al., 2013)) with limited expressive
+power. Besides, the linking and retrieval invoked during both ﬁnetuning and inference are costly,
+hence limit these methods’ practicality.
+The second class of methods (Bosselut et al., 2019; Malaviya et al., 2019; Yao et al., 2019) use
+contextualized representations from pre-trained LMs to enrich graph embeddings and thus alleviate
+graph sparsity issues. This is especially helpful in the case of commonsense KGs (e.g., ConceptNet
+(Speer et al., 2017)) that consist of non-canonicalized text and hence suffer from severe sparsity
+(Malaviya et al., 2019). Speciﬁcally, these methods usually feed concatenated triples (e.g., [H EAD,
+Relation , TAIL]) into LMs for training or ﬁnetuning. The drawback is that focusing on knowledge
+base completion tends to over-adapt the models to this speciﬁc task, which comes at the cost of
+generalization.
+In this work, we equip masked language models (MLMs), e.g. BERT, with structured knowledge via
+self-supervised pre-training on raw text. Compared to the ﬁrst class, we expose LMs to structured
+information only during pre-training, thus circumvent costly knowledge retrieval and integration in
+ﬁnetuning and inference. Also the dependency on the performance of linking algorithm is greatly
+reduced. Compared to the second class, we learn from free-form text through MLMs rather than
+triples, which fosters generalization on other downstream tasks.
+Speciﬁcally, given a corpus of raw text and a KG, two KG-guided self-supervision tasks are formu-
+lated to inject structured knowledge into MLMs. First, taking inspiration from Baidu-ERNIE (Sun
+et al., 2019a), we reformulate the masked language modeling objective to an entity -level masking
+strategy, where entities are identiﬁed by linking their text mentions to concepts/phrases in a com-
+monsense KG or named entities in an ontological KG (Bollacker et al., 2008). The role of KG here is
+to provide a “vocabulary” of entities to be masked. To further exploit implicit relational and logical
+information underlying raw text, we design a KG-guided masking scheme that selects informative
+entities by considering both document frequency and mutual reachability of the entities detected in
+the text. In addition to the new entity-level MLM task above, a novel distractor-suppressed ranking
+task is proposed. Negative entity samples are derived from the KG and used as distractors for the
+masked entities to make the learning more effective.
+Note that our approach never observes the KG directly, through triples or other forms. Rather, the
+KG plays a guiding role in our proposed tasks. Its guidance helps the model exploit the text corpus
+more effectively, as veriﬁed in the experiments. If a downstream task can beneﬁt from explicit
+exposure of KG, a method by Davison et al. (2019) can be used to transform KG triples into natural
+grammatical texts that can be passed into our model.
+We evaluate our method on ﬁve benchmarks, including question answering and knowledge base
+completion (KBC) tasks. Results show our method achieves state-of-the-art or competitive perfor-
+mance on all benchmarks, followed by analyses on the effects of various modeling choices.
+2
+Figure 2: Graph-guided Masked Language Model (GLM) with two self-supervised tasks for MLM training.
+2 V ANILLA MASKED LANGUAGE MODEL
+To ground our approach, this section summarizes MLMs for pre-training bidirectional Transformers
+(Devlin et al., 2019). Compared to causal LMs (Peters et al., 2018) trained unidirectionally, MLMs
+randomly mask some tokens and predict the masked tokens by considering their context on both
+sides. Formally, given a piece of text U, a tokenizer, e.g. BPE (Sennrich et al., 2016), is used to pro-
+duce a sequence of tokens [w1;:::;w n]. A certain percentage of the original tokens are then masked
+and replaced: of those, 80% with special token [MASK] , 10% with a token sampled from the vocab-
+ularyV, and the remaining kept unchanged. The masked sequence, denoted as [w(m)
+1;:::;w(m)
+n], is
+passed into a Transformer encoder to produce contextual representations for the sequence:
+H= TransformerEnch
+w(m)
+1;:::;w(m)
+ni
+; (1)
+where H2Rdhnanddhdenotes the hidden size. The training loss LMfor the MLM task is
+deﬁned as
+LM= 1
+jMjX
+i2MlogP(wijH:;i); (2)
+whereMdenotes the set of masked token indices, and P(wijH:;i)is the probability of predicting
+the original token wigiven the representations computed from the masked token sequence.
+3 G RAPH -GUIDED MASKED LANGUAGE MODEL
+This section begins with a description of entity-level masked language modeling. Section 3.2 pro-
+poses a KG-guided entity masking scheme for the entity-level MLM task. A novel distractor-
+suppressed ranking task is presented in Section 3.3, which operates on the masked entities and
+their negative entity samples from the KG. We use a multi-task learning objective combining the
+two tasks above to jointly train our proposed Graph-guided Masked Language Model (GLM). An
+illustration of the GLM is shown in Figure 2.
+3
+3.1 E NTITY -LEVEL MASKED LANGUAGE MODEL
+As aforementioned, directly training an MLM with graph triples learns structured knowledge at
+the cost of the model’s generalization to tasks involving natural text such as question answering.
+Inspired by distantly supervised relation extraction (Mintz et al., 2009) which assumes that any
+sentence containing two entities can be used to express the relation between these two entities in a
+KG, we argue that it is possible for an MLM to learn structured knowledge from raw text if guided
+properly by a KG.
+Roughly speaking, we take detected entity mentions as masking candidates, where the entity can be
+a concept/phrase in a commonsense KG or a named entity in an ontological KG. The intuition is
+that the mentions in text often represent knowledge-grounded, semantically meaningful text spans.
+Formally, we ﬁrst use a KG to provide a vocabulary of entities for building an entity linking system.
+We then detect all entity mentions appearing in a piece of text Ufrom a corpus. This leads to a set
+of linked entitiesE=fe1;e2;:::g,feje2KG^e2UgwithCejbeing the corresponding token
+indices inUfor each entity mention ej.
+The idea of entity-level masking is not new. For example, Sun et al. (2019a) and Joshi et al. (2019)
+randomly mask entity candidates under uniform distribution for training MLMs. We take this idea
+further by building our masking scheme with the guidance of a KG, as explained below.
+3.2 KG-G UIDED ENTITY MASKING SCHEME
+In this section, we develop a new entity masking scheme to facilitate structured knowledge learning
+for MLMs. It explores implicit relational information underlying raw text by the guidance of a KG,
+and is shown to mask more informative entities compared to the previous random approach.
+In particular, the scheme is designed to avoid or reduce masking two types of entities: trivial and
+undeducible. Trivial entities, such as have been andwhat do in ConceptNet, are ubiquitous in
+corpora, since they are used to compose sentences. However, they express bare semantics and
+function similarly to stop words. On the other hand, an undeducible entity is deﬁned as an entity
+that is hardly reached from any other entities detected in the same text, within certain hops over the
+linked KG. Examples include general modiﬁers and ambiguous entity linking results, as shown with
+green in Figure 2.
+Given a masking budget (e.g., 20% of total tokens in our setting), we sample token spans iteratively
+as follows until the budget is reached: 1) 20% of the time we sample a random token span under a
+geometric distribution with p= 0:2, and 2) 80% of the time we sample an entity mention from the
+candidates detected in x3.1. The probability to sample an entity mention Cejis deﬁned as
+P(Cej)/IfDF(ej)<RthreshghNb(ej)iRmax
+Rmin; (3)
+where Nb(e),fe0jPLen(e0$e)<Rhop^e02Eg . The term DF()denotes document frequency,
+PLen(e$e0)is the length of the shortest undirected path between the two entities, jjdenotes the
+set size, and [x]b
+a,max(a;min(x;b)).
+Note, the ﬁrst part in Eq.(3) is designed to eliminate trivial entities that frequently appear. The sec-
+ond part measures whether an entity can be reached from other entities detected in the same text
+within R hop-hops, and assigns a higher sampling weight to an entity (e.g., criminal in Figure 2)
+that could more easily be inferred by others. By guiding the model to favor masking deducible but
+non-trivial entities, this scheme facilitates the MLM ingesting relational knowledge into represen-
+tation learning. R hop/thresh/min/max are hyperparameters that trade off between trivial and undeducible
+entities.
+Finally, it is worth noting, frequently appearing entities that are excluded via Ifgin Eq.(3) can still
+be masked via 20% random span masking budget, but now with much smaller probabilities.
+3.3 D ISTRACTOR -SUPPRESSED RANKING TASK
+Empowered by the informative entity-level masks, it is natural to extend the MLM with “negative”
+entities sampled from the KG, by treating the masked entities as “positive”. It has been shown that
+4
+negative sampling is especially useful for structured knowledge learning in graph embedding ap-
+proaches (Sun et al., 2019c; Cai and Wang, 2018), but how to effectively integrate negative samples
+from KGs into MLMs remains open.
+Recently, Ye et al. (2019) propose to mask one entity mention in a sentence, and then formulate a
+multiple-choice QA task for structured knowledge learning, by treating the masked sentence as the
+question, and the masked entity plus its negative samples as answer candidates. However, this model
+does not quite match the MLM since only one entity can be masked in a text.
+Here we propose a distractor-suppressed ranking objective that operates on each pair of a masked
+entity fromx3.2 and its negative sample from the KG. The negative sample can be viewed as a
+distractor. We use a Transformer encoder to separately produce the embeddings of positive and
+negative entities using their associated node contents in the KG. We then contrast the positive and
+negative entity embeddings ,uandu0, against the masked entity mention’s contextual representation ,
+v, using vector similarity as plausible scores for the both entities.
+Speciﬁcally, given a set of masked entities from x3.2,Ep=fe1;:::;e mgE , with the correspond-
+ing entity mentions Cej, we gather the contextual representation for each masked entity mention, by
+mean-pooling over representations of its composite tokens, where the representations are generated
+by the Transformer encoder of the MLM:
+vj=1
+jCejjX
+k2CejH:;k; j= 1;::: (4)
+Herevjis the resulting contextual representation for ej. Since each entity’s original mention is
+invisible to the encoder, vjis rich in contextual features.
+We then sample negative sample(s) from the KG for each ej2Epand derive a set of positive-
+negative entity pairs f(ej;e0
+j)gm
+j=1. In particular, given a positive entity ej, the sampling method
+randomly selects an entity e0
+jfrom the KG as a negative sample. The sampling favors its sibling
+entities with the same relation, whose sample weights are twice than the others. This is similar to Ye
+et al. (2019) and aims to provide strong distractors. Then, another Transformer encoder separately
+encodes positive and negative entities, which is parameter-tied with the MLM in 3.2 but uses distinct
+position embeddings. To distinguish entity text coming from KG’s node or natural text, we append
+a special token to the entity text, i.e., textj=[CLS] +ej+[ENT] . We passtextjinto the encoder
+to obtain the entity embedding for ej, i.e.,
+uj= Pool(TransformerEnc( textj)): (5)
+Here, Pool()denotes collecting the contextualized embedding from the [CLS] token, as in Devlin
+et al. (2019). The resulting uj2Rdhis an LM-augmented entity embedding for ej. We apply the
+same process to e0
+jto obtain negative entity embedding u0
+j.
+The procedure above yields a set of tuples, f(vj;uj;u0
+j)gm
+j=1. Finally, a BiLinear layer (abbrv.
+BiLnr ) is used as a parameterized metric to calculate a similarity score between vjanduj(oru0
+j).
+The score is
+sj= BiLnr( vj;uj); s0
+j= BiLnr( vj;u0
+j); (6)
+where BiLnr( x;y),xTWy +b:
+sjands0
+jare scores for positive and negative entities, respectively. The two BiLinear layers used
+in Eq.(6) are parameter-tied. We then use a margin-based hinge loss to train the MLM with the
+formulated pairwise ranking task, i.e.,
+LR=1
+mmX
+j=1max( sj+s0
+j;0); (7)
+where the margin is a hyperparameter.
+The proposed distractor-suppressed ranking task has several nice properties. First, only a light-
+weight BiLinear layer is used to measure the score. Second, training to distinguish positive from
+negative samples may make the model more effective. Intuitively, two neighboring entities in graph
+are often assigned with similar distributed representations, but express differently in subtle context;
+5
+Dataset # Entity # Rel # Train # Dev # Test
+CommonsenseQA / / 9,741 1,221 1,140
+SocialIQA / / 33,410 1,954 2,224
+WN18RR 40,943 11 86,835 3,034 3,134
+WN11 38,696 11 112,581 2,609 10,544
+CKBC 78,334 34 100,000 1,200/1,200 2,400
+Table 1: Summary statistics of ﬁve benchmarks. The ﬁrst two are multiple-choice question answering tasks.
+The rest include one link prediction and two triple classiﬁcation tasks.
+this task helps discriminate them. Finally, in contrast to the work of Ye et al. (2019), ours is fully
+compatible with the entity-level MLM training task.
+The ﬁnal loss function for our model is deﬁned as a combination of the entity-level MLM loss LM,
+and the distractor-suppressed ranking loss LR, with the latter weighted by a hyperparameter :
+L=LM+LR: (8)
+3.4 C OMPARISON TO PRIOR ENTITY -LEVEL MLM S
+Our work differs from prior entity-level MLMs, including SpanBERT (Joshi et al., 2019) and Baidu-
+ERNIE (Sun et al., 2019a;b) in several ways. While the motivation of previous work is to move
+beyond token to another text unit, our method looks for ways to introduce structured knowledge
+from KGs into language models. As such, named entities in prior works are recognized via NLP
+toolkits. The entities are simply masked in random and relational knowledge unlikely exists among
+them. In contrast, entities in GLM are linked to a support knowledge graph, and masking has
+taken into consideration how an entity interacts with its neighbors in the KG. Similarly for modeling
+objective, previously proposed objectives such as span boundary objective (Joshi et al., 2019), aim at
+learning text semantics as in traditional MLM objectives. By exploiting relational knowledge among
+the recognized entities, we end up with a ranking task that is specially designed for the proposed
+entity-level MLM to directly acquire structured information.
+4 E XPERIMENTS
+4.1 T RAINING SETUP
+In this work we focus on non-canonicalized commonsense KGs, speciﬁcally ConceptNet, although
+the proposed approach is also applicable to ontological KGs such as Freebase. For training efﬁciency
+we use two relatively small free-form corpora. One is the Open Mind Common Sense (OMCS)
+raw corpus2consisting of 800K short sentences. The other is the ARC corpus (Clark et al., 2018)
+containing 14M unordered, science-related sentences. Both corpora are parsed to have their entities
+linked to ConceptNet by using an inverted index built with fuzzy matching (Appx. A).
+For downstream tasks, CommonsenseQA (Talmor et al., 2019) and SocialIQA (Sap et al., 2019b)
+are used to evaluate GLM’s performance on natural question answering (QA) task. We also experi-
+ment with three knowledge base completion (KBC) tasks: WN18RR (Dettmers et al., 2018), WN11
+(Bordes et al., 2013) and commonsense knowledge base completion (Li et al., 2016), to assess
+whether the proposed approach can beneﬁt graph-related tasks. We do not use other benchmarks
+like FB15k-237 (Dettmers et al., 2018) because they are derived from ontological KGs. And we do
+not use WN18 (Socher et al., 2013) as it suffers from the “informative value” problem (Dettmers
+et al., 2018). Statistics of these benchmarks are summarized in Table 1. It is worth mentioning that,
+although WordNet (Miller, 1998) is included in ConceptNet, the triples in ConceptNet are never used
+during GLM training but only raw texts from OMCS (which is a standalone source of ConceptNet
+and independent of WordNet), so the relation labels in WordNet are never seen by the GLM.
+For efﬁciency considerations, we initialized GLM with either BERT or RoBERTa rather than train-
+ing from scratch. We choose to match the corresponding baseline model (whether it uses BERT or
+2https://github.com/commonsense
+6
+Method Dev Test
+Models from pre-trained language model ﬁnetuning
+BERT-large (Devlin et al., 2019) - 56.7
+XLNet-large (Yang et al., 2019) - 62.9
+RoBERTa-large (Liu et al., 2019b) 78.5 72.1
+Models w/ IRor extra supervisions during ﬁnetuning
+CoS-E (Rajani et al., 2019) - 58.2
+AristoBERTv7 (BERT-large) - 64.6
+DREAM (XLNet-large) - 66.9
+RoBERTa + IR 78.9 72.1
+RoBERTa + KE 78.7 73.3
+Models w/ further self-supervision tasks
+BERT+AMS (Ye et al., 2019) - 62.2
+BERT+OMCS - 62.5
+RoBERTa+CSPT 76.2 69.6
+FreeLB-RoBERTa (Zhu et al., 2019) 78.8 72.2
+GLM (RoBERTa)y 79.8 74.1
+Table 2: Results on CommonsenseQA for single models.“-” denotes unavailable result, and underlined score
+is the previous best.IR stands for information retrieval. yGLM is initialized with RoBERTa-large and falls
+into the last group.
+RoBERTa) in each downstream task for fair comparison. In practice, we can initialize GLM with
+any state-of-the-art pre-trained bidirectional language model.
+More training setups are detailed in Appendix A.
+4.2 Q UESTION ANSWERING TASK EVALUATION
+CommonsenseQA. Table 2 reports test results from the leaderboard3and from our approach. A
+brief introduction to each approach without reference can be found on the leaderboard. Compared
+to the previous best model RoBERTa+KE which is also trained with an extra in-domain corpus (i.e.,
+OMCS) and uses retrieval during ﬁnetuning, our approach achieves 0.8% absolute improvement to
+deliver a new state-of-the-art result. In addition, GLM based on RoBERTa-large outperforms its
+respective baseline RoBERTa-large by 2.0%.
+Note that approaches that use information retrieval (e.g., RoBERTa+KE) must retrieve from
+Wikipedia during ﬁnetuning and inference, which increases the computational overhead signiﬁ-
+cantly. In contrast, approaches based on additional self-supervised pre-training are more efﬁcient,
+but often achieve sub-optimal performance since they lack explicitly retrieved, targeted context.
+The proposed GLM falls into the latter high-efﬁciency group while still outperforms IR-based ap-
+proaches.
+Some prior works (e.g., RoBERTa+CSPT) ﬁnd that directly ﬁnetuning on triples from a KG can
+hurt performance. This evidence empirically supports our hypothesis that ﬁnetuning on triples can
+over-adapt a model to graph-based tasks and limit their generalization to other tasks.
+Our approach is not directly comparable to Lv et al. (2019) and Lin et al. (2019), the ﬁrst of which
+achieves 75.3% accuracy. This is because during ﬁnetuning and inference, those methods explic-
+itly ﬁnd a path from question to answer concept in ConceptNet. This helps ﬁlter human-generated
+distractor answers since they never appear in ConceptNet. In addition, our method never uses Con-
+ceptNet during ﬁnetuning and only observes a small subgraph of ConceptNet (about 30%40%
+linked concepts without relations) during pre-training.
+3www.tau-nlp.org/csqa-leaderboard , and we thank Alon Talmor and Jonathan Herzig for test
+evaluations.
+7
+Method Dev Test
+GPT (Radford et al., 2018) 63.3 63.0
+BERT-base (Devlin et al., 2019) 63.3 63.1
+BERT-large (Devlin et al., 2019) 66.0 64.5
+RoBERTa-large (Liu et al., 2019b) 78.2 77.1
+McQueen (RoBERTa) (Anonymous) 79.5 78.0
+GB-KSI (Anonymous) 77.5 78.1
+GLM (RoBERTa) 79.6 78.6
+Table 3: Results on SocialIQA. The results for comparative methods are copied from Sap et al. (2019b) or
+leaderboard.
+MethodWN18RR
+MR MRR H@1 H@3 H@10
+TransE (Bordes et al., 2013) y 2300 .243 .043 .441 .532
+DistMult (Yang et al., 2015) y 7000 .444 .412 .470 .504
+ComplEx (Trouillon et al., 2016) y 7882 .449 .409 .469 .530
+R-GCN (Schlichtkrull et al., 2018) y6700 .123 .080 .137 .207
+ConvE (Dettmers et al., 2018) y 4464 .456 .419 .470 .531
+ConvKB (Nguyen et al., 2018) y 1295 .265 .058 .445 .558
+KBGAN (Cai and Wang, 2018) - .215 - - .469
+RotatE (Sun et al., 2019c) 3340 .476 .428 .492 .571
+Nathani et al. (2019) 1940 .440 .361 .483 .581
+KG-BERT (Yao et al., 2019) 97 - - - .524
+KG-BERT (ours)89 .474 .356 .543 .678
+GLM (BERT-base) 83 .557 .505 .552 .681
+Table 4: Link prediction results on the WN18RR benchmark.We re-implemented data processing and
+ranking basis (detailed in Appx. A). yNumbers are copied from Nathani et al. (2019).
+SocialIQA. The dataset4is built upon the ATOMIC knowledge graph (Sap et al., 2019a) and
+focuses on reasoning about people’s actions and their social implications. It thus serves as an out-of-
+domain evaluation task for GLM trained using ConceptNet. Similar to CommonsenseQA, this task
+is formulated as a multiple-choice QA problem. The evaluation results listed in Table 3 demonstrate
+that our approach also achieves state-of-the-art performance on this out-of-domain dataset.
+4.3 G RAPH -RELATED TASK EVALUATION
+For this set of tasks we follow KG-BERT (Yao et al., 2019) that ﬁnetunes BERT encoder over a
+concatenation of a triple’s head, relation, and tail, followed by an MLP to compute a conﬁdence score
+whether the triple is reasonable. Since BERT-base model is used in KG-BERT, for fair comparison
+we train a GLM from BERT-base, denoted as “GLM (BERT-base)” and ﬁnetune the GLM on KBC
+datasets.
+WordNet Knowledge Base Completion. Table 4 lists test results for the WN18RR link prediction
+task. GLM outperforms KG-BERT by a large margin and sets a new state-of-the-art result. GLM is
+superior to translation-based graph embedding models (e.g., RotatE and TansE), graph convolutional
+networks (e.g., R-GCN), and convolution-based methods (e.g., ConvKB and ConvE).
+Test results for the WN11 triple classiﬁcation task are listed in Table 5. Consistent with the results on
+WN18RR, our approach outperforms translation-based graph embedding models and convolution-
+based methods, and improves state-of-the-art accuracy by 0.5%.
+Commonsense Knowledge Base Completion (CKBC). Finally, we evaluate our approach on the
+CKBC task, which should directly beneﬁt from commonsense knowledge. Since CKBC is derived
+4https://tinyurl.com/socialiqa
+8
+Method Dev Test
+TransE (Bordes et al., 2013) - 75.9
+NTN (Socher et al., 2013) - 86.2
+DistMult (Yang et al., 2015) - 87.1
+DistMult-HRS (Yang et al., 2015) - 88.9
+DOLORES (Wang et al., 2018) - 87.5
+ConvKB (Nguyen et al., 2018) - 87.6
+AATE (An et al., 2018) - 88.0
+KG-BERT (BERT-base) (Yao et al., 2019) - 93.5
+GLM (BERT-base) 94.8 94.0
+Table 5: Test accuracy on WN11 triple classiﬁcation task.
+Method Dev2 Test
+Bilinear A VG (Li et al., 2016) 90.3 91.7
+DNN A VG (Li et al., 2016) 91.3 92.0
+Bilinear A VG + Data (Li et al., 2016) 91.8 92.5
+KG-BERT (BERT-base) 92.9 93.2
+KG-BERT + Data (BERT-base) 92.3 92.4
+GLM (BERT-base) 93.0 93.5
+GLM (RoBERTa-large) 94.7 94.6
+Table 6: Test accuracy on CKBC triple classiﬁcation task..
+from the OMCS corpus, for fair comparison, we provide baseline model with equivalent training
+data (“+ Data” in Table 6). In addition, we remove raw sentences belonging to CKBC’s test set from
+our GLM training corpora to avoid data leakage.
+Results in Table 6 show our approach outperforms KG-BERT baseline even when the latter is
+equipped with equivalent data (increasing training triples from 100K to 600K). There are two pos-
+sible reasons why performance actually drops with more data: 1) the training triples are sorted w.r.t
+annotated conﬁdence, so additional triples have a lower quality and may introduce noise; 2) more
+negative sampling must be done with more training triples, which introduces more false negative
+examples (from 1.25% to 2.42%).
+4.4 Z ERO-SHOT EVALUATION ON CKBC
+To explore whether GLM can indeed learn the structured information from raw text, we conduct a
+zero-shot evaluation on CKBC by following Davison et al. (2019). For fair comparison, we re-train
+the GLM (BERT-large) on a new corpus in which all raw texts containing the CKBC testing pairs
+are discarded. We re-implement coherency ranking and estimate PMI (Davison et al., 2019), and the
+results are shown in Table 7. Our augmented pre-trained language model signiﬁcantly outperforms
+its baseline, which demonstrates our model’s capability of retaining structured information in a
+language model.
+4.5 A BLATION STUDY
+To systematically evaluate the effectiveness of each component in the proposed approach, we con-
+duct an ablation study in Table 8 through pre-training language models with different setups and
+then ﬁnetuning on CommonsenseQA task.
+When KG-guided entity masking introduced in x3.2 is replaced with random entity masking during
+GLM pretraining, 0.4% accuracy drop is observed when the model is subsequently evaluated on
+CommonsenseQA dev set. If we set in Eq.(8) to zero when pre-training GLM, this leads to 0.9%
+accuracy drop. When both entity-level masking and distractor-suppressed ranking are removed, the
+setting becomes equivalent to performing continual pre-training of BERT-large on our corpora. This
+9
+Method F1 Score
+BERT-large (Davison et al., 2019) 78.8
+BERT-large (our implementation) 77.1
+GLM (BERT-large) 83.4
+Table 7: Zero-shot evaluation by following Davison et al. (2019).
+Method Dev Accu
+BERT-large (w/o 2nd step pre-training) 65.5
+GLM (BERT-large) 69.0
+w/o KG-guided Masking 68.6
+w/o Ranking 68.1
+w/o Ranking & Entity Mask (= BERT-large) 67.7
+Ranking!SBO 66.8
+Ranking!SBO, Entity Mask!Span 68.2
+Table 8: Ablation study on CommonsenseQA dev set. Note, “SBO” denotes span boundary objective (Joshi
+et al., 2019) and “!” stands for module replacement.
+helps us separate the contribution from extra in-domain data from the proposed approach. Compared
+with BERT-large baseline, we observe a 2.2% (65.5% to 67.7%) accuracy improvement contributed
+by the corpora. Thus GLM yields an extra 1.3% (67.7% to 69.0%) improvement by better data
+exploitation.
+When we replace distractor-suppressed ranking with span boundary objective (Joshi et al., 2019),
+a signiﬁcant performance decrease (-2.2%) is observed. Further replacing our entity-level masking
+with random span masking, however, only loses 0.8% in accuracy. It is worth noticing that the latter
+setup is equivalent to continual pre-training with SpanBERT (Joshi et al., 2019) on our corpora.
+In line with SpanBERT’s conclusion that the performance of linguistic masking is not consistent,
+our KG-guided entity-level MLM (i.e., GLM w/o the ranking task) is worse than random span with
+SBO (68.1% vs. 68.2%). This suggests that objective to mask and objective to learn need to be
+paired, and linguistic masking can be useful if equipped with appropriate learning objective (e.g.,
+our distractor-suppressed ranking task) during pre-training.
+4.6 A NALYSIS OF TRAINING & M ASKING SCHEMES
+Given the same dev set of texts with the same masked tokens, Figure 3 compares different learning
+and masking schemes by plotting LM(left) andLR(right) deﬁned in Eq.(8) w.r.t training steps. It
+is observed that our KG-guided entity masking is more efﬁcient than three other masking schemes,
+including random entity masking (Sun et al., 2019a), random span masking (Joshi et al., 2019), and
+random whole-word masking (Devlin et al., 2019).
+Table 9 lists a few example sentences with masked tokens highlighted according to the corresponding
+masking scheme. Both KG-guided and random entity masking can mask informative chunks and
+long-term dependency needs to be modeled in order to infer the masked tokens. In contrast, random
+span or word masking is likely to mask tokens that can be easily inferred from local context – a
+much simpler task. Furthermore, our KG-guided entity masking tends to select more informative
+phrases compared to random entity masking.
+5 R ELATED WORK
+Our work is related to Baidu-ERNIE (Sun et al., 2019a) and SpanBERT (Joshi et al., 2019), which
+both extend token level masking to the span level. For example, Baidu-ERNIE does so to improve
+the model’s knowledge learning, using uniformly random masking for phrases and entities. A de-
+tailed comparison between our model and span-level pre-trained language models can be found in
+x3.4. As brieﬂy summarized in x1, existing methods for integrating knowledge into pre-trained LMs
+10
+Figure 3: Dev loss during training phase for different training or masking schemes. Note only entity-level
+masking hasLR.
+No. Masked Text with different masking methods
+1 something you:::need::to:::do before yougetupearly
+issetan alarm (leave the ofﬁce)
+2 you would talk with someone::faraway because
+you::::want:::::keep in touch (meet strangers)
+3:if:::you::::want todrill ahole then youshould care-
+fully plan where you will drill it (cut of beef)
+Table 9: Case study for different masking schemes. Note that 1) underline: KG-guided entity masking; 2)
+:::::::underline::::wave: random entity masking; 3) italic : random span masking; and 4) bold : random whole-word
+masking. Text in parenthesis is a negative sample for KG-guided entity masking.
+can be coarsely categorized into two classes. For example, Peters et al. (2019) retrieve entities’
+embeddings according to the similarity between a Transformer’s hidden states and pre-trained graph
+embeddings, then treat the retrieved embeddings as extra inputs to the next layer. In contrast, Bosse-
+lut et al. (2019) directly ﬁnetune a pre-trained LM on partially-masked triples from a KG, aiming at
+commonsense KBC tasks. In addition our work is also related to using negative samples for effective
+learning (Cai and Wang, 2018).
+Our work also differs from the works combining knowledge graph with text information via joint
+embedding Yamada et al. (2016). They usually use the texts containing co-occurrence of entities
+to enrich the graph embeddings, which are specially designed for graph-related tasks. For exam-
+ple, Wang et al. (2014) embed entities from KG and the entities’ text contents in the same latent
+space, however, regardless of textual co-occurrences and their textual relations in natural language
+corpus. Further taking into account the sharing of sub-structure in the textual relations in a large-
+scale corpus, Toutanova et al. (2015) apply a CNN to the lexicalized dependency paths of the textual
+relation, for an augmented relation representation. The representation can be fed into any previous
+graph embedding approach for enhanced performance on KBC. We share similar inspirations when
+utilizing the texts containing entity co-occurrences and embedding entities’ text contents into latent
+space. But beyond the shallow joint embeddings, our work takes advantage of pre-trained MLMs
+and equips them with structured knowledge via two self-supervised objectives built upon raw text.
+Hence it can produce generic text representations to beneﬁt various downstream tasks.
+6 C ONCLUSION AND DISCUSSION
+In this work, we aim at equipping pre-trained LMs with structured knowledge through novel self-
+supervised tasks. Building upon entity-level MLMs, we propose an entity masking scheme under
+guidance from a KG. This method masks informative entity mentions and facilitates learning struc-
+tured knowledge underlying free-form text. In addition, we propose a distractor-suppressed ranking
+objective to utilize negative samples from KG as distractors for effective model training. Exper-
+iments show that ﬁnetuning our KG-guided pre-trained MLMs yields improved performance on
+11
+relevant downstream tasks. In the future, we will use a combination of commonsense and ontolog-
+ical KGs, and large-scale corpora (e.g., Wikipedia or Common Crawl) to pre-train an MLM from
+scratch, which we expect to beneﬁt a wide range of tasks.
+REFERENCES
+Bo An, Bo Chen, Xianpei Han, and Le Sun. Accurate text-enhanced knowledge graph represen-
+tation learning. In Proceedings of the 2018 Conference of the North American Chapter of the
+Association for Computational Linguistics: Human Language Technologies, NAACL-HLT 2018,
+New Orleans, Louisiana, USA, June 1-6, 2018, Volume 1 (Long Papers) , pages 745–755, 2018.
+URLhttps://www.aclweb.org/anthology/N18-1068/ .
+Kurt D Bollacker, Colin Evans, Praveen Paritosh, Tim Sturge, and Jamie Taylor. Freebase: a col-
+laboratively created graph database for structuring human knowledge. In Proceedings of the
+ACM SIGMOD International Conference on Management of Data, SIGMOD 2008, Vancouver,
+BC, Canada, June 10-12, 2008 , pages 1247–1250, 2008. doi: 10.1145/1376616.1376746. URL
+https://doi.org/10.1145/1376616.1376746 .
+Antoine Bordes, Nicolas Usunier, Alberto Garcia-Dur ´an, Jason Weston, and Oksana Yakhnenko.
+Translating Embeddings for Modeling Multi-relational Data. In Advances in Neural In-
+formation Processing Systems 26: 27th Annual Conference on Neural Information Pro-
+cessing Systems 2013. Proceedings of a meeting held December 5-8, 2013, Lake Tahoe,
+Nevada, United States. , pages 2787–2795, 2013. URL http://papers.nips.cc/paper/
+5071-translating-embeddings-for-modeling-multi-relational-data .
+Antoine Bosselut, Hannah Rashkin, Maarten Sap, Chaitanya Malaviya, Asli C ¸ elikyilmaz, and Yejin
+Choi. COMET: Commonsense Transformers for Automatic Knowledge Graph Construction. In
+Proceedings of the 57th Conference of the Association for Computational Linguistics, ACL 2019,
+Florence, Italy, July 28- August 2, 2019, Volume 1: Long Papers , pages 4762–4779, 2019. URL
+https://www.aclweb.org/anthology/P19-1470/ .
+Liwei Cai and William Yang Wang. KBGAN: adversarial learning for knowledge graph embeddings.
+InProceedings of the 2018 Conference of the North American Chapter of the Association for
+Computational Linguistics: Human Language Technologies, NAACL-HLT 2018, New Orleans,
+Louisiana, USA, June 1-6, 2018, Volume 1 (Long Papers) , pages 1470–1480, 2018. URL https:
+//www.aclweb.org/anthology/N18-1133/ .
+Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa Schoenick, and
+Oyvind Tafjord. Think you have solved question answering? try arc, the AI2 reasoning challenge.
+CoRR , abs/1803.05457, 2018. URL http://arxiv.org/abs/1803.05457 .
+Joe Davison, Joshua Feldman, and Alexander Rush. Commonsense knowledge mining from pre-
+trained models. In Proceedings of the 2019 Conference on Empirical Methods in Natural Lan-
+guage Processing and the 9th International Joint Conference on Natural Language Processing
+(EMNLP-IJCNLP) , pages 1173–1178, Hong Kong, China, November 2019. Association for Com-
+putational Linguistics. doi: 10.18653/v1/D19-1109. URL https://www.aclweb.org/
+anthology/D19-1109 .
+Tim Dettmers, Pasquale Minervini, Pontus Stenetorp, and Sebastian Riedel. Convolutional 2D
+Knowledge Graph Embeddings. In Proceedings of the Thirty-Second AAAI Conference on Ar-
+tiﬁcial Intelligence, (AAAI-18) , pages 1811–1818, 2018. URL https://www.aaai.org/
+ocs/index.php/AAAI/AAAI18/paper/view/17366 .
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: Pre-training of Deep
+Bidirectional Transformers for Language Understanding. In Proceedings of the 2019 Confer-
+ence of the North American Chapter of the Association for Computational Linguistics: Human
+Language Technologies, NAACL-HLT 2019, Minneapolis, MN, USA, June 2-7, 2019, Volume
+1 (Long and Short Papers) , pages 4171–4186, 2019. URL https://www.aclweb.org/
+anthology/N19-1423/ .
+12
+Mandar Joshi, Danqi Chen, Yinhan Liu, Daniel S. Weld, Luke Zettlemoyer, and Omer Levy. Span-
+bert: Improving pre-training by representing and predicting spans. CoRR , abs/1907.10529, 2019.
+URLhttp://arxiv.org/abs/1907.10529 .
+Xiang Li, Aynaz Taheri, Lifu Tu, and Kevin Gimpel. Commonsense Knowledge Base Completion.
+InProceedings of the 54th Annual Meeting of the Association for Computational Linguistics,
+ACL 2016, August 7-12, 2016, Berlin, Germany, Volume 1: Long Papers , 2016. URL https:
+//www.aclweb.org/anthology/P16-1137/ .
+Bill Yuchen Lin, Xinyue Chen, Jamin Chen, and Xiang Ren. KagNet: Knowledge-aware graph
+networks for commonsense reasoning. In Proceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and the 9th International Joint Conference on Natural
+Language Processing (EMNLP-IJCNLP) , pages 2829–2839, Hong Kong, China, November 2019.
+Association for Computational Linguistics. doi: 10.18653/v1/D19-1282. URL https://www.
+aclweb.org/anthology/D19-1282 .
+Weijie Liu, Peng Zhou, Zhe Zhao, Zhiruo Wang, Qi Ju, Haotang Deng, and Ping Wang. K-BERT:
+enabling language representation with knowledge graph. CoRR , abs/1909.07606, 2019a. URL
+http://arxiv.org/abs/1909.07606 .
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike
+Lewis, Luke Zettlemoyer, and Veselin Stoyanov. Roberta: A robustly optimized BERT pretraining
+approach. CoRR , abs/1907.11692, 2019b. URL http://arxiv.org/abs/1907.11692 .
+Shangwen Lv, Daya Guo, Jingjing Xu, Duyu Tang, Nan Duan, Ming Gong, Linjun Shou, Daxin
+Jiang, Guihong Cao, and Songlin Hu. Graph-based reasoning over heterogeneous external
+knowledge for commonsense question answering. CoRR , abs/1909.05311, 2019. URL http:
+//arxiv.org/abs/1909.05311 .
+Chaitanya Malaviya, Chandra Bhagavatula, Antoine Bosselut, and Yejin Choi. Exploiting structural
+and semantic context for commonsense knowledge base completion. CoRR , abs/1910.02915,
+2019. URL http://arxiv.org/abs/1910.02915 .
+George A Miller. WordNet: An electronic lexical database . MIT press, 1998.
+Mike Mintz, Steven Bills, Rion Snow, and Daniel Jurafsky. Distant supervision for relation ex-
+traction without labeled data. In ACL 2009, Proceedings of the 47th Annual Meeting of the
+Association for Computational Linguistics and the 4th International Joint Conference on Natural
+Language Processing of the AFNLP , 2-7 August 2009, Singapore , pages 1003–1011, 2009. URL
+https://www.aclweb.org/anthology/P09-1113/ .
+Arindam Mitra, Pratyay Banerjee, Kuntal Kumar Pal, Swaroop Mishra, and Chitta Baral. Exploring
+ways to incorporate additional knowledge to improve natural language commonsense question
+answering. CoRR , abs/1909.08855, 2019. URL http://arxiv.org/abs/1909.08855 .
+Deepak Nathani, Jatin Chauhan, Charu Sharma, and Manohar Kaul. Learning Attention-based Em-
+beddings for Relation Prediction in Knowledge Graphs. In Proceedings of the 57th Conference
+of the Association for Computational Linguistics, ACL 2019, Florence, Italy, July 28- August 2,
+2019, Volume 1: Long Papers , pages 4710–4723, 2019. URL https://www.aclweb.org/
+anthology/P19-1466/ .
+Dai Quoc Nguyen, Tu Dinh Nguyen, Dat Quoc Nguyen, and Dinh Q Phung. A Novel Embedding
+Model for Knowledge Base Completion Based on Convolutional Neural Network. In Proceedings
+of the 2018 Conference of the North American Chapter of the Association for Computational
+Linguistics: Human Language Technologies, NAACL-HLT, New Orleans, Louisiana, USA, June
+1-6, 2018, Volume 2 (Short Papers) , pages 327–333, 2018. URL https://www.aclweb.
+org/anthology/N18-2053/ .
+Matthew E Peters, Mark Neumann, Mohit Iyyer, Matt Gardner, Christopher Clark, Kenton Lee,
+and Luke Zettlemoyer. Deep Contextualized Word Representations. In Proceedings of the 2018
+Conference of the North American Chapter of the Association for Computational Linguistics:
+Human Language Technologies, NAACL-HLT 2018, New Orleans, Louisiana, USA, June 1-6,
+2018, Volume 1 (Long Papers) , pages 2227–2237, 2018. URL https://www.aclweb.org/
+anthology/N18-1202/ .
+13
+Matthew E. Peters, Mark Neumann, Robert Logan, Roy Schwartz, Vidur Joshi, Sameer Singh,
+and Noah A. Smith. Knowledge enhanced contextual word representations. In Proceed-
+ings of the 2019 Conference on Empirical Methods in Natural Language Processing and the
+9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP) , pages
+43–54, Hong Kong, China, November 2019. Association for Computational Linguistics. doi:
+10.18653/v1/D19-1005. URL https://www.aclweb.org/anthology/D19-1005 .
+Fabio Petroni, Tim Rockt ¨aschel, Sebastian Riedel, Patrick Lewis, Anton Bakhtin, Yuxiang Wu,
+and Alexander Miller. Language models as knowledge bases? In Proceedings of the 2019
+Conference on Empirical Methods in Natural Language Processing and the 9th International
+Joint Conference on Natural Language Processing (EMNLP-IJCNLP) , pages 2463–2473, Hong
+Kong, China, November 2019. Association for Computational Linguistics. doi: 10.18653/v1/
+D19-1250. URL https://www.aclweb.org/anthology/D19-1250 .
+Alec Radford, Karthik Narasimhan, Tim Salimans, and Ilya Sutskever. Improving language
+understanding by generative pre-training. 2018. URL URLhttps://s3-us-west-2.
+amazonaws.com/openai-assets/researchcovers/languageunsupervised/
+languageunderstandingpaper.pdf .
+Jonathan Raiman and Olivier Raiman. Deeptype: Multilingual entity linking by neural type system
+evolution. In Proceedings of the Thirty-Second AAAI Conference on Artiﬁcial Intelligence, (AAAI-
+18), the 30th innovative Applications of Artiﬁcial Intelligence (IAAI-18), and the 8th AAAI Sym-
+posium on Educational Advances in Artiﬁcial Intelligence (EAAI-18), New Orleans, Louisiana,
+USA, February 2-7, 2018 , pages 5406–5413, 2018. URL https://www.aaai.org/ocs/
+index.php/AAAI/AAAI18/paper/view/17148 .
+Nazneen Fatema Rajani, Bryan McCann, Caiming Xiong, and Richard Socher. Explain Yourself!
+Leveraging Language Models for Commonsense Reasoning. In Proceedings of the 57th Confer-
+ence of the Association for Computational Linguistics, ACL 2019, Florence, Italy, July 28- August
+2, 2019, Volume 1: Long Papers , pages 4932–4942, 2019. URL https://www.aclweb.
+org/anthology/P19-1487/ .
+Maarten Sap, Ronan Le Bras, Emily Allaway, Chandra Bhagavatula, Nicholas Lourie, Hannah
+Rashkin, Brendan Roof, Noah A. Smith, and Yejin Choi. ATOMIC: an atlas of machine com-
+monsense for if-then reasoning. In The Thirty-Third AAAI Conference on Artiﬁcial Intelligence,
+AAAI , pages 3027–3035, 2019a. URL https://doi.org/10.1609/aaai.v33i01.
+33013027 .
+Maarten Sap, Hannah Rashkin, Derek Chen, Ronan Le Bras, and Yejin Choi. Social IQa: Common-
+sense reasoning about social interactions. In Proceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and the 9th International Joint Conference on Nat-
+ural Language Processing (EMNLP-IJCNLP) , pages 4462–4472, Hong Kong, China, Novem-
+ber 2019b. Association for Computational Linguistics. doi: 10.18653/v1/D19-1454. URL
+https://www.aclweb.org/anthology/D19-1454 .
+Michael Sejr Schlichtkrull, Thomas N Kipf, Peter Bloem, Rianne van den Berg, Ivan Titov, and
+Max Welling. Modeling Relational Data with Graph Convolutional Networks. In The Semantic
+Web - 15th International Conference, ESWC 2018, Heraklion, Crete, Greece, June 3-7, 2018,
+Proceedings , pages 593–607, 2018. doi: 10.1007/978-3-319-93417-4 38. URL https://
+doi.org/10.1007/978-3-319-93417-4_38 .
+Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words with
+subword units. In Proceedings of the 54th Annual Meeting of the Association for Computational
+Linguistics, ACL 2016, August 7-12, 2016, Berlin, Germany, Volume 1: Long Papers , 2016. URL
+https://www.aclweb.org/anthology/P16-1162/ .
+Richard Socher, Danqi Chen, Christopher D Manning, and Andrew Y Ng. Reasoning With
+Neural Tensor Networks for Knowledge Base Completion. In Advances in Neural In-
+formation Processing Systems 26: 27th Annual Conference on Neural Information Pro-
+cessing Systems 2013. Proceedings of a meeting held December 5-8, 2013, Lake Tahoe,
+Nevada, United States. , pages 926–934, 2013. URL http://papers.nips.cc/paper/
+5028-reasoning-with-neural-tensor-networks-for-knowledge-base-completion .
+14
+Robyn Speer, Joshua Chin, and Catherine Havasi. ConceptNet 5.5: An Open Multilingual Graph
+of General Knowledge. In Proceedings of the Thirty-First AAAI Conference on Artiﬁcial Intel-
+ligence, February 4-9, 2017, San Francisco, California, USA. , pages 4444–4451, 2017. URL
+http://aaai.org/ocs/index.php/AAAI/AAAI17/paper/view/14972 .
+Yu Sun, Shuohuan Wang, Yukun Li, Shikun Feng, Xuyi Chen, Han Zhang, Xin Tian, Danxiang Zhu,
+Hao Tian, and Hua Wu. ERNIE: enhanced representation through knowledge integration. CoRR ,
+abs/1904.09223, 2019a. URL http://arxiv.org/abs/1904.09223 .
+Yu Sun, Shuohuan Wang, Yukun Li, Shikun Feng, Hao Tian, Hua Wu, and Haifeng Wang. ERNIE
+2.0: A continual pre-training framework for language understanding. CoRR , abs/1907.12412,
+2019b. URL http://arxiv.org/abs/1907.12412 .
+Zhiqing Sun, Zhi-Hong Deng, Jian-Yun Nie, and Jian Tang. Rotate: Knowledge graph embed-
+ding by relational rotation in complex space. In 7th International Conference on Learning
+Representations, ICLR 2019, New Orleans, LA, USA, May 6-9, 2019 , 2019c. URL https:
+//openreview.net/forum?id=HkgEQnRqYQ .
+Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan Berant. CommonsenseQA: A Ques-
+tion Answering Challenge Targeting Commonsense Knowledge. In Proceedings of the 2019 Con-
+ference of the North American Chapter of the Association for Computational Linguistics: Human
+Language Technologies, NAACL-HLT 2019, Minneapolis, MN, USA, June 2-7, 2019, Volume
+1 (Long and Short Papers) , pages 4149–4158, 2019. URL https://www.aclweb.org/
+anthology/N19-1421/ .
+Kristina Toutanova, Danqi Chen, Patrick Pantel, Hoifung Poon, Pallavi Choudhury, and Michael
+Gamon. Representing text for joint embedding of text and knowledge bases. In Proceedings
+of the 2015 Conference on Empirical Methods in Natural Language Processing, EMNLP 2015,
+Lisbon, Portugal, September 17-21, 2015 , pages 1499–1509, 2015. URL https://doi.org/
+10.18653/v1/d15-1174 .
+Th´eo Trouillon, Johannes Welbl, Sebastian Riedel, ´Eric Gaussier, and Guillaume Bouchard. Com-
+plex Embeddings for Simple Link Prediction. In Proceedings of the 33nd International Confer-
+ence on Machine Learning, ICML 2016, New York City, NY, USA, June 19-24, 2016 , pages 2071–
+2080, 2016. URL http://proceedings.mlr.press/v48/trouillon16.html .
+Haoyu Wang, Vivek Kulkarni, and William Yang Wang. DOLORES: deep contextualized knowl-
+edge graph embeddings. CoRR , abs/1811.00147, 2018. URL http://arxiv.org/abs/
+1811.00147 .
+Zhen Wang, Jianwen Zhang, Jianlin Feng, and Zheng Chen. Knowledge graph and text jointly
+embedding. In Proceedings of the 2014 Conference on Empirical Methods in Natural Language
+Processing, EMNLP 2014, October 25-29, 2014, Doha, Qatar, A meeting of SIGDAT, a Special
+Interest Group of the ACL , pages 1591–1601, 2014. URL https://doi.org/10.3115/
+v1/d14-1167 .
+Ikuya Yamada, Hiroyuki Shindo, Hideaki Takeda, and Yoshiyasu Takefuji. Joint learning of the
+embedding of words and entities for named entity disambiguation. In Proceedings of the 20th
+SIGNLL Conference on Computational Natural Language Learning, CoNLL 2016, Berlin, Ger-
+many, August 11-12, 2016 , pages 250–259, 2016. URL https://doi.org/10.18653/v1/
+k16-1025 .
+Bishan Yang, Wen-tau Yih, Xiaodong He, Jianfeng Gao, and Li Deng. Embedding Entities and
+Relations for Learning and Inference in Knowledge Bases. In 3rd International Conference on
+Learning Representations, ICLR 2015, San Diego, CA, USA, May 7-9, 2015, Conference Track
+Proceedings , 2015. URL http://arxiv.org/abs/1412.6575 .
+Yi Yang and Ming-Wei Chang. S-MART: novel tree-based structured learning algorithms ap-
+plied to tweet entity linking. In Proceedings of the 53rd Annual Meeting of the Associa-
+tion for Computational Linguistics and the 7th International Joint Conference on Natural Lan-
+guage Processing of the Asian Federation of Natural Language Processing, ACL 2015, July
+26-31, 2015, Beijing, China, Volume 1: Long Papers , pages 504–513, 2015. URL https:
+//www.aclweb.org/anthology/P15-1049/ .
+15
+Zhilin Yang, Zihang Dai, Yiming Yang, Jaime G. Carbonell, Ruslan Salakhutdinov, and Quoc V .
+Le. Xlnet: Generalized autoregressive pretraining for language understanding. CoRR ,
+abs/1906.08237, 2019. URL http://arxiv.org/abs/1906.08237 .
+Liang Yao, Chengsheng Mao, and Yuan Luo. KG-BERT: BERT for knowledge graph completion.
+CoRR , abs/1909.03193, 2019. URL http://arxiv.org/abs/1909.03193 .
+Zhi-Xiu Ye, Qian Chen, Wen Wang, and Zhen-Hua Ling. Align, mask and select: A simple
+method for incorporating commonsense knowledge into language representation models. CoRR ,
+abs/1908.06725, 2019. URL http://arxiv.org/abs/1908.06725 .
+Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi. Hellaswag: Can a ma-
+chine really ﬁnish your sentence? In Proceedings of the 57th Conference of the Association
+for Computational Linguistics, ACL 2019, Florence, Italy, July 28- August 2, 2019, Volume 1:
+Long Papers , pages 4791–4800, 2019. URL https://www.aclweb.org/anthology/
+P19-1472/ .
+Zhengyan Zhang, Xu Han, Zhiyuan Liu, Xin Jiang, Maosong Sun, and Qun Liu. ERNIE: Enhanced
+Language Representation with Informative Entities. In Proceedings of the 57th Conference of
+the Association for Computational Linguistics, ACL 2019, Florence, Italy, July 28- August 2,
+2019, Volume 1: Long Papers , pages 1441–1451, 2019. URL https://www.aclweb.org/
+anthology/P19-1139/ .
+Chen Zhu, Yu Cheng, Zhe Gan, Siqi Sun, Tom Goldstein, and Jingjing Liu. Freelb: Enhanced
+adversarial training for language understanding. CoRR , abs/1909.11764, 2019. URL http:
+//arxiv.org/abs/1909.11764 .
+A I MPLEMENTATION DETAILS
+Pre-trained Transformer-based language models implemented by Huggingface5are adapted for our
+models.
+Training Hyperparameters. For continual pre-training, we do not tune hyperparameters due to
+the computational cost. Only a limited set of hyperparameters are tried according to empirical
+intuitions. Currently Rhop=min=max in Eq.(3) are set to 3/1.0/2.0 respectively, and Rthresh aims to
+ﬁlter out entities with top 5% document frequency, thus varies with corpora. We set in Eq.(7) to
+be 1.0 andin Eq.(8) to be 0.2. The continual pre-training runs for 5 epochs, with a batch size
+of 128, a learning rate of 3e-5/1e-5 (BERT/RoBERTa), learning warmup proportion of 10%/5%
+(BERT/RoBERTa) and weight decay of 0.01. For both BERT and RoBERTa, max sequence length
+is set to be 80 and 20 for sentence-level encoding and entity embedding respectively. The masking
+proportion is lifted from 15% to 20% without tuning compared with BERT and RoBERTa. An
+intuition is that our model is initialized with well-trained language models (e.g., BERT), a slightly
+larger masking proportion could hold the entity with longer text span, and make the learning more
+efﬁcient.
+During ﬁnetuning on downstream tasks, we conduct grid search for hyperparameters, including
+batch size, number of epochs/steps, learning rate, which are summarized in Table 10.
+Details about KG-Guided Entity Masking. In addition to ﬁnding informative and non-trivial
+masks, the KG-guided entity masking method can be used to ﬁlter the corpus, since if a piece of
+text (e.g., sentence or passage) contains only trivial and undeducible entities, the text may hardly
+contribute to model learning. With this strategy, most ( 90%) sentences in ARC corpus were
+ﬁltered out, which led to a very efﬁcient training for our models. Training our model based on BERT-
+large or RoBERTa-large only costs about 1 day on single V100 GPU with mixed ﬂoat precision, in
+total about 70K steps.
+5https://github.com/huggingface/transformers
+16
+Hparam GLM Model CQA SocialIQA WN18RR WN11 CKBC
+Batch SizeBERTf8, 12, 16g /f32g f 32, 48, 64g f 24 32g
+RoBERTaf8, 12, 16g f 12, 16g / / f24 32g
+# Steps/EpochsBERTf2800, 3400, 4000g /f5g f 3, 5g f 6g
+RoBERTaf2800, 3600g f 3,4g / / f6g
+Learning RateBERTf3e-5, 5e-5, 7e-5g /f5e-5g f3e-5, 5e-5, 7e-5gf3e-5, 5e-5, 7e-5g
+RoBERTaf1e-5, 8e-6g f 1e-5, 8e-6g / / f1e-5, 2e-5g
+Table 10: Candidate values for hyperparameter search. Note “# steps” is shown for CQA and “#
+epochs” for the others.
+MethodWN18RR
+MR MRR H@1 H@3 H@10
+KG-BERT (BERT-base) (Yao et al., 2019) 97 .216 .041 .302 .524
+GLM (BERT-base) 86 .273 .086 .344 .587
+Table 11: Link prediction results on the WN18RR benchmark with ranking basis of logits, instead of proba-
+bilities in the main paper.
+Fair Comparison on WN18RR. There are two aspects to prevent data leakage from ConceptNet
+to WN18RR. First, ConceptNet is derived from OMCS, WordNet, Wiktionary, etc., and each source
+is independent of others. Our method only uses OMCS raw text as the training corpus and has
+no access to WordNet. On the other hand, even though entire ConceptNet is used to guide entity
+masking/sampling, unlike traditional methods taking KG’s triples as training examples, our method
+doesn’t use the relation labels but only the entities/concepts. Since WordNet’s entities/concepts are
+also provided in the training set of WN18RR/WN11, there is no risk of leakage when testing.
+KG-BERT Re-Implementation. In this work, we re-implemented KG-BERT (Yao et al., 2019)
+for improving the efﬁciency of test inference and negative sampling, as the original implementa-
+tion is less optimized. The original version requires about 3 days to make a full linking prediction
+inference on the test set. Our re-implemented version reduces the time to 20 hours (i.e., 3 accel-
+eration) using the same single GPU. We also improved negative sampling with 3speed than
+the original version. The modiﬁcations can be summarized as 1) the ranking basis is changed from
+logits to probabilities; 2) mixed ﬂoat is employed to replace the ﬂoat; and 3) negative sampling is
+re-implemented for efﬁciency. In addition, we found that, in any evaluation script (Yao et al., 2019;
+Sun et al., 2019c), the model can successfully rank the candidates as long as assigning the positive
+triple with one of the largest scores. The following can explain why the re-implemented KG-BERT
+can achieve much superior performance. First, the mixed ﬂoat normalized probabilities, rather than
+logits, are used as ranking basis, which only ranges from 0 to 1. And second, such encoder and
+classiﬁer paradigm (e.g., KG-BERT) for link prediction usually suffers from polysemy or ambiguity
+of entities, which leads to over-conﬁdent false positive prediction. Hence, our re-implementation
+signiﬁcantly improves the Hits@1 for KG-BERT, which however is still a reasonable setting to
+verify and compare how much structural knowledge is retained in the pre-trained LMs. For a fair
+comparison with previous works, we list the results with ranking basis of logits in Table 11.
+KBC Tasks Implementation. For CKBC dataset, we ﬁnd the performance is very poor when
+we directly ﬁnetune either BERT-base or our approach on the concatenated triples, i.e., “ [CLS]
+HEAD[SEP] Rel[SEP] TAIL[SEP] ”. Hence, we follow Davison et al. (2019) to transform the
+triples to natural language sentences, and then use these sentences as input to ﬁnetune the pre-trained
+LMs. For WN18RR, we directly use the data processed by Yao et al. (2019), in which a description
+sentence is attached to each entity/phrase. For WN11, we follow KG-BERT to directly concatenate
+the triples and then use them to ﬁnetune the pre-trained LMs.
+Knowledge Graph and Entity Linking. We aim at enhancing the pre-trained language models
+with commonsense structured knowledge, so we employ ConceptNet (Speer et al., 2017) as the
+backend knowledge graph. Since ConceptNet is a multi-lingual knowledge graph, we ﬁrst ﬁltered
+out all the triples which include non-English items. In addition, we treated the KG as an undirected
+17
+graph when identifying entity’s mutual reachability. As for entity linking, there are many mature
+entity linking systems for ontological or factoid KGs, such as S-MART (Yang and Chang, 2015),
+DBpeida Lookup, and DeepType (Raiman and Raiman, 2018). However, for commonsense KG
+whose content consists of non-canonicalized or free-form texts, there is no such a system to complete
+its entity linking. Therefore, we built an efﬁcient inverted index out of lemma-based fuzzy matching
+as our entity linking system which is going to be open-sourcing.
+Evaluation Metrics. For multiple-choice question answering tasks and triple classiﬁcation tasks,
+we use accuracy as the metric. For link prediction task, there are two kinds of metrics: the ﬁrst is
+mean rank (MR) and mean reciprocal rank (MRR), and the second is H@N (namely Hits@N) that
+means the proportion of correct entities in top N after being sorted w.r.t predicted conﬁdence. Note
+we only report results under the ﬁltered setting (Bordes et al., 2013) which removes all corrupted
+triples appearing in training, dev and test set.
+B M ORE EXPERIMENTS
+PhysicalIQA. In addition to CommonsenseQA and SocialIQA shown in the main paper, a dataset
+named PhysicalIQA6is also used to evaluate our method. It is also regarded as an out-of-domain
+dataset compared with our training corpora. However, our implemented code base cannot reproduce
+the state-of-the-art results that are achieved by RoBERTa-large ﬁnetuning, possibly due to different
+pre-processing and feeding strategies for pre-trained LMs, e.g., special token, concatenation scheme,
+representation gathering method (Mitra et al., 2019). Hence, we only report re-implemented results
+with the same network structure, same data-preprocessing method, same random seed and same
+hyperparameter grid search, for fair comparison. The accuracy on dev set is 78.7% and 80.2%
+for RoBERTa-large baseline and GLM (RoBERTa) respectively, which further demonstrates the
+effectiveness of our approach on out-of-domain datasets.
+HellaSWAG. We also try to apply our approach to HellaSWAG7(Zellers et al., 2019). It is a plau-
+sible inference task and requires reasoning over linguistic context and external knowledge. The task
+is to choose one plausible ending from four candidates. Same as PhysicalIQA, we only fairly report
+the accuracy on dev set for a fast comparison. With our implementation, ﬁnetuning RoBERTa-
+large on this dataset achieves 84.1% dev accuracy which is much higher than the best dev accu-
+racy (83.5%) on leaderboard. However, ﬁnetuning our approach achieves 83.9% accuracy, which is
+slightly worse than the baseline. We noticed that examples in HellaSWAG frequently have multiple
+consecutive sentences for inference, thus our model trained on single, unordered sentences may only
+achieve sub-optimal performance. On the other hand, this is another out-of-domain dataset which
+may not beneﬁt from our training knowledge graph and corpora.
+C E RROR ANALYSIS
+Compared with original pre-trained LMs (e.g., BERT and RoBERTa), some limitations are found in
+our pre-trained models, which mainly fall into
+Over masking: Compared to random masking, our KG-guided masking scheme is more
+likely to mask all key parts of a sentence, which leaves little room for MLM task.
+Short context: Since our corpora consist of just single, unordered sentences, information
+that spans across multiple sentences is not encoded effectively. When downstream tasks
+rely heavily on consecutive sentences, ﬁnetuning our model yields inferior performance.
+This can be empirically veriﬁed by the performance drop on HellaSWAG dataset which
+involves long contexts.
+Pipeline model: Same as any other method aiming to integrate LMs with KG, a linking
+system is ﬁrst applied to detect entities in a text, which inevitably suffers from graph spar-
+sity and leads to error propagation. However, our method is less sensitive to such errors
+compared with the methods that links entity during both ﬁnetuning and inference.
+6https://leaderboard.allenai.org/physicaliqa/submissions/public
+7https://leaderboard.allenai.org/hellaswag
+18
+D R ELATED WORK (EXTENDED )
+This work is in line with Baidu-ERNIE (Sun et al., 2019a) and SpanBERT (Joshi et al., 2019) which
+replace word-level mask (Devlin et al., 2019) with span-level one for knowledge information and
+long-term dependency. In particular, Baidu-ERNIE uses uniformly random masking for phrases and
+entities, whereas SpanBERT directly masks out token spans sampled under geometric distribution.
+The work of Petroni et al. (2019) ﬁnds that, without ﬁnetuning, pre-trained LMs (e.g., BERT) con-
+tains relational knowledge competitive with traditional NLP methods with oracle knowledge. Nev-
+ertheless, how to integrate the oracle knowledge into the pre-trained LMs for further performance
+improvement remains an open question.
+As brieﬂy summarized in the introduction of the main paper, existing methods can be coarsely
+categorized into two classes. For the ﬁrst class, those methods retrieve a KG subgraph or/and pre-
+trained graph embeddings via entity linking during ﬁnetuning and inference. K-BERT (Liu et al.,
+2019a) retrieves a path from KG as description for each detected entity in text, and inserts such
+description into input sequence to Transformer encoder with carefully designed attention mask and
+position embedding. KnowBert (Peters et al., 2019) and THU-ERNIE (Zhang et al., 2019) ﬁrst
+retrieve the detected entities’ embeddings from pre-trained graph embeddings (Bordes et al., 2013),
+and then treat these retrieved embeddings as extra inputs for each layer of Transformer encoder. Lin
+et al. (2019) and Lv et al. (2019) aim to solve commonsense multiple-choice QA problem. They
+retrieve a graph path from entities detected in question to each answer entry, and then encode (e.g.,
+via LSTM) these paths as heterogeneous representations for higher-level modules.
+The second class of methods use contextualized representations from pre-trained LMs to enrich
+graph embeddings and thus alleviate graph sparsity issues. COMET (Bosselut et al., 2019) ﬁnetunes
+pre-trained LM on partially-masked triples from KG, which only aims at commonsense knowledge
+graph completion tasks. Malaviya et al. (2019) perform transfer learning from pre-trained language
+models to knowledge graphs for enhanced contextual representation of the knowledge. KG-BERT
+(Yao et al., 2019) directly concatenates the head, relation and tail of a triple, and ﬁnetunes pre-trained
+LMs on such data with binary classiﬁcation objective, i.e., whether a triple is correct or not.
+How to generate and utilize negative samples is important for learning graph embeddings and struc-
+tured knowledge (Sun et al., 2019c; Ye et al., 2019). For example, KBGAN (Cai and Wang, 2018)
+uses a knowledge graph embedding model as negative sample generator to assist the training of the
+desired model, which acts as the discriminator in GANs. Rather than a standalone generator, self-
+adversarial sampling (Sun et al., 2019c) generates negative samples according to the current entity
+or relation embeddings. BERT-AMS (Ye et al., 2019) and our proposed ranking task share a similar
+motivation that the model is able to effectively learn the structured knowledge from negative sam-
+ples, but they differ in the task designs. BERT-AMS builds a multiple-choice question answering
+task for utilizing negative samples, which imitates the developing procedure of CommonsenseQA
+(Talmor et al., 2019) and aims to improve performance on that particular dataset. In contrast, our
+approach is more general and formulates a ranking task along with the entity-level masked language
+modeling objective for pre-training knowledge-aware LMs.
+19

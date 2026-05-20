@@ -1,0 +1,890 @@
+Title: Scaling Laws for Generative Mixed-Modal Language Models
+
+SCALING LAWS FOR GENERATIVE MIXED -MODAL
+LANGUAGE MODELS
+Armen Aghajanyany, Lili Yuy, Alexis Conneauy, Wei-Ning Hsuy
+Karen Hambardzumyan}, Susan Zhangy, Stephen Rollery, Naman Goyaly
+Omer Levyy& Luke Zettlemoyery;~
+FAIRy, University of Washington~, YerevaNN}
+armenag@meta.com
+ABSTRACT
+Generative language models deﬁne distributions over sequences of tokens that can
+represent essentially any combination of data modalities (e.g., any permutation of
+image tokens from VQ-V AEs, speech tokens from HuBERT, BPE tokens for lan-
+guage or code, and so on). To better understand the scaling properties of such
+mixed-modal models, we conducted over 250 experiments using seven different
+modalities and model sizes ranging from 8 million to 30 billion, trained on 5-100
+billion tokens. We report new mixed-modal scaling laws that unify the contribu-
+tions of individual modalities and the interactions between them. Speciﬁcally, we
+explicitly model the optimal synergy and competition due to data and model size
+as an additive term to previous uni-modal scaling laws. We also ﬁnd four empiri-
+cal phenomena observed during the training, such as emergent coordinate-ascent
+style training that naturally alternates between modalities, guidelines for select-
+ing critical hyper-parameters, and connections between mixed-modal competition
+and training stability. Finally, we test our scaling law by training a 30B speech-
+text model, which signiﬁcantly outperforms the corresponding unimodal models.
+Overall, our research provides valuable insights into the design and training of
+mixed-modal generative models, an important new class of uniﬁed models that
+have unique distributional properties.
+1 I NTRODUCTION
+Generative language models have been developed for a wide range of data modalities, including nat-
+ural language text Brown et al. (2020), code (Chen et al., 2021; Fried et al., 2022), images (Ramesh
+et al., 2021; Yasunaga et al., 2022), and molecules or proteins (Chilingaryan et al., 2022; Hsu et al.,
+2022). Recent work has also introduced uniﬁed models (Aghajanyan et al., 2022; Reed et al., 2022;
+Wang et al., 2022; Zellers et al., 2022) that can simultaneously model multiple modalities. One ad-
+vantage of generative modeling in these cases is that the models scale well in practice; adding data,
+compute, or parameters typically improves model quality. These scaling trends have been carefully
+studied for uni-modal models (Kaplan et al., 2020; Hoffmann et al., 2022) and some recent work
+focuses on pairs of modalities (Droppo & Elibol, 2021; Henighan et al., 2020). However, the scaling
+behavior of larger number of modalities remains largely unstudied.
+We present an extensive empirical study of scaling laws for mixed-modal generative language mod-
+els over tokens. We assume that every modality can be represented as a sequence of tokens (e.g.
+VQ-V AEs for images (Esser et al., 2020) or HuBERT for speech (Hsu et al., 2021)). With this as-
+sumption, we can train a single discrete language model to represent data with arbitrary subsets of
+modalities presented in arbitrary orders. Such mixed-modal models are very general, but it is an
+Equal contribution
+1arXiv:2301.03728v1  [cs.CL]  10 Jan 2023
+open question the extent to which scale alone will be enough to overcome the inherent competition
+that comes as we add more modalities to a single model.
+Through extensive experimentation, including over 250 individual experiments with seven modali-
+ties and model sizes ranging from 8 million to 30 billion, we have identiﬁed a scaling law that re-
+ﬂects the contributions of individual modalities and an additional term that captures the interaction
+between modalities (whether it be one of competition or synergy). We develop mixed-modal scal-
+ing laws that directly model competition between modalities and correctly predict data and model
+regimes where competition between modalities during training progresses into synergy. Speciﬁcally,
+we showed that our scaling laws correctly predicted the compute regime (30B model size, 45B to-
+ken size), where we saw the complete reduction of modality competition for the Speech and Text
+modalities.
+We also report a number of new empirical phenomena that arise during the training of mixed-modal
+models, including the tendency for the models to prioritize the optimization of a single modality
+at different stages of training. Our ﬁndings demonstrate that these phenomena can be primarily
+explained through the scaling law of interaction within the mixed-modal model. Additionally, we
+present new insights and guidelines for how to set key hyperparameters based on the terms of our
+scaling laws when optimal uni-modal hyper-parameters are known.
+Our contributions are the following:
+• We develop neural scaling laws for mixed-modalities models that include text, speech,
+images, code, and their numerous couplings.
+• We discover a set of scaling laws describing the competition between arbitrary modalities.
+• We provide a simple recipe for selecting hyper-parameters in a multi-modal setting when
+optimal uni-modal hyper-parameters are known.
+• We uncover correlations between the scaling laws parameters we propose and various train-
+ing phenomena, including training stability, optimal batch size, and coordinate ascent-like
+behavior in the optimization process across different modalities.
+2 R ELATED WORK
+Neural scaling laws quantify the relationship between model size, dataset size, compute budget,
+and performance, when training neural networks. This concept was introduced by Hestness et al.
+(2017), who observed a power law relationship and later scaled to much larger models by Kaplan
+et al. (2020).
+Hoffmann et al. (2022) developed a uniﬁed formula for scaling laws, and provided recipes for
+compute-optimal training by adding data-dependent scaling terms unlike previous power law pa-
+rameterizations. Other researchers have applied these principles to speciﬁc tasks and different pa-
+rameterization of Transformers. Clark et al. (2022) examined the application of neural scaling laws
+to Mixture of Experts (MoE) models. Dettmers et al. (2022); Dettmers & Zettlemoyer (2022) stud-
+ied the relationship between scaling laws and lower precision, which refers to using lower-precision
+data types, such as 16-bit ﬂoating point numbers, in neural networks. Gordon et al. (2021) and
+Ghorbani et al. (2021) applied these principles to Neural Machine Translation (NMT).
+Additionally, Henighan et al. (2020) and Droppo & Elibol (2021) examined the application of neural
+scaling laws to generative language models in different modalities, including image generation and
+acoustic models. Cherti et al. (2022) also examined multi-modal training but did not speciﬁcally
+focus on generative models. To our knowledge, we are the ﬁrst to investigate the phenomenon of
+interactions, competition, and interference between multiple modalities during training and provide
+a recipe for optimal mixed-modal training.
+Interestingly, similar competition and scaling phenomenon have been observed for multi-lingual
+models. Conneau et al. (2019) observed a “curse of multilinguality,” where training in multiple
+languages can lead to interference between languages, resulting in decreased performance. Goyal
+et al. (2021) and Shaham et al. (2022) demonstrated that this interference could occur even on models
+much smaller than the available training data, but scaling up the model size can improve synergy
+2
+and alleviate interference. These ﬁndings align with our ﬁndings in the mixed-modal scenario,
+suggesting that similar principles apply when training on multiple modalities.
+3 D EFINITIONS
+3.1 W HAT IS A MODALITY ?
+Modalities are traditionally distinguished by the data source, domain, or sensor afﬁnity. For example,
+the code domain is typically seen as distinct from text due to the different data involved (e.g., GitHub
+vs. CommonCrawl). This also applies to auditory or visual modalities, which are captured with
+different sensors. Yet the decisions are not always clear, for example different languages are often
+all within the domain of the text. Given that we are studying neural scaling laws across modalities,
+we aim to have an empirically testable modality deﬁnition.
+We deﬁne membership of a set of samples, Dthrough the following membership function.
+Di2Dj()ExDi
+LDj(x)
+2ExDj
+LDj(x)
+(1)
+We empirically deﬁne modality by comparing the perplexity of one data set to another. Suppose
+the perplexity of the secondary data set over the probability distribution of the primary set is greater
+thantimes the mean perplexity of the primary set. In that case, we consider them to be distinct
+modalities. This deﬁnition distinguishes modalities by source, domain, sensor afﬁnity, and language.
+We use the standard deﬁnition of perplexity ( ppl). Using this deﬁnition with = 3, we decided to
+select seven modalities that we describe in detail below: Text ,Image ,Image-Text ,Speech ,
+Speech-Text ,Code ,Molecules .
+Additionally, we deﬁne source modality as the type of token the sample contains, which within our
+setting will be; Text ,Speech , orImage .
+3.2 U NI-MODAL SCALING LAWS
+We selected the Hoffmann et al. (2022) parameterization of scaling laws due to its precise represen-
+tation of data factors and its additive nature, which allows for easy extension to multiple modalities.
+This parameterization (Equation 2) describes the loss based on the number of model parameters ( N)
+and the number of tokens ( jDj) through three constituent parts: the minimal achievable loss ( E), the
+functional approximation error (Aj
+Nj), and the optimization or convergence error (Bj
+jDjjj). These
+three factors are captured through seven learned parameters, providing a precise description of the
+loss.
+It is well established that the upper bounds for andare both1
+2, which provides a clear under-
+standing of how well transformers coupled with gradient descent algorithms scale in relation to the
+optimal scaling for each modality (Hoffmann et al., 2022).
+L
+N;Dj
+=Ej+Aj
+Nj+Bj
+jDjjj(2)Number of Model Parameters
+DatasetFor Modality j
+Minimal Achievable LossFunctional Approximation Error
+Convergence Error
+4 E MPIRICAL SETTING
+4.1 D ATASETS
+Text For our text corpus, we use the same data as was used in OPT Zhang et al. (2022) for a total
+of 180B tokens. This dataset is primarily in English, although it contains other languages, as no
+explicit language ﬁltering was done.
+3
+Image For all images, we convert them to discrete tokens using the Make-A-Scene visual tok-
+enizer (Gafni et al., 2022), which gives 1024 tokens from an 8192 vocabulary per image. We select
+a custom subset of 600 million images across Schuhmann et al. (2022), and a custom image-text
+dataset scraped from Common Crawl. We remove all NSFW images and images that contain wa-
+termarks. Our Image dataset only contains the image and not the caption for a total of 614 billion
+tokens.
+Image-Text We utilize the Image dataset described above but align it with captions available
+from the image for a total of 690 Billion tokens. We call this our Image-Text dataset.
+Speech We used a combination of custom web-mined speech data and unlabeled speech in several
+public datasets. The web-mined speech dataset contains only unlabeled data in the form of long
+podcasts or news. We follow a series of preprocessing steps to improve the data quality and remove
+music and sensitive speech data. We also use a LangID model to select English-only speech. Our
+public data collection covers various speech styles and content topics, including LibriSpeech (Read-
+Books), CommonV oice in Read-Wiki, V oxPopuli from the Parliament domain, and Spotify Podcast
+and People’s Speech as web speech. Thanks to this combination, our Speech dataset offers a rich
+diversity.
+Speech-Text Many public datasets also come with text aligned with speech. We take ASR and
+TTS data from Multilingual LibraSpeech and V oxPopuli and form the Speech-Text dataset.
+Code We use the InCoder data (Fried et al., 2022).
+Molecules We utilize the Simpliﬁed Molecular Input Line Entry System (SMILES, where the
+chemical’s structure is serialized into a string of symbols) representation from the Zinc dataset pre-
+pared by Chilingaryan et al. (2022).
+4.2 T OKENIZATION
+Our mixed-modal generative models use a uniﬁed tokenization over all the modalities mentioned.
+This tokenizer processes data from all modalities into discrete tokens, which can be processed jointly
+by our model and trained with a single loss.
+We use a Vector Quantized Variational autoencoders (VQGAN Esser et al. (2020)) model to tok-
+enize image data into discrete tokens. The VQGAN model compresses each image into a grid of
+image tokens, where an encoder encodes each token into a vector. This process reduces the context
+size of the transformer by a factor of 3X2, whereXis the spatial reduction rate, or patch size,
+and 3 is the number of image channels. Online clustering is then performed, mapping each vector
+to the nearest entry of a learned codebook. We use a variant of the VQGAN from Gafni et al.
+(2022), which has a spatial reduction of 8 and a codebook size of 8192. This model is trained with
+extra perceptual losses to speciﬁc image regions, such as faces and salient objects, which improves
+the ﬁdelity of the generated images. To be most effective in the language model stage, the visual
+tokenizer needs to effectively represent a image, and the correlated decoder needs to reconstruct the
+generated image tokens into high quality image data. We benchmark various image pretokenizers
+for those properties in Appendix A.3.1.
+We use a Hidden-Unit BERT (HuBERT) Hsu et al. (2021) model for tokenizing our speech data.
+HuBERT is a self-supervised learning (SSL) model. It is trained to predict a masked subset of the
+speech signal using a mask language model objective, and has been found to be effective in learning
+a combined acoustic and language model over the continuous speech inputs. An ofﬂine clustering
+step to then used to generate discrete units. We use the B ASE HuBERT model in our work (model
+and training details see the appendix A.3.2). The ﬁnal HuBERT units are generated through K-
+means clustering of the third iteration feature at the last layer, with a codebook size of 2000. Our
+HuBERT model encodes audio at 50Hz, and we compress a 16kHz audio by about 120 times, while
+effectively retaining specch information (Analysis see A.3.2).
+Finally, we randomly sample 10 million sentences from all the data sets mentioned above and train
+a BPE model, where image and speech tokens take up a single token. We do an additional digit
+splitting for a vocab size of 216(Sennrich et al., 2016).
+4
+4.3 M ODEL ARCHITECTURE
+We study the family of decoder-only models described in GPT-3 Brown et al. (2020) and OPT
+Zhang et al. (2022). We limit ourselves to training up to 6.7 billion-parameter models for all our
+uni-modal and bi-modal scaling laws and train up to 30B parameters to measure the generalizability
+of our scaling laws. For completeness, we present model architecture and their respective sizes in
+Table A.1. We use learned positional encodings across all model architectures.
+4.4 C AUSAL MASKING OBJECTIVE
+Instead of the traditional left-to-right causal language modeling objective, we use the causal masked
+objective from Aghajanyan et al. (2022). This provides a form of bidirectional context for sequence
+inﬁlling, and also supports more aggressive generalization. For example, causally masked models
+trained only on data with text followed by images can still ﬂip the ordering to generate images from
+text, since they were not strictly trained to predict tokens left to right. Recent work also shows that
+this masking does not hurt language modeling performance or the generative capacity of the models
+(Fried et al., 2022; Bavarian et al., 2022). We provide additional support for this claim in § A.2.
+4.5 T RAINING PROCEDURE
+All models were trained using the metaseq1code base, which includes an implementation of causal
+masking Zhang et al. (2022). The training used the PyTorch framework Paszke et al. (2019), with
+fairscale to improve memory efﬁciency through fully sharded model and optimizer states Baines
+et al. (2021). The training also uses Megatron-LM Tensor Parallelism Shoeybi et al. (2019) to
+support large model runs, and we use bf16 Kalamkar et al. (2019) to improve training stability. Given
+the large volume of data, we performed a single epoch of training, using each training document
+once. The batch size per GPU was determined based on the total world size of the experiment,
+the level of model parallelism, and the total target batch size in terms of the number of tokens. To
+ensure stable training, we applied gradient clipping with a maximum norm of 1.0 and used the Adam
+optimizer with 1= 0:9,2= 0:98Kingma & Ba (2015). We used the built-in polynomial decay
+learning rate scheduler in MetaSeq with 500 warmup updates and the end learning rate set to 10%
+of the peak learning rate.
+We tracked all experiments using the Aim experiment tracker (Arakelyan et al., 2020). To ensure
+consistent training strategies across our experiments, we implemented a model restart policy using
+the Aim experiment tracker and callbacks. Speciﬁcally, if training perplexities do not decrease after
+500 million tokens, the training run is restarted with a reduced learning rate with a factor of 0.8 of
+the current time step. This policy helps remove variance in the scaling laws due to differences in
+training procedures and allows us to scale up the number of asynchronous experiments signiﬁcantly.
+All experiments were conducted in a two-month time frame with a cluster of 768 80GB A100 GPUs.
+The majority of experiments used 64 GPUs at a time.
+5 S CALING LAWS
+5.1 U NI-MODAL SCALING LAWS
+We ﬁrst aim to discover scaling laws for each of the individual modalities we listed above. We train
+seven different model sizes, from 8 million to 6.7 billion, on seven different modalities on three
+different dataset sizes (5B, 10B, 100B).
+In Figure 5.1, we share the training curves for all modalities and model sizes for the largest data
+size (100B tokens), and the ﬁnal performance of all models in Figure 2. Overall, we see that scal-
+ing dynamics are fundamentally different across modalities, scale, and dataset size (which further
+reinforces our selection of dataset-size-dependent parameterization of scaling laws).
+1https://github.com/facebookresearch/metaseq
+5
+0 20000 40000 60000 80000 100000100101PPLSpeech-T ext
+0 20000 40000 60000 80000 100000Speech
+0 20000 40000 60000 80000 100000Code
+0 20000 40000 60000 80000 100000Molecules
+0 20000 40000 60000 80000 100000101102PPLImage
+0 20000 40000 60000 80000 100000
+Number of UpdatesImage-T ext
+0 20000 40000 60000 80000 100000T ext
+Model Size
+8m
+125m
+350m
+760m
+1.3b
+2.7b
+6.7bFigure 1: Single modality training curves for 100B tokens across a wide range of model sizes.
+Different modalities exhibit wildly different training dynamics.
+Image
+Image-T ext
+T ext
+Speech-T ext
+Speech
+Code
+Molecules100101102PPLT okens Seen = 5B
+Image
+Image-T ext
+T ext
+Speech-T ext
+Speech
+Code
+Molecules
+ModalitiesT okens Seen = 10B
+Image
+Image-T ext
+T ext
+Speech-T ext
+Speech
+Code
+MoleculesT okens Seen = 100B
+Model Size
+8m
+125m
+350m
+760m
+1.3b
+2.7b
+6.7b
+Figure 2: Empirical scaling properties across both data and model size scale for the uni-modal
+setting.
+For each modality, we ﬁt the seven parameters from Equation 2, following the procedure in Hoff-
+mann et al. (2022). Speciﬁcally, we minimize
+min
+aj;bj;ej;j;j=X
+run i in modality jHuber=0:03[LSE (aj jlogNi;b logDi;ej) Li]
+(3)
+We then setAj=eaj,Bj=ebj,Ej=eej. In order to identify the optimal minima, we followed the
+method outlined by Hoffmann et al. (2022) and employed the L-BGFS algorithm on the same grid
+of initialization values. Our only deviation was using a higher value for the Huber loss parameter
+, which was necessary for generalization to held-out data in our multi-modal setting. The optimal
+values obtained were not located on the boundaries of the initialization grid.
+The scaling laws for each modality are presented in Table 1. The parameters for each modality vary
+signiﬁcantly. Some modalities, such as Code andMolecules , demonstrate more efﬁcient use of
+the power of scale compared to others, such as Image . Our coefﬁcients for Text are similar to
+those reported by Chinchilla, although it should be noted that we used a different dataset for our
+analysis. This accounts for any differences in the results.
+6
+Code Image-Text Image Molecules Speech-Text Speech Text
+A 611.91 320.51 340.96 158.19 180.68 154.45 492.51
+B 4484.08 658.31 875.30 189.36 234.13 205.10 1987.40
+E 0.16 2.47 2.84 2.39 2.69 3.02 2.42
+ 0.37 0.12 0.13 0.37 0.32 0.31 0.18
+ 0.32 0.11 0.13 0.26 0.24 0.24 0.22
+Table 1: Uni-Modal scaling law parameters ﬁt to Equation 2 (Chinchilla Scaling Law).
+5.2 B I-MODAL SCALING LAWS
+We also estimate scaling laws for training on two modalities: L(N;Di;Dj), whereNrepre-
+sents the model size, and DiandDjrepresent the two datasets being used. In the case where
+DiandDjare completely independent and have no mutual information between them, we ex-
+pect the minimal achievable loss to be the average of the two monomodal scaling laws, given by
+0:5[L(1;Di) +L(1;Dj)]. This is because we are averaging over the loss and subsampling
+both test datasets equally ( jDij=jDjj). On the other hand, if there is some form of mutual infor-
+mation present between DiandDj, we can expect the loss to be reduced by some maximal factor
+Ci;j. When considering ﬁnite model size and data regimes, there will be competition between the
+function approximation and optimization processes, which can be modeled using the same form as
+in Equation 2. We present our scaling law for mixed modal models in Equation 4.
+L(N;Di;Dj) ="
+L(N;Di) +L(N;Dj)
+2#
+ Ci;j+Ai;j
+Ni;j+Bi;j
+jDij+jDjji;j(4)Maximum Level of Synergy
+Competition in Functional Approximation
+Competition in Optimization ProcessLoss if Datasets Were Modeled Independently
+An additional beneﬁt to this parameterization is the additive or linear nature, which allows us to
+extend our parameterization to n-modal scaling laws.
+5.2.1 E XPERIMENTAL RESULTS
+We selected seven different pairs: Image-Text|Code ,Image-Text|Speech-Text ,
+Image-Text|Text ,Speech|Text ,Code|Text ,Molecule|Code , and Speech|Code .
+While other couplings are available, we cannot do an exhaustive sweep due to computational con-
+straints. We selected these pairs to maximize variety. For example, while Code|Text is known to
+perform well, Image-Text|Code may not offer as much beneﬁt.
+We create a dataset for each coupling and token target count where each subdataset contributes 50%
+of the tokens. We train using the same hyper-parameters as the uni-modal trainings and ﬁt the scaling
+laws per modality coupling using the same procedure and optimization process (Equation 3).
+We present the empirical results in Figure 3.
+5.2.2 B REAKING THECOMPETITION BARRIER
+Given these laws, we can now make predictions about what scale will be required to overcome
+modal competition and achieve synergy from training on each pair of modalities. By modality
+competition, we refer to the empirical phenomena of two modalities performing worse than if we
+trained two individual models on the same number of per-modality tokens. By synergy, we mean
+the inverse. We can deﬁne the notion of synergy formally through our scaling laws. If
+Ci;j>Ai;j
+Ni;j+Bi;j
+jDij+jDjji;j(5)
+we are reducing the loss beyond the independent modeling of the modalities and therefore are syn-
+ergistic; otherwise, we say the modalities are in competition. When both sides of the inequality
+7
+Image-T ext|Code
+Image-T ext|Speech-T ext
+Image-T ext|T ext
+Speech|T ext
+Code|T ext
+Molecule|Code
+Speech|Code101102PPLT okens Seen = 5B
+Image-T ext|Code
+Image-T ext|Speech-T ext
+Image-T ext|T ext
+Speech|T ext
+Code|T ext
+Molecule|Code
+Speech|Code
+ModalitiesT okens Seen = 10B
+Image-T ext|Code
+Image-T ext|Speech-T ext
+Image-T ext|T ext
+Speech|T ext
+Code|T ext
+Molecule|Code
+Speech|CodeT okens Seen = 100B
+Model Size
+8m
+125m
+350m
+760m
+1.3b
+2.7b
+6.7bFigure 3: Empirical scaling properties across both data and model size scale for the multi-modal
+setting.
+10610710810910101011109101010111012Number of T okens
+Image-T ext|T ext Bi-Modal Scaling Laws
+Competition Barrier
+Experimental Data
+3090
+PPL
+10610710810910101011109101010111012
+Image-T ext|Code Bi-Modal Scaling Laws
+4095
+PPL
+10610710810910101011
+Number of Parameters109101010111012Number of T okens
+Speech|T ext Bi-Modal Scaling Laws
+540
+PPL
+10610710810910101011
+Number of Parameters109101010111012
+Code|T ext Bi-Modal Scaling Laws
+540
+PPL
+Figure 4: Bi-modal scaling law extrapolation and the predicted competition barrier for a subset of
+our bi-modal experiments.
+are equal, we call this the competition barrier for the two modalities. We present our extrapolated
+scaling laws with the predicted competition barrier in Figure 5.2.2.
+We can then ﬁnd the compute-optimal model size and token count that breaks the competition barrier
+by minimizing a compute cost over the competition barrier. We select the approximation from
+8
+0 10000 20000 30000 40000
+Number of Updates0.91.01.11.21.31.41.51.61.7PPL RatioSpeech|Text Competition
+Legend
+350M
+2.7B
+30B
+Scaling Law Predictions
+Competition BarrierFigure 5: We plot0:5(L(N;Text)+L(N;Speech ))
+L(N;[Speech;Text])throughout the training process. If this ratio is below
+1, we have broken through the competition barrier. Additionally, we add the predictions for the ﬁnal
+ratio as predicted from our scaling laws.
+Kaplan et al. (2020).
+min
+N;jDj6ND
+s.t.Ci;j=Ai;j
+Ni;j+Bi;j
+jDij+jDjji;j(6)
+For the Speech|Text coupling, the predicted compute optimal parameters are N= 28:35B and
+D= 45:12B
+To test this hypothesis, we select the closest architecture available from Zhang et al. (2022), which is
+the 30B parameterization and 50B tokens, slightly above the predicted data regime, to cover any er-
+ror in our approximation. We train three models a, 350M, 2.7B, and 30B models on either Speech ,
+Text , orSpeech|Text . We plot the ratio of the average of the Speech andText models per-
+plexity per timestep by Speech|Text perplexity, the competition barrier and predictions from our
+scaling laws in Figure 5. As we see, the prediction does hold, and we achieve a model that crosses
+the competition barrier. Further scaling is likely to further improve the synergy, but we leave this
+exploration to future work.
+6 E MERGENT PHENOMENA
+We observed a number of emergent behaviors during training, many of which can be predicted from
+the modality-speciﬁc constants in our scaling laws. We brieﬂy document these behaviors here; each
+is potentially worthy of study in future work.
+Phenomenon 1 Intermittent Coordinate Ascent Like Training: Different source modalities in a
+multi-modal setting are optimized at different paces, with some modalities even pausing their train-
+ing progression for a signiﬁcant amount of steps.
+When looking at average perplexity over the dataset, the training dynamics are always consistently
+smooth and somewhat monotonically decreasing (Figure 5.1). But looking at the sub-perplexities
+of the modalities shows a different picture; certain modalities ﬂatten out during training (see left
+ﬁgure in Figure 6). In Figure 7, we plot the percent of the submodality that exhibits ﬂatness, where
+ﬂatness is deﬁned as an area of the training curves where loss does not decrease (we do not count
+the warm-up period of optimization as part of this percentage).
+Phenomenon 2 Rate of Phenomena 1 Diminishes Past A Certain Scale: The rate of intermittent
+coordinate ascent-like training is correlated with scale ( N) andi;j.
+9
+10000 20000 30000 40000 50000 60000 70000 80000
+Number of Updates5.05.25.45.65.86.0PPLPerplexity of Speech Tokens on Speech|Text Modeling
+Model Size
+2.7B
+0.15 0.20 0.25 0.30 0.35
+i,j
+0.00.10.20.30.40.5% of Non-Text Perplexity in Flat Regime
+Empirical Correlation Between i,j and Flatness in Optimization
+Linear Fit
+Empirical DataFigure 6: Left: Example run showing the perplexity on only the speech tokens of a 2.7B run over
+theSpeech|Text dataset. We highlight a region where roughly for 15000 steps perplexity for
+speech ﬂattened. Right: Correlation between the mixed-modal i;jparameter and the percent of
+non-text perplexity that are within a ﬂat regime in the 6.7B model regime.
+1071081091010
+Size0.00.10.20.30.40.5Percent in Flat RegimePercent of Speech Perplexity in Flat Regime Across Model Size
+Modality
+Image-T ext|Speech-T ext
+Speech|Code
+Speech|T ext
+107108109
+Size0.250.300.350.400.450.500.550.60Percent in Flat RegimePercent of Image Perplexity in Flat Regime Across Model Size
+Modality
+Image-T ext|Code
+Image-T ext|Speech-T ext
+Image-T ext|T ext
+Figure 7: Percent of the submodality that exhibits ﬂatness, where ﬂatness is deﬁned as an area of the
+training curves where loss does not decrease. We present these plots for speech and image perplexity
+within the bi-modal couplings that contain them.
+Most of this intermittent coordinate ascent-like training can be reduced by simply increasing the
+model size. Intuitively, this makes sense as the increased functional approximation space should
+give the models enough capacity to simultanouesly optimize all of the modalities (Figure 7). Addi-
+tionally, we discover that the empirically found i;j, which describes the functional approximation
+cost across two modalities, is highly correlated with the uni-modal optimization ﬂatness in the train-
+ing regime. We found no correlation between i;jand optimization ﬂatness.
+Phenomenon 3 Optimal Batch Size for Modalities iandjis Correlated with i;j
+We ﬁxed the batch size to 1M tokens, but the question of the optimal batch for each modality and
+modality coupling remains. We train four versions of all over a subset of models, overall modalities,
+and selected couplings of modalities with batch sizes 1M, 2M, 4M, and 8M over 5B tokens, with the
+exception of modalities that contain Text for which we add 0.5M batch size experiments. We use
+the same training regime as mentioned in § 4.5. We present our results in Figure 6. Additionally for
+the bi-modal coupling experiments we plot logof the ratio between the optimal batch size and the
+sum of the optimal batch sizes for the sub-datasets against the i;jof the discovered scaling laws in
+§ 5.2. We found no correlation between i;jand optimal batch-size.
+Phenomenon 4 Rate of Deteriorating Training Dynamics is Correlated with i;jandN
+The stability of training can be captured by looking at the total count of gradient norm spikes
+throughout the lifetime of the training. A large number of gradient spikes can indicate a poor training
+10
+0.10 0.15 0.20
+i,j
+1.5
+1.0
+0.5
+0.00.5logbsz(i,j)
+bsz(i)+bsz(j)
+i,j Correlates with Optimal Batch Size
+Molecules
+Code
+Speech
+T ext
+Image
+Image-T ext
+Speech-T ext
+Modality012345678Optimal Batch-Size (M)Optimal Batch Size per Modality
+Model Size
+125M
+350M
+1.3B
+2.7B
+6.7B
+Image-T ext|Code
+Image-T|Speech-T
+Image-T ext|T ext
+Molecule|Code
+Speech|Code
+Speech|T ext
+Code|T ext
+Modality012345678Optimal Batch Size per Modality
+Model Size
+125M
+350M
+1.3B
+2.7B
+6.7BFigure 8: Bottom: Optimal batch-size per modality and modality couplings across model sizes.
+Top: The logarithm of the ratio between the optimal batch size for the entire dataset and the sum of
+the optimal batch sizes for the individual sub-datasets plotted against the i;jvalues of the scaling
+laws that were identiﬁed in the previous section.
+setting, from selecting the wrong learning rate or batch size to having low-quality data. Additionally,
+larger models tend to be harder to stabilize, reﬂecting in a larger amount of gradient spikes. We hy-
+pothesize that lower values of i;j, reﬂecting higher competition between modalities, will correlate
+with more gradient norm spikes. We present the empirical correlation between log(N)=i;jand #
+of Gradient Norm Spikes in Figure 6. We see a highly predictive relationship between model size
+(N) and the rate of mixed-modal competition ( ai;jto the stability of the training run. We found no
+correlation between i;j and the # of gradient norm spikes.
+7 C ONCLUSION
+We have provided extensive experimentation and analysis into the scaling properties of mixed-modal
+generative models. By developing a scaling law that reﬂects the contributions of individual modal-
+ities and the interaction between them, we have gained a deeper understanding of scaling mixed-
+modal models and the training dynamics of these models. Our ﬁndings also include a set of empir-
+ical phenomena observed during the training process and training dynamics that can be primarily
+explained through various interaction terms in our newly proposed scaling law. Additionally, we
+have developed guidelines for selecting critical hyper-parameters based on our scaling law, provid-
+11
+40 60 80 100 120 140 160 180
+log(N)/i,j
+510152025Number of Gradient Spikes
+Empirical Correlation Between N and ai,j and Number of Gradient Spikes
+Model Size
+8M
+125M
+350M
+760M
+1.3B
+2.7B
+6.7BFigure 9: We plot log(N)=i;jagainst the number of gradient spikes that occurred for the respective
+experiments.
+ing a valuable tool for practitioners in the ﬁeld. Overall, our research has advanced the knowledge
+and understanding of mixed-modal generative models and will help develop uniﬁed models that can
+handle multiple modalities simultaneously.
+8 A CKNOWLEDGEMENTS
+We thank Hrant Khachatrian and Hrayr Harutyunyan for their discussions about the exact formula-
+tion of the mixed-modal scaling laws. We also thank Adam Polyak and Oran Gafni for training the
+Make-A-Scene tokenizer used in this work, and Rich James for editing the paper.
+REFERENCES
+Armen Aghajanyan, Bernie Huang, Candace Ross, Vladimir Karpukhin, Hu Xu, Naman Goyal,
+Dmytro Okhonko, Mandar Joshi, Gargi Ghosh, Mike Lewis, et al. Cm3: A causal masked multi-
+modal model of the internet. arXiv preprint arXiv:2201.07520 , 2022.
+Gor Arakelyan, Gevorg Soghomonyan, and The Aim team. Aim, 6 2020. URL https:
+//github.com/aimhubio/aim .
+Rosana Ardila, Megan Branson, Kelly Davis, Michael Henretty, Michael Kohler, Josh Meyer,
+Reuben Morais, Lindsay Saunders, Francis M Tyers, and Gregor Weber. Common voice: A
+massively-multilingual speech corpus. arXiv preprint arXiv:1912.06670 , 2019.
+Mandeep Baines, Shruti Bhosale, Vittorio Caggiano, Naman Goyal, Siddharth Goyal, Myle Ott,
+Benjamin Lefaudeux, Vitaliy Liptchinsky, Mike Rabbat, Sam Sheiffer, Anjali Sridhar, and Min
+Xu. FairScale: A general purpose modular PyTorch library for high performance and large scale
+training. https://github.com/facebookresearch/fairscale , 2021.
+Mohammad Bavarian, Heewoo Jun, Nikolas Tezak, John Schulman, Christine McLeavey, Jerry
+Tworek, and Mark Chen. Efﬁcient training of language models to ﬁll in the middle. arXiv
+preprint arXiv:2207.14255 , 2022.
+Tom B Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal,
+Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are
+few-shot learners. In NeurIPS , 2020.
+Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared
+Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, et al. Evaluating large
+language models trained on code. arXiv preprint arXiv:2107.03374 , 2021.
+Mehdi Cherti, Romain Beaumont, Ross Wightman, Mitchell Wortsman, Gabriel Ilharco, Cade Gor-
+don, Christoph Schuhmann, Ludwig Schmidt, and Jenia Jitsev. Reproducible scaling laws for
+contrastive language-image learning. arXiv preprint arXiv:2212.07143 , 2022.
+12
+Gayane Chilingaryan, Hovhannes Tamoyan, Ani Tevosyan, Nelly Babayan, Lusine Khond-
+karyan, Karen Hambardzumyan, Zaven Navoyan, Hrant Khachatrian, and Armen Aghajanyan.
+Bartsmiles: Generative masked language models for molecular representations. arXiv preprint
+arXiv:2211.16349 , 2022.
+Aidan Clark, Diego de Las Casas, Aurelia Guy, Arthur Mensch, Michela Paganini, Jordan Hoff-
+mann, Bogdan Damoc, Blake Hechtman, Trevor Cai, Sebastian Borgeaud, et al. Uniﬁed scaling
+laws for routed language models. In International Conference on Machine Learning , pp. 4057–
+4086. PMLR, 2022.
+Alexis Conneau, Kartikay Khandelwal, Naman Goyal, Vishrav Chaudhary, Guillaume Wenzek,
+Francisco Guzm ´an, Edouard Grave, Myle Ott, Luke Zettlemoyer, and Veselin Stoyanov. Un-
+supervised cross-lingual representation learning at scale. arXiv preprint arXiv:1911.02116 , 2019.
+Tim Dettmers and Luke Zettlemoyer. The case for 4-bit precision: k-bit inference scaling laws,
+2022. URL https://arxiv.org/abs/2212.09720 .
+Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. Llm. int8 (): 8-bit matrix
+multiplication for transformers at scale. arXiv preprint arXiv:2208.07339 , 2022.
+Jasha Droppo and Oguz Elibol. Scaling laws for acoustic models. In Inter-
+speech 2021 , 2021. URL https://www.amazon.science/publications/
+scaling-laws-for-acoustic-models .
+Patrick Esser, Robin Rombach, and Bj ¨orn Ommer. Taming transformers for high-resolution image
+synthesis, 2020.
+Daniel Fried, Armen Aghajanyan, Jessy Lin, Sida Wang, Eric Wallace, Freda Shi, Ruiqi Zhong,
+Wen-tau Yih, Luke Zettlemoyer, and Mike Lewis. Incoder: A generative model for code inﬁlling
+and synthesis. arXiv preprint arXiv:2204.05999 , 2022.
+Oran Gafni, Adam Polyak, Oron Ashual, Shelly Sheynin, Devi Parikh, and Yaniv Taigman.
+Make-a-scene: Scene-based text-to-image generation with human priors. arXiv preprint
+arXiv:2203.13131 , 2022.
+Behrooz Ghorbani, Orhan Firat, Markus Freitag, Ankur Bapna, Maxim Krikun, Xavier Garcia,
+Ciprian Chelba, and Colin Cherry. Scaling laws for neural machine translation. arXiv preprint
+arXiv:2109.07740 , 2021.
+Mitchell A Gordon, Kevin Duh, and Jared Kaplan. Data and parameter scaling laws for neural
+machine translation. In Proceedings of the 2021 Conference on Empirical Methods in Natural
+Language Processing , pp. 5915–5922, Online and Punta Cana, Dominican Republic, November
+2021. Association for Computational Linguistics. doi: 10.18653/v1/2021.emnlp-main.478. URL
+https://aclanthology.org/2021.emnlp-main.478 .
+Naman Goyal, Jingfei Du, Myle Ott, Giri Anantharaman, and Alexis Conneau. Larger-scale trans-
+formers for multilingual masked language modeling. arXiv preprint arXiv:2105.00572 , 2021.
+Tom Henighan, Jared Kaplan, Mor Katz, Mark Chen, Christopher Hesse, Jacob Jackson, Heewoo
+Jun, Tom B Brown, Prafulla Dhariwal, Scott Gray, et al. Scaling laws for autoregressive generative
+modeling. arXiv preprint arXiv:2010.14701 , 2020.
+Joel Hestness, Sharan Narang, Newsha Ardalani, Gregory Diamos, Heewoo Jun, Hassan Kianinejad,
+Md Patwary, Mostofa Ali, Yang Yang, and Yanqi Zhou. Deep learning scaling is predictable,
+empirically. arXiv preprint arXiv:1712.00409 , 2017.
+Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor Cai, Eliza
+Rutherford, Diego de Las Casas, Lisa Anne Hendricks, Johannes Welbl, Aidan Clark, et al. Train-
+ing compute-optimal large language models. arXiv preprint arXiv:2203.15556 , 2022.
+Chloe Hsu, Robert Verkuil, Jason Liu, Zeming Lin, Brian Hie, Tom Sercu, Adam Lerer, and
+Alexander Rives. Learning inverse folding from millions of predicted structures. bioRxiv , 2022.
+doi: 10.1101/2022.04.10.487779. URL https://www.biorxiv.org/content/early/
+2022/04/10/2022.04.10.487779 .
+13
+Wei-Ning Hsu, Benjamin Bolte, Yao-Hung Hubert Tsai, Kushal Lakhotia, Ruslan Salakhutdinov,
+and Abdelrahman Mohamed. Hubert: Self-supervised speech representation learning by masked
+prediction of hidden units. IEEE/ACM Transactions on Audio, Speech, and Language Processing ,
+29:3451–3460, 2021. doi: 10.1109/TASLP.2021.3122291.
+Dhiraj Kalamkar, Dheevatsa Mudigere, Naveen Mellempudi, Dipankar Das, Kunal Banerjee,
+Sasikanth Avancha, Dharma Teja V ooturi, Nataraj Jammalamadaka, Jianyu Huang, Hector Yuen,
+Jiyan Yang, Jongsoo Park, Alexander Heinecke, Evangelos Georganas, Sudarshan Srinivasan,
+Abhisek Kundu, Misha Smelyanskiy, Bharat Kaul, and Pradeep Dubey. A study of bﬂoat16 for
+deep learning training, 2019. URL https://arxiv.org/abs/1905.12322 .
+Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess, Rewon Child,
+Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. Scaling laws for neural language
+models. arXiv preprint arXiv:2001.08361 , 2020.
+Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In ICLR , 2015.
+Ann Lee, Peng-Jen Chen, Changhan Wang, Jiatao Gu, Xutai Ma, Adam Polyak, Yossi Adi, Qing
+He, Yun Tang, Juan Pino, et al. Direct speech-to-speech translation with discrete units. arXiv
+preprint arXiv:2107.05604 , 2021.
+Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor
+Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, et al. PyTorch: An imperative style,
+high-performance deep learning library. In NeurIPS , 2019.
+Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, and Ronan Collobert. Mls: A
+large-scale multilingual dataset for speech research. arXiv preprint arXiv:2012.03411 , 2020.
+Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott Gray, Chelsea V oss, Alec Radford, Mark Chen,
+and Ilya Sutskever. Zero-shot text-to-image generation. arXiv preprint arXiv:2102.12092 , 2021.
+Scott Reed, Konrad Zolna, Emilio Parisotto, Sergio G ´omez Colmenarejo, Alexander Novikov,
+Gabriel Barth-maron, Mai Gim ´enez, Yury Sulsky, Jackie Kay, Jost Tobias Springenberg, Tom Ec-
+cles, Jake Bruce, Ali Razavi, Ashley Edwards, Nicolas Heess, Yutian Chen, Raia Hadsell, Oriol
+Vinyals, Mahyar Bordbar, and Nando de Freitas. A generalist agent. Transactions on Machine
+Learning Research , 2022. URL https://openreview.net/forum?id=1ikK0kHjvj .
+Featured Certiﬁcation.
+Christoph Schuhmann, Romain Beaumont, Richard Vencu, Cade Gordon, Ross Wightman, Mehdi
+Cherti, Theo Coombes, Aarush Katta, Clayton Mullis, Mitchell Wortsman, et al. Laion-5b:
+An open large-scale dataset for training next generation image-text models. arXiv preprint
+arXiv:2210.08402 , 2022.
+Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words
+with subword units. In Proceedings of the 54th Annual Meeting of the Association for Com-
+putational Linguistics (Volume 1: Long Papers) , pp. 1715–1725, Berlin, Germany, August
+2016. Association for Computational Linguistics. doi: 10.18653/v1/P16-1162. URL https:
+//aclanthology.org/P16-1162 .
+Uri Shaham, Maha Elbayad, Vedanuj Goswami, Omer Levy, and Shruti Bhosale. Causes and cures
+for interference in multilingual translation. arXiv preprint arXiv:2212.07530 , 2022.
+Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick LeGresley, Jared Casper, and Bryan
+Catanzaro. Megatron-lm: Training multi-billion parameter language models using model par-
+allelism, 2019. URL https://arxiv.org/abs/1909.08053 .
+Changhan Wang, Morgane Riviere, Ann Lee, Anne Wu, Chaitanya Talnikar, Daniel Haziza, Mary
+Williamson, Juan Pino, and Emmanuel Dupoux. V oxpopuli: A large-scale multilingual speech
+corpus for representation learning, semi-supervised learning and interpretation. arXiv preprint
+arXiv:2101.00390 , 2021.
+14
+Peng Wang, An Yang, Rui Men, Junyang Lin, Shuai Bai, Zhikang Li, Jianxin Ma, Chang Zhou,
+Jingren Zhou, and Hongxia Yang. Ofa: Unifying architectures, tasks, and modalities through a
+simple sequence-to-sequence learning framework, 2022. URL https://arxiv.org/abs/
+2202.03052 .
+Michihiro Yasunaga, Armen Aghajanyan, Weijia Shi, Rich James, Jure Leskovec, Percy Liang, Mike
+Lewis, Luke Zettlemoyer, and Wen-tau Yih. Retrieval-augmented multimodal language modeling.
+arXiv preprint arXiv:2211.12561 , 2022.
+Rowan Zellers, Jiasen Lu, Ximing Lu, Youngjae Yu, Yanpeng Zhao, Mohammadreza Salehi, Aditya
+Kusupati, Jack Hessel, Ali Farhadi, and Yejin Choi. Merlot reserve: Neural script knowledge
+through vision and language and sound. In Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition (CVPR) , pp. 16375–16387, June 2022.
+Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui Chen, Christo-
+pher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt: Open pre-trained transformer
+language models. arXiv preprint arXiv:2205.01068 , 2022.
+A A PPENDIX
+A.1 M ODEL ARCHITECTURE
+All models are trained with pre-norm and using ReLU activation. We apply a dropout of 0.1 through-
+out, but we do not apply any dropout to embeddings. We also use weight decay of 0.1. To initialize
+the weights, we use a variant based on Megatron-LM codebase, which involves using a normal
+distribution with a mean of zero and a standard deviation of 0.006. We truncate this normal distri-
+bution within two standard deviations and observed substantial gain in both training stability and
+performance.
+Model #L dmodel #H dhead Batch Size LR Context Length
+8M 4 128 2 64 1M 1.00E-03 2048
+125M 12 768 12 64 1M 6.00E-04 2048
+350M 24 1024 16 64 1M 3.00E-04 2048
+760M 24 1536 16 96 1M 2.50E-04 2048
+1.3B 24 2048 32 64 1M 2.00E-04 2048
+2.7B 32 2560 32 80 1M 1.60E-04 2048
+6.7B 32 4096 32 128 1M 1.20E-04 2048
+30B 48 7168 56 128 1M 1.00E-04 2048
+Table 2: Model architecture details. We report the number of layers (#L), the embedding size
+(dmodel), the number of attention heads (#H), the dimension of each attention head (d head), batch
+size, learning rate (LR) and context length (# of tokens).
+A.2 C AUSAL MASKED VS . CAUSAL OBJECTIVE
+We measure the impact of the choice of objective by conducting an additional scaling law on our
+Speech andText datasets on the standard (causal) language modeling objective. Everything is
+kept constant except for the objective, including the training procedures. We present the empirically
+ﬁt scaling law parameters in Table 3.
+Note that both objectives optimize the joint probability of tokens; therefore, if there was a signiﬁ-
+cant difference in our perplexity, we should expect to see it reﬂected in a difference in scaling law
+parameters. Instead, we see that the scaling laws seem to be close to identical, with whatever minor
+differences within the error of our approximation.
+15
+A B E  
+Speech (CM3) 154.45 205.10 3.02 0.31 0.24
+Speech (Causal) 164.12 201.00 3.01 0.30 0.24
+Text (CM3) 492.51 1987.40 2.42 0.18 0.22
+Text (Causal) 485.16 1859.32 2.45 0.17 0.23
+Table 3: Uni-Modal scaling law parameters ﬁt to Equation 2 for both causal (standard language
+modeling) and causal masked (CM3 objective from Aghajanyan et al. (2022)).
+A.3 T OKENIZATION
+A.3.1 Q UALITY OF IMAGE TOKENIZATION
+Modeling long-range dependencies with raw pixel input of an image (for example, total sequence
+length for a 256-pixel image in RGB form is 196608) is non-trivial, especially with transformers,
+which in their vanilla form scale poorly with sequence length. Recently, Vector Quantized Varia-
+tional autoencoders (VQ-V AE, or Discrete-V AE) have been proposed, which learn discrete image
+representations, allowing a later generative model to generate images in the discrete latent space,
+just like a standard language model. VQ-V AE reduces the context size of a transformer by a factor
+of3X2(Xis the spatial reduction rate, and 3 is the number of image channels), where information
+loss is unavoidable. VQ-V AE is trained to optimize the evidence lower bound of distribution of data.
+Esser et al. (2020) introduced VQGAN, which improves upon VQV AE by introducing an adversar-
+ial loss produced by a discriminator, reconstructing images with much higher quality. Recently,
+Gafni et al. (2022) trained a new image tokenizer with a better training objective focusing on faces
+or objects, which is adopted for this work and denoted as VQGANMAS. To be most effective in the
+later language model stage, the image tokenizer must represent an image effectively. The correlated
+decoder must reconstruct the generated image tokens into high-quality image data. We benchmark
+the following pre-trained tokenizers on these properties:
+• VQGAN (fx;y )with different spatial reduction rate fxand diffent vocab size y. For ex-
+ample, for a 256px image, 256 tokens will be created with a VQGAN (f16)tokenizer and
+1024 tokens with a VQGAN (f8)tokenizer.
+• Our VQGANMAS256and VQGANMAS512usef8andf16spatial reduction, respectively,
+and have an 8192 vocab size. Our VQGANMAS256is trained with a face-aware loss with
+the help of a pre-trained face embedding model. Our VQGANMAS512 is trained with
+face+object aware loss with extra downsampling and upsampling layer in the encoder and
+decoder to reconstruct images with higher resolution. Note, Our VQGANMAS512 with
+512x512 image input compresses the image to 1024 tokens, thanks to the downsampling
+layer.
+One way to quantify the realism captured by these models is to compute Fr ´echet Inception Distance
+(FID) scores of reconstructed images w.r.t. the inputs (R-FIDs). Table A.3.1 shows R-FIDs when re-
+constructing the whole validation split of the ImageNet dataset. For an image with a 256-pixel reso-
+lution, reducing spatial reduction rate or increasing visual vocab size can help achieve lower R-FIDs.
+Our VQGANMAS256model is superior to its counterpart with the same spatial reduction rate and vo-
+cab size, demonstrating the effectiveness of the extra face-aware loss. Interestingly, VQGANMAS256
+gets a higher R-FID than VQGANMAS512, consistent with the result in the original paper. We are
+also interested in understanding how much the reconstruction process can retain information and if
+we lose critical image information. We benchmark the representation power via classiﬁcation accu-
+racy with a pretrained model. We ﬁrst reconstruct all the images in the ImageNet validation set with
+different tokenizers, similar to R-FID computation. Then a trained pretrained classiﬁer on ImageNet
+is used to run inference on the original and reconstructed images. The classiﬁcation accuracy of
+original images with 256 or 512-pixel resolution is 81.56 and 82.89, respectively. The accuracy@1
+on the reconstructed images and their gap with the raw images are reported in Table A.3.1. Images
+reconstructed by the VQGANMAS256can best maintain the original information with less than 2
+percent degradation in accuracy.
+16
+Tokenizer Spatial Reduction V ocab Token Counts R-FID Accuracy@1
+256x256 px
+VQGAN 16 1024 256 7.94 69.25 (-12.4)
+VQGAN 16 16384 256 4.98 73.2 (-8.45)
+VQGAN 8 8192 1024 1.49 79.64 (-2.01)
+VQGAN 8 16384 1024 1.14 79.47 (-2.18)
+VQGANMAS256 8 8192 1024 0.87 79.83 (-1.82)
+512x512 px
+VQGANMAS512 8 8192 1024 1.43 79.87 (-3.02)
+Table 4: R-FID and accuracy with images reconstructed by a selection of image tokenizers
+Figure 10: Reconstructed images across a selection of different image tokenizers.
+For qualitative comparison, we give all tokenizers except VQGANMAS512an image with 256x256
+pixels. VQGANMAS512reconstructs a 512-pixel resolution image and resizes it to 256-pixel res-
+olution for plotting purposes. VQGAN (f16)a s produce 256 tokens, while VQGAN (f8)and
+VQGANMASmodels produce 1024 tokens.
+We randomly sample two images from ImageNet (top 2 rows in Figure 10). All reconstructed
+images can maintain vital information about the image and the textures. With a high reduction rate
+(192), VQGAN with f16spatial reduction can not reproduce every detail of its input but tends
+to hallucinate parts of it, for example, the eye and the tail of the dog in row 1 and the mirror of
+the blue car in row 2. By increasing the vocab size, more realistic images can be generated. With a
+decreased compression rate, the VQGAN (f8)model and VQGANMASproduce much more realistic
+reconstructed images. For example, in row 2, the door handle, the clouds, and the mirror’s tree are
+successfully reconstructed with great detail.
+Lastly, we reconstruct images from a textbook (row 4 in Figure 10) or screenshots of tables from
+scientiﬁc papers (row 5 in Figure 10). All models struggle to reconstruct the original image, ex-
+17
+cept VQGANMASmodels. Figure 10 shows impressive results by VQGANMASmodels that all text
+and numbers are human readable. VQGANMAS256produces sharper edges while VQGANMAS512
+smooths things out.
+From all the above examples, the reduced spatial reduction is effective for better tokenization;
+however, it results in a longer token sequence. Another way to increase image representation
+is to increase the pixel numbers of images. We reconstruct images with a size of 512x512 for
+VQGANMAS512 in Figure 11. VQGAN (f16)produce 1024 tokens, while VQGAN (f8)and
+VQGANMASmodels produce 4096 tokens. VQGANMAS256in Figure 10 outperform VQGAN (f16)
+by a big margin. With the same token budget, decreasing spatial reduction is more effective than
+increasing image pixels.
+Figure 11: Reconstructed images across a selection of different image tokenizers (image size 512)
+A.3.2 D ETAILS OF SPEECH TOKENIZATION
+We use the B ASE HuBERT model in our work. This model comprises a convolutional encoder and
+12 layer Transformer, each with an embedding dimension of 768, a feed-forward layer dimension
+of 3072, and 12 self-attention heads. Pre-training of the model has been performed on 32 GPUs
+over three iterations, with 400K updates per iteration. The training data consists of 221K hours
+of unlabeled speech from multilingual Librispeech (MLS) Pratap et al. (2020), Common V oice
+(CV) Ardila et al. (2019), and V oxPopuli (VP) Wang et al. (2021) in eight languages (English,
+Spanish, French, German, Dutch, Italian, Polish, Portuguese). The MFCC/6-th layer feature from
+iteration 1 and the 9-th layer feature from iteration 2 are used as targets, with codebook sizes of
+100/500/1000, respectively, following the methodology outlined in Lee et al. (2021).
+A typical 16kHz audio with a bit depth of 16 has a bitrate of 64kbps. HuBERT encodes audio at
+50Hz with a codebook size of 2000, resulting in a bitrate of 548bps. The effective compression rate
+is roughly 117. Our model still effectively retains speech information, as shown in Table A.3.2. We
+compare the word error rate (WER) of a pretrained automatic speech recognition (ASR) model with
+original audio or reconstructed audio by HuBERT models. We present results with two HuBERT
+models, one public Hsu et al. (2021) version (HuBERT public) and one trained by us (HuBERT
+ours). WER of the original audio on LJSpeech is 2.04, the audio reconstructed by HuBERT public
+degrades by 0.94, while the audio reconstructed by our HuBERT only degrades it by 0.3. A similar
+phenomenon is observed on the LibriSpeech dataset, where our HuBERT model improves upon
+HuBERT public and can effectively reconstruct audio with very little information loss.
+B C REDIT
+•Armen Aghajanyan: Proposed the original idea, co-authored the ablation plan, executed
+all the training runs and scaling law research, and was the primary writing author of the
+paper.
+•Lili Yu: Core contributor to mixed-modal evaluations framework, drove the selection of
+speech/image/text tokenizer, secondary writing author of the paper.
+18
+Model PT/KM data V ocoder data #L K LJSpeech LibriSpeech
+Orig audio 2.04 3.55
+HuBERT public LS960 LJ 9 500 2.98 12.39
+HuBERT ours MLS+VP+CV LJ + MLS-40h 12 2000 2.34 9.06
+Table 5: Word error rate (WER) on LJSpeech and LibriSpeech datasets of an petrained automatic
+speech recognition (ASR) model with various speech inputs (original audio, or recutructed audio
+by HuBERT model in Hsu et al. (2021), or HuBERT model in our work). We also listed the model
+details of two HuBERT models, including data used during pretraining (PT), k-means (KM) and
+vocoder, number of layers ( #L), and number of clusters (K).
+•Alexis Conneau: Drove high-level direction, co-authored ablation plan, and collected
+speech datasets.
+•Wei-Ning Hsu: Provided day-to-day feedback on speech-language model training, trained
+speech tokenizer, and tokenized all the speech data used throughout the project.
+•Karen Hambardzumyan: Helped in the core design of scaling laws and writing.
+•Susan Zhang, Stephen Roller, Naman Goyal: Provided support for the general training
+of all the models and the metaseq framework.
+•Omer Levy : Provided, developed, and distilled the story for this paper. Edited paper as
+well.
+•Luke Zettlemoyer: Provided support and feedback throughout the whole lifetime of the
+project. Provided help writing the paper as well as signiﬁcant feedback for the paper.
+19

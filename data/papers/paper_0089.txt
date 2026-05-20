@@ -1,0 +1,574 @@
+Title: Interscript: A dataset for interactive learning of scripts through error feedback
+
+INTERSCRIPT : A dataset for interactive learning of scripts through error feedback
+Niket Tandon, Aman Madaany, Peter Clark,
+Keisuke Sakaguchi, Yiming Yangy,
+Allen Institute for Artiﬁcial Intelligence, Seattle, WA, USA
+yLanguage Technologies Institute, Carnegie Mellon University, Pittsburgh, PA, USA
+fnikett,peterc,keisukes g@allenai.org
+famadaan,yiming g@cs.cmu.edu
+Abstract
+How can an end-user provide feedback if a deployed struc-
+tured prediction model generates inconsistent output, ignor-
+ing the structural complexity of human language? This is
+an emerging topic with recent progress in synthetic or con-
+strained settings, and the next big leap would require test-
+ing and tuning models in real-world settings. We present a
+new dataset, INTERSCRIPT , containing user feedback on a
+deployed model that generates complex everyday tasks. IN-
+TERSCRIPT1contains 8,466 data points– the input is a possi-
+bly erroneous script and a user feedback and the output is a
+modiﬁed script. We posit two use-cases of INTERSCRIPT that
+might signiﬁcantly advance the state-of-the-art in interactive
+learning.
+1 Introduction
+While language models have achieved remarkable perfor-
+mance on several reasoning tasks (Wang et al. 2018; Tal-
+mor et al. 2019), they are still prone to mistakes (Bender and
+Koller 2020). This is especially true in structured prediction
+settings because models can ignore the structural complexity
+of human language, and rely on simplistic and error-prone
+greedy search procedures (Martins 2020). For example, this
+leads to critical mistakes in (i) machine translation (such as
+words being dropped or named entities mistranslated) or (ii)
+script generation by a digital assistant to accomplish goals
+(such as an implausible order of visiting a place and then
+driving a car to get there).
+Recent work (Sakaguchi et al. 2021) underscores the gap
+between the syntax and semantic correctness of machine-
+generated output in the context of automatic script genera-
+tion. Sakaguchi et al. (2021) report that their models gen-
+erate scripts that look ostensibly valid. We conduct an ini-
+tial study of their generated scripts (see §3.2), and ﬁnd that
+at least 20% of the generated scripts contain commonsense
+mistakes that an average user would be able to point out.
+This study indicates that such situations can greatly beneﬁt
+from human assistance in the form of a feedback on the er-
+ror. Figure 1 shows an example of such an erroneous script
+and the corresponding feedback, where a model-generated
+script contains an error: it states that the steps of “driving”
+and “get in the car” can be applied in any order. The user
+1Code & data: https://github.com/allenai/interscript
+Figure 1: For an input goal (see an alligator), the T5-XXL
+model presented in (Sakaguchi et al. 2021) produces an in-
+correct script, where the order of the edges is not correct. A
+human provides a feedback in ﬂuent language. Our dataset,
+INTERSCRIPT , contains more than 8K examples of this kind
+with the objective of advancing interactive learning.
+provides general feedback “Get in a car before driving”. In
+a structured setting like script generation, feedback must be
+localized (e.g., in script generation, this means pointing out
+the erroneous edge or node in whose context the feedback is
+provided).
+Teaching a machine via human instructions has long been
+a goal of AI. Datasets have been crucial in recent AI progress
+(Wang et al. 2018) and a recent line of work investigates mit-
+igating this problem by curating datasets. Notable datasets to
+advance interactive learning are RuleTaker (Clark, Tafjord,
+and Richardson 2020), TeachYourAI (Talmor et al. 2020)
+and other dialog datasets such as Padmakumar et al. (2021);
+Campos et al. (2019).
+Such feedback-driven correction has also been investi-
+gated, though in a limited setting, in structured tasks. Wang,
+Liang, and Manning (2016) and Mehta and Goldwasser
+(2019) allow correction to block trajectories in a simulated
+Block worlds setting. Splash dataset (Elgohary et al. 2021;
+Elgohary, Hosseini, and Hassan Awadallah 2020) based
+NLEdit system (Elgohary et al. 2021) allows users to correct
+semantic parsing errors on database queries using natural
+language. While encouraging, they are limited in their gen-arXiv:2112.07867v2  [cs.AI]  16 Dec 2021
+eral applicability due to the synthetic nature of the dataset
+or task or due to example-speciﬁc feedback which does not
+generalize (feedback provided to a query for a database
+schema might not apply to other queries). Thus, there is still
+a lack of real-world datasets that can be used to develop sys-
+tems with feedback-driven correction.
+We ﬁll this gap by introducing INTERSCRIPT , a crowd-
+sourced dataset of 8,466 (ybad; fb!ygood)examples,
+where ybadis an erroneous script, fbthe feedback, and ygood
+is the corrected script. The dataset comprises three types of
+feedback fb, (i) explicit (directly mentions the error or local-
+izes the error), (ii) implicit (the feedback highlights a general
+principle which is easy to mentally apply to the given er-
+ror), (iii) distractor feedback (the feedback should not have
+any effect). Existing datasets provide either explicit or im-
+plicit feedback in a synthetic or controlled setting, while IN-
+TERSCRIPT is designed to be natural, open, and comprehen-
+sive across feedback types. We posit two use-cases of IN-
+TERSCRIPT on interactive graph correction and continuous
+learning that might signiﬁcantly advance the state-of-the-art
+in interactive learning.
+We believe this is a ﬁrst step towards the larger goal
+of developing interactive machine learning systems for the
+widespread structured prediction tasks.
+2 Related work
+Interactive Learning: Interactive learning involves a hu-
+man in the loop, as opposed to learning from datasets col-
+lected ofﬂine. Relevant approaches in NLP range from ac-
+tive learning (Raghavan 2006; Wu et al. 2019) to dialogue
+systems that adapt to user utterances, spanning diverse do-
+mains (Holzinger 2016). There are various modes of interac-
+tion (through labels (Raghavan 2006; Fails and Olsen 2003),
+utterance (Radlinski et al. 2019), imitation (Brantley, Sharaf,
+and Daum’e 2020), and language (Elgohary, Awadallah et al.
+2020)). Our work uses language as the mode of interaction.
+Language-based interactions: Natural language interac-
+tion allows for expressive human feedback to correct a
+model. In language-based interactions, controlled settings
+(Mehta and Goldwasser 2019; Wang, Liang, and Manning
+2016) give a better handle and are easy to evaluate. How-
+ever, they do not generalize to real-world settings – human
+feedback is rich, and it is not desirable to be restricted to a
+vocabulary. Finally, the model being taught is treated either
+as (i) a black box (as in machine teaching (Dasgupta et al.
+2019; Talmor et al. 2020)) or (ii) the beliefs of the model are
+in some form exposed to feedback (as in interactive semantic
+parsing (Elgohary et al. 2021)). These systems are typically
+enabled by an underlying dataset. This paper is uniquely po-
+sitioned because we present the ﬁrst dataset, which has real
+user interaction through language in a real-world, open do-
+main, structured prediction setting.
+Interactive Semantic Parsing: The common theme in
+prior approaches is based on interactive semantic parsing
+(such as Elgohary et al. (2021); Wang, Liang, and Man-
+ning (2016)). User feedback is mapped into structure edit
+commands, which can then be executed on the incorrectstructures to ﬁx it. For example, (Elgohary et al. 2021)
+presented NLE DITto ﬁx SQL queries using human feed-
+back such as: replace course id with program
+id.. However, the feedback is syntactic with a certain task-
+speciﬁc formal structure, e.g., NLE DITis known to struggle
+with natural feedback that does not describe an edit directly
+(Elgohary et al. 2021). Typically, rather than highlighting a
+problem or error, these data contain an answer to ﬁx the er-
+ror. This “answer containing” feedback is then parsed using
+semantic parsing techniques into a set of structure edit com-
+mands.
+Unlike NL-Edit, we do not make assumptions about the
+structure of the feedback. Moreover, we assume that the
+feedback would be non-actionable (pointing out some local
+or global error without providing a solution to ﬁx the error).
+This should especially hold with the growing complexity of
+the structure to give feedback because it is simpler for a hu-
+man to point to the problem rather than enumerate (in nat-
+ural language) the edits that might be required. Further, the
+feedback in our case is exchangeable. In NLE DITwhere the
+feedback is speciﬁc to a query and is grounded in a database
+schema. In contrast, the feedback in our case addresses a
+general (commonsense) error with the script, and applies to
+other scripts with similar issues
+3 Inspiration: Script generation
+Complex everyday events, such as visiting a restaurant, can
+typically be described as a sequence of distinct sub-events
+and actions. Scripts (Schank and Abelson 1975) are an efﬁ-
+cient way of capturing information about the sub-events and
+sequences that form a complex event. A prominent example
+of scripts in a modern context is their use in digital assistants
+like Siri, which organize common tasks such as setting up a
+reminder in script-like workﬂows (Zhang et al. 2021).
+The eventual goal of this line of work is, given a goal plan,
+to execute in a real-world or virtual environment such as AL-
+FRED (Shridhar et al. 2020). An intermediate step to reach
+there is to generate the script given a task such as “bake a
+cake”, “ﬁx a bike tire” or “fuel a car”.
+3.1 Script generation
+Formally, the script generation task (Sakaguchi et al. 2021)
+takes as input a scenario and generates a script G(V; E ),
+where Vis a set of essential events fv1; :::v i; :::v jVjgand
+Eis a set of temporal ordering constraints between events
+feijgwhich means that the events vimust precede the event
+vj(vivj). Partial ordering of events is possible, e.g., you
+can wear a left sock and a right sock in any temporal order.
+To solve this task, script generation models are required to
+generate events ( V) and predict the edges ( E) jointly. See
+Figure 2 for an example.
+PROSCRIPT gen(Sakaguchi et al. 2021) is a recently re-
+leased model that, given a goal, generates Vand predicts the
+edge structure Ejointly. It is based on the T5-XXL model
+(11B parameters) and generates the script as a graph in DOT
+format. The authors report that the DOT format is always
+valid at inference time and that Vand the graph structure are
+generally of high quality. They characterize the graph edits
+ﬁnd the cake recipegather the ingredientsturn on the ovenmix the ingredientsput the cake batter in the ovenbake for the right amount of timetake the cake out of the ovenScenario: bake a cakeFigure 2: An example of a script in Sakaguchi et al. (2021).
+In a script generation task, models take the goal as the input
+and generate a (possibly) partial-order graph, which consists
+of essential steps and their ordering.
+required to correct a generated script (such as removing a
+node, adding a node, changing edge order, etc.). Mechani-
+cal Turk workers were able to correct most of the generated
+scripts within a few edits (typically an edit distance of 5).
+This makes for an attractive use-case for interactive learning
+because the generated content from the model (i) is not com-
+pletely off and (ii) naturally exposes its belief/understanding
+of the goal through the edge structure, and a user can critique
+or provide feedback on this belief.
+3.2 Initial study
+How do the corrective edits typically look like? On Pro-
+Script’s test set, we performed inference using the released
+checkpoint (both GPT-2 and T5-XXL based model). We ran-
+domly sampled 30 generated graphs and manually wrote
+feedback for them (see Table 1). On average, there were
+about two mistakes present in the graphs. Often, the error
+was that the script was using an entity before having it (e.g.,
+write on the paper comes before the node ﬁnd the paper or
+reach for the paper). Thus, there seems to be a possibility
+of applying similar feedback to more than one example. We
+also found some cases where the script might have to be
+changed to adapt to special cases. For example, for a script
+visit Disneyland , an event obtain a visa might be required for
+some users. We believe the original ProScript dataset aims
+to generate widely applicable scripts and grounded in com-
+monsense; rather than cover all possible outcomes.
+3.3 Conclusions from the initial study
+On the surface, the generated scripts were of good quality.
+However, a closer look at the mistakes revealed that most
+of them could be attributed to the model lacking basic com-
+monsense. For example, Figure 1 shows a typical mistake
+the model makes. This underscores the gap between the syn-
+tax and semantic correctness of machine-generated output inWhat was the error General principle feedback
+Script was missing the step of
+not turning off the alarm after
+waking upPeople don’t leave their
+alarms ringing all day.
+Script mentioned coming
+to the doorway and passing
+through itOne cannot walk through the
+doorway without opening the
+door ﬁrst.
+Script tells that getting in car
+and drive in zoo can be done
+in any orderPeople must get into a vehicle,
+before driving to any place.
+Script is looking for a butter-
+ﬂy after placing itYou don’t need to look for a
+butterﬂy if it’s already in a
+container.
+Table 1: Sample feedback on the examples in the study.
+the context of automatic script generation. This observation
+is in-line with other NLP tasks (Bender and Koller 2020) that
+distinguish the success of recent models on the correctness
+of form rather than the far-from-over goal of understanding
+of meaning.
+We had two questions: (i) Is there a set of general com-
+monsense principles that the model fails to adhere to. (ii)
+How can the model incorporate simple feedback and im-
+prove? It is costly to retrain large LMs such as the T5-XXL
+model, and we hoped to make a new component that learns
+to take feedback from a user. However, we could not ﬁnd
+any dataset to solve such an interactive learning problem.
+Despite recent progress in synthetic or constrained settings,
+a real-world dataset in a structured prediction setting does
+not exist. Like with this example, structured prediction mod-
+els can generate inconsistent output, ignoring the structural
+complexity of human language. Their decoding is typically
+based on greedy or sample decoding, and structural incoher-
+ence is a possibility. If such a dataset exists with feedback
+on the generated structure, it would help improve structured
+outputs– a widespread problem. How can an end-user pro-
+vide feedback if a deployed structured prediction model gen-
+erates inconsistent output, ignoring the structural complexity
+of human language? This is an emerging topic with recent
+progress in synthetic or constrained settings, and the next
+big leap would require testing and tuning models in real-
+world settings. We present a new dataset, INTERSCRIPT ,
+containing user feedback on a deployed model that gener-
+ates complex everyday tasks. INTERSCRIPT2contains 8,466
+data points– the input is a possibly erroneous script and a
+user feedback and the output is a modiﬁed script. We posit
+two use-cases of INTERSCRIPT that might signiﬁcantly ad-
+vance the state-of-the-art in interactive learning.
+4 INTERSCRIPT collection
+We believe that an average user could point out mistakes in
+the generated scripts, as a majority of the errors in generated
+scripts are caused by a lack of basic commonsense (§3.2).
+Consequently, we designed a Mechanical Turk task to pro-
+2Code & data: https://anonymous.4open.science/r/interscript
+vide feedback on mistakes. A broad overview of the annota-
+tion process is shown in Figure 3.
+Figure 3: A broad overview of the annotation process. For
+actual annotation task (including the M-turk task template),
+see our code repository.
+Annotation Now we discuss our crowdsourcing setup to
+collect INTERSCRIPT . To maximize the opportunity to get
+more feedbacks for a predicted script, we ﬁltered a sub-
+set of the test set in ProScript where the human evaluated
+graph edit distance was likely to be high (i.e., there were
+likely to be more errors). The ProScript authors released the
+graph edit value for the set of test set samples they eval-
+uated. We performed inference using their released PRO-
+SCRIPT genmodel on those data points with high graph edit
+distance value (8). With this we collected about 400 (pre-
+dicted graph, expected gold graph) tuples. The ProScript pa-
+per describes that their expected gold graph is also imperfect
+and might contain about 20% noise. Nevertheless, having
+the gold reference graph guides and constrains an annotator
+about the common script for a scenario rather than the wide
+open space of solving the task using multiple potentially cor-
+rect scripts. (e.g., one could go to a zoo without driving the
+car by hiring a taxi and then they won’t need to drive or park
+the car). As mentioned in §3.2 our annotation process must
+focus on scripts that are widely applicable and grounded in
+commonsense.
+The annotators are shown the model-generated and ex-
+pected gold (reference) scripts, and are required to answer
+which script is worse and why. It is possible that the gold
+script is marked as worse. However, we later post-process
+and remove such cases, as our focus is to get errors on
+the generated scripts and not the manually created scripts.
+The annotators must point out an egregious mistake (e.g., an
+event or an edge that does not follow commonsense). They
+were asked to ignore grammatical and ﬂuency errors, and
+focus on critical errors of four types:
+Wrong ordering: the order in the sequence of steps is
+not correct (e.g., wearing shoes is described before wear-
+ing socks).
+Flexible ordering: some steps can be done in a ﬂexible
+order (e.g., you can wear left sock or right sock ﬁrst). A
+good script captures such ﬂexibility.
+Missing critical steps: a bad script might have missed
+critical steps (e.g., the script can say: “wait for a plane”
+followed by “get off the plane” – here an obvious step
+“get on the plane” is missing) . There is no strict deﬁni-tion for a critical step, so the annotators were instructed
+to use their commonsense judgment.
+Wrong step: a bad script might have irrelevant and
+wrong steps (e.g., the script describing “go to a party”
+might describe an irrelevant step such as read a book,
+open a book, etc.).
+For every data point, the annotators were asked to answer
+the following:
+1. Explicit feedback type-1: the error type (missing step,
+wrong step, wrong order, wrong partial order)
+2. Explicit feedback type-2: localize the error by providing
+the erroneous node or edge id
+3. Implicit feedback type-1: give feedback in a few words,
+explaining the error
+4. Implicit feedback type-2: An explanation of the error that
+would potentially make sense to a ﬁve-year-old. This was
+aimed to explain the feedback to gather the general prin-
+ciple behind the feedback.
+Figure 4 shows a sample of our Mechanical Turk task.
+Annotators were required to list only one critical error that
+they believe was most important. Each data point is anno-
+tated by three annotators, adding some diversity in the er-
+rors. The annotators were paid $15 an hour. Estimated time
+for completion of one script was 2 minutes. We monitored
+all the jobs via comments, and the annotators did not raise
+any concerns about the pay or the nature of the task or its
+difﬁculty.
+We measured the agreement on labels (which graph is
+worse), and on explicit feedback type-1 and type-2. It was
+difﬁcult to measure agreement on implicit feedback because
+it is not easy to perform binary comparison on the gener-
+ated text without accounting for linguistic variations. On the
+labels, the Fleiss Kappa agreement was 0.90 (almost perfect
+agreement) and on explicit feedback the agreement was 0.75
+Fleiss Kappa (substantial agreement). This also shows that
+there is some diversity in what the users perceive as a serious
+mistake in ybad.
+Eventually, we compiled these annotations into a dataset
+of 1,553 tuples of the type (explicit feedback
+type-1, explicit feedback type-2,
+implicit feedback type-1, implicit
+feedback type-2) .
+Distractor feedback We also add distractor feedbacks,
+these are cases when the feedback does not apply to the
+graph. This covers the real-world scenario when a user gives
+an irrelevant feedback, then an interactive model must be
+convinced that the feedback is not applicable. To do this, we
+ﬁnd the top-k neighbors of the input graph and rest of the
+graphs by encoding the graphs using Sentence transform-
+ers (Reimers and Gurevych 2019), and then compute cosine
+distance. To get irrelevant but lexically related feedback, we
+attached the feedback of the least similar example (at rank=k
+and k-1). By random sampling we manually found that k=4
+gives reasonable lexical similarity but the feedback are not
+applicable across the scripts. This subset gives us another
+approximately 2,026 instances.
+Figure 4: The mechanical turk page for annotation. We show the generated and the expected ProScript gold reference. The
+annotator must answer which script is worse and why. They must point out an egregious mistake (and not any trivial errors
+that have minor grammatical errors), and annotate: the error type (missing step, wrong step, wrong order, wrong partial order),
+localize the error by providing the node or edge id, and give feedback why it is wrong, and ﬁnally to gather the general principle
+behind the feedback they are asked to explain the feedback to a ﬁve-year-old.
+fbtype count example
+explicit fb
+type-11,553 Remove node ‘put the shirt on’
+explicit fb
+type-21,553 The following step is not right: put
+the shirt on
+implicit fb
+type-11,553 It tells you to iron your shirt while
+it’s still on your body.
+implicit fb
+type-21,553 If you hold a hot iron against the
+clothes you’re currently wearing,
+you’ll get terrible burns.
+distractor
+fb2,026 People do not use two scissors at a
+time, they simply use one
+shared fb 228 (illustrative) It tells you to iron your
+pant while it’s still on your body
+total 8,466 https://anonymous.4open.science/r/
+interscript/data.json
+Table 2: INTERSCRIPT dataset statistics.
+Shared feedback We often encounter recurring themes or
+nearly similar situations, and these pairs should share much
+of their feedback. For example, suppose the goal is to buy
+grocery and the generated graph is missing an important step
+like pay for the item. In that case, we can synthesize new
+examples from it by replacing “grocery” with “toilet paper”
+or “clothes” in the tuple ( ybad,fb,ygood). We manually label
+a subset of 50 examples by substituting a word in the goal
+and creating a new tuple.
+We compile these data points into 8,466 samples – each
+sample is a tuple ( ybad,fb,ygood). Table 2 breaks down the
+total number of samples by feedback type.
+We next describe two scenarios where it can potentially
+advance the ﬁeld.
+5 Potential Use Cases
+We outline two use cases of INTERSCRIPT that this dataset
+can potentially enable and advance interactive learning in
+real-world use cases.
+Use case 1: Learning to apply feedback The ﬁrst use
+case is in training a model that learns to react to user feed-
+back. The model can either apply the feedback or suggest
+that the feedback is not applicable. In a real-world structured
+prediction setting, such a system would be able to correct its
+answers even after deployment. There has been recent inter-
+est in this line of work, most recently with OpenAI instruct
+series3which are specialized to follow a user’s instructions.
+See Figure 5 for an illustrative example.
+Use case 2: Maintaining a memory of feedback. A
+system often encounters recurring themes or situations, or
+nearly similar situations, e.g., people must get into a vehicle
+before driving to any place. Many of the feedback in IN-
+TERSCRIPT are based on such general principles that allow
+the model to use feedback on one context in a different but
+similar context.
+3https://beta.openai.com/docs/engines/instruct-series-beta
+Figure 5: Use case 1: Learning to apply feedback.
+For example, consider a model-generated script for the
+goal put a bag in the trunk , where the model does not in-
+clude an event open the trunk in the generated script. If the
+model receives a feedback “cannot keep something if the
+container is closed” for this script, then this error situation
+is analogous to an error of suggesting to keep a pizza in the
+oven without opening the oven. If a model can maintain a
+memory of errors, it would be possible to envision a system
+that uses past failures in related error contextscontexts.
+Figure 6: Use case 2: Maintaining a memory of feedback.
+Such failure-driven reminding draws inspiration from the
+“recursive reminding” theory in psychology, which sug-
+gests that humans remember (in the episodic memory for
+an event) the context in which they made an error and the
+received correction. Humans think not only of the error but
+also of the surrounding context in which it was made and
+associate it with the correction. In line with this theory, a
+learner’s (model’s) mistakes and the feedback from the user
+could be in a learner’s memory. This will be one instance
+of a continuous learning model learning with our data (es-
+pecially the shared feedback subset). Figure 6 presents an
+illustrative example.
+6 Conclusion
+We presented INTERSCRIPT , the ﬁrst real-world dataset for
+interactive script generation, through error feedback. The
+dataset contains 8,466 data points with a rich hierarchy of
+feedback types. We outlined two use cases that this dataset
+can potentially enable. These use cases could advance inter-
+active machine learning, especially for very large language
+models that are difﬁcult to retrain after deployment.
+References
+Bender, E. M.; and Koller, A. 2020. Climbing towards NLU:
+On Meaning, Form, and Understanding in the Age of Data.
+InACL.
+Brantley, K.; Sharaf, A.; and Daum’e, H. 2020. Active Imi-
+tation Learning with Noisy Guidance. In ACL.
+Campos, J. A.; Otegi, A.; Etxabe, A. S.; Deriu, J.; Cieliebak,
+M.; and Agirre, E. 2019. Conversational QA for FAQs. In
+Conversational AI workshop at NeurIPS 2019 .
+Clark, P.; Tafjord, O.; and Richardson, K. 2020. Trans-
+formers as soft reasoners over language. arXiv preprint
+arXiv:2002.05867 .
+Dasgupta, S.; Hsu, D. J.; Poulis, S.; and Zhu, X. 2019.
+Teaching a black-box learner. In ICML .
+Elgohary, A.; Awadallah, A. H.; et al. 2020. Speak to
+your Parser: Interactive Text-to-SQL with Natural Language
+Feedback. In Proceedings of the 58th Annual Meeting of the
+Association for Computational Linguistics , 2065–2077.
+Elgohary, A.; Hosseini, S.; and Hassan Awadallah, A. 2020.
+Speak to your Parser: Interactive Text-to-SQL with Natu-
+ral Language Feedback. In Proceedings of the 58th Annual
+Meeting of the Association for Computational Linguistics ,
+2065–2077. Online: Association for Computational Linguis-
+tics.
+Elgohary, A.; Meek, C.; Richardson, M.; Fourney, A.;
+Ramos, G.; et al. 2021. NL-EDIT: Correcting semantic parse
+errors through natural language interaction. arXiv preprint
+arXiv:2103.14540 .
+Fails, J. A.; and Olsen, D. 2003. Interactive machine learn-
+ing. In IUI ’03 .
+Holzinger, A. 2016. Interactive machine learning for health
+informatics: when do we need the human-in-the-loop? Brain
+Informatics , 3: 119–131.
+Martins, A. F. T. 2020. DeepSPIN: Deep Structured Predic-
+tion for Natural Language Processing. In Proceedings of the
+22nd Annual Conference of the European Association for
+Machine Translation , 493–494.
+Mehta, N.; and Goldwasser, D. 2019. Improving Natu-
+ral Language Interaction with Robots Using Advice. In
+NAACL-HLT .
+Padmakumar, A.; Thomason, J.; Shrivastava, A.; Lange, P.;
+Narayan-Chen, A.; Gella, S.; Piramithu, R.; Tur, G.; and
+Hakkani-T ¨ur, D. Z. 2021. TEACh: Task-driven Embodied
+Agents that Chat. ArXiv , abs/2110.00534.
+Radlinski, F.; Balog, K.; Byrne, B.; and Krishnamoorthi,
+K. 2019. Coached Conversational Preference Elicitation: A
+Case Study in Understanding Movie Preferences. In SIG-
+dial.
+Raghavan, H. 2006. Active Learning with Feedback on Both
+Features and Instances. In JMLR ’06 .
+Reimers, N.; and Gurevych, I. 2019. Sentence-BERT:
+Sentence Embeddings using Siamese BERT-Networks. In
+Proceedings of the 2019 Conference on Empirical Meth-
+ods in Natural Language Processing and the 9th Interna-
+tional Joint Conference on Natural Language Processing(EMNLP-IJCNLP) , 3982–3992. Hong Kong, China: Asso-
+ciation for Computational Linguistics.
+Sakaguchi, K.; Bhagavatula, C.; Bras, R. L.; Tandon,
+N.; Clark, P.; et al. 2021. proScript: Partially Or-
+dered Scripts Generation via Pre-trained Language Models.
+arXiv:2104.08251.
+Schank, R. C.; and Abelson, R. P. 1975. Scripts, Plans and
+Knowledge. In IJCAI , 151–157.
+Shridhar, M.; Thomason, J.; Gordon, D.; Bisk, Y .; Han, W.;
+Mottaghi, R.; Zettlemoyer, L.; and Fox, D. 2020. ALFRED:
+A Benchmark for Interpreting Grounded Instructions for Ev-
+eryday Tasks. 2020 IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition (CVPR) , 10737–10746.
+Talmor, A.; Herzig, J.; Lourie, N.; and Berant, J. 2019. Com-
+monsenseQA: A Question Answering Challenge Targeting
+Commonsense Knowledge. In Proceedings of the 2019 Con-
+ference of the North American Chapter of the Association
+for Computational Linguistics: Human Language Technolo-
+gies, Volume 1 (Long and Short Papers) , 4149–4158. Min-
+neapolis, Minnesota: Association for Computational Lin-
+guistics.
+Talmor, A.; Tafjord, O.; Clark, P.; Goldberg, Y .; and Berant,
+J. 2020. Teaching Pre-Trained Models to Systematically
+Reason Over Implicit Knowledge. NeurIPS .
+Wang, A.; Singh, A.; Michael, J.; Hill, F.; Levy, O.; and
+Bowman, S. R. 2018. GLUE: A Multi-Task Benchmark
+and Analysis Platform for Natural Language Understanding.
+ArXiv , abs/1804.07461.
+Wang, S. I.; Liang, P.; and Manning, C. D. 2016. Learn-
+ing Language Games through Interaction. In Proceedings
+of the 54th Annual Meeting of the Association for Compu-
+tational Linguistics (Volume 1: Long Papers) , 2368–2378.
+Berlin, Germany: Association for Computational Linguis-
+tics.
+Wu, Y .; Xu, Y .; Singh, A.; Yang, Y .; and Dubrawski, A.
+2019. Active learning for graph neural networks via node
+feature propagation. arXiv preprint arXiv:1910.07567 .
+Zhang, Y .; Jauhar, S. K.; Kiseleva, J.; White, R.; and Roth,
+D. 2021. Learning to Decompose and Organize Com-
+plex Tasks. In Proceedings of the 2021 Conference of the
+North American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies , 2726–
+2735. Online: Association for Computational Linguistics.

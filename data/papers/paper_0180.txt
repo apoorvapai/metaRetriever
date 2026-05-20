@@ -1,0 +1,724 @@
+Title: Towards AI-Complete Question Answering: A Set of Prerequisite Toy Tasks
+
+arXiv:1502.05698v10  [cs.AI]  31 Dec 2015Underreviewasaconferencepaperat ICLR2016
+TOWARDS AI-COMPLETE QUESTION ANSWERING :
+A SET OFPREREQUISITE TOYTASKS
+JasonWeston,AntoineBordes, Sumit Chopra,AlexanderM. Ru sh,
+BartvanMerri ¨enboer,Armand Joulin& TomasMikolov
+FacebookAIResearch
+770Broadway
+NewYork,USA
+{jase,abordes,spchopra,tmikolov,sashar,bartvm }@fb.com
+ABSTRACT
+One long-term goal of machine learning research is to produc e methods that are
+applicable to reasoningand natural language,in particula r building an intelligent
+dialogue agent. To measure progress towards that goal, we ar gue for the use-
+fulness of a set of proxy tasks that evaluate reading compreh ension via question
+answering. Ourtasksmeasureunderstandinginseveralways : whetherasystemis
+abletoanswerquestionsviachainingfacts,simpleinducti on,deductionandmany
+more. The tasks are designed to be prerequisites for any syst em that aims to be
+capable of conversingwith a human. We believe many existing learning systems
+can currently not solve them, and hence our aim is to classify these tasks into
+skill sets, so that researchers can identify (and then recti fy) the failings of their
+systems. We also extendand improvethe recently introduced MemoryNetworks
+model,andshowitis abletosolvesome,butnotall,ofthetas ks.
+1 INTRODUCTION
+There is a rich history of the use of synthetic tasks in machin e learning, from the XOR problem
+which helped motivate neural networks (Minsky& Papert, 196 9; Rumelhartet al., 1985), to circle
+andringdatasetsthathelpedmotivatesomeofthemostwell- knownclusteringandsemi-supervised
+learning algorithms (Nget al., 2002; Zhuetal., 2003), Mack ey Glass equations for time series
+(M¨ ulleret al., 1997), and so on – in fact some of the well know n UCI datasets (Bache&Lichman,
+2013) are synthetic aswell (e.g., waveform ). Recent workcontinuesthistrend. For example,in the
+area of developing learning algorithms with a memory compon ent synthetic datasets were used to
+help developboth the Neural TuringMachineof Gravesetal. ( 2014) and the MemoryNetworksof
+Weston etal. (2014),thelatterofwhichisrelevanttothisw ork.
+Oneofthereasonsfortheinterestinsyntheticdataisthati tcanbeeasiertodevelopnewtechniques
+using it. It is well known that working with large amounts of r eal data (“big data”) tends to lead
+researchers to simpler models as “simple models and a lot of d ata trump more elaborate models
+based on less data” (Halevyet al., 2009). For example, N-gramsfor language modelingwork well
+relative to existing competing methods, but are far from bei ng a model that truly understands text.
+As researcherswe can become stuck in local minima in algorit hm space; developmentof synthetic
+dataisonewaytotryandbreakoutofthat.
+In this work we proposea frameworkand a set of synthetictask s for the goal of helpingto develop
+learning algorithms for text understanding and reasoning. While it is relatively difﬁcult to auto-
+matically evaluate the performanceof an agent in general di alogue – a long term-goal of AI – it is
+relatively easy to evaluate responses to input questions, i .e., the task of question answering (QA).
+Questionansweringis incrediblybroad: moreor less anytas k onecan thinkofcan be cast into this
+setup. Thisenablesustoproposeawiderangingsetofdiffer enttasks,thattestdifferentcapabilities
+oflearningalgorithms,undera commonframework.
+Our tasks are built with a uniﬁed underlying simulation of a p hysical world, akin to a classic text
+adventuregame(Montfort,2005)wherebyactorsmovearound manipulatingobjectsandinteracting
+1
+Underreviewasaconferencepaperat ICLR2016
+witheachother. Asthesimulationruns,groundedtextandqu estionanswerpairsaresimultaneously
+generated. Our goal is to categorize different kinds of questions into skill sets, which become our
+tasks. Our hope is that the analysis of performance on these t asks will help expose weaknesses of
+currentmodelsandhelpmotivatenewalgorithmdesignsthat alleviatetheseweaknesses. Wefurther
+envision this as a feedback loop where new tasks can then be de signed in response, perhaps in an
+adversarialfashion,inordertobreakthenewmodels.
+ThetaskswedesignaredetailedinSection3,andthesimulat ionusedtogeneratetheminSection4.
+InSection5wegivebenchmarkresultsofstandardmethodson ourtasks,andanalysetheirsuccesses
+and failures. In order to exemplify the kind of feedback loop between algorithm development and
+taskdevelopmentweenvision,inSectionAweproposeasetof improvementstotherecentMemory
+Network method, which has shown to give promising performan ce in QA. We show our proposed
+approachdoesindeedgiveimprovedperformanceonsometask s,butisstillunabletosolvesomeof
+them,whichwe considerasopenproblems.
+2 RELATEDWORK
+SeveralprojectstargetinglanguageunderstandingusingQ A-basedstrategieshaverecentlyemerged.
+Unlike tasks like dialogue or summarization, QA is easy to ev aluate (especially in true/false or
+multiple choice scenarios) and hence makes it an appealing r esearch avenue. The difﬁculty lies in
+the deﬁnitionof questions: they mustbe unambiguouslyansw erablebyadult humans(or children),
+but still require some thinking. The Allen Institute for AI ’s ﬂagship project ARISTO1is organized
+aroundacollectionofQAtasksderivedfromincreasinglydi fﬁcultscienceexams,atthe4th,8th,and
+12thgradelevels. Richardsonetal.(2013)proposedthe MCTest2asetof660storiesandassociated
+questions intended for research on the machine comprehensi on of text. Each question requires the
+readertounderstanddifferentaspectsofthe story.
+These two initiatives go in a promising direction but interp reting the results on these benchmarks
+remaincomplicated. Indeed,nosystemhasyetbeenabletofu llysolvetheproposedtasksandsince
+many sub-tasks need to be solved to answer any of their questi ons (coreference, deduction, use of
+common-sense, etc.), it is difﬁcult to clearly identify cap abilities and limitations of these systems
+and hence to propose improvementsand modiﬁcations. As a res ult, conclusions drawn from these
+projectsare not muchclearerthanthat comingfrommoretrad itionalworksonQA overlarge-scale
+KnowledgeBases(Berantet al.,2013;Faderetal.,2014). Be sides,thebestperformingsystemsare
+based on hand-crafted patterns and features, and/or statis tics acquired on very large corpora. It is
+difﬁculttoarguethatsuchsystemsactuallyunderstandlan guageandarenotsimplylightupgradesof
+traditional information extraction methods (Yaoet al., 20 14). The system of Berantetal. (2014) is
+moreevolvedsinceitbuildsastructuredrepresentationof atextandofaquestiontoanswer. Despite
+itspotentialthismethodremainshighlydomainspeciﬁc and reliesonalot ofpriorknowledge.
+Based on these observations, we chose to conceive a collecti on of much simpler QA tasks, with
+the main objective that failure or success of a system on any o f them can unequivocally provide
+feedbackonitscapabilities. Inthat,weareclosetothe WinogradSchemaChallenge Levesqueetal.
+(2011), which is organized around simple statements follow ed by a single binary choice question
+such as: “ Joan made sure to thank Susan for all the help she had received . Who had received the
+help? Joan or Susan? ”. In this challenge, and our tasks, it is straightforward to interpret results.
+Yet, where the Winograd Challenge is mostly centered around evaluating if systems can acquire
+and make use of background knowledge that is not expressed in the words of the statement, our
+tasks are self-contained and are more diverse. By self-cont ained we mean our tasks come with
+both training data and evaluation data, rather than just the latter as in the case of ARISTOand the
+Winograd Challenge. MCTesthas a train/test split but the training set is likely too smal l to capture
+all the reasoning needed to do well on the test set. In our setu p one can assess the amount of
+training examples needed to perform well (which can be incre ased as desired) and commonsense
+knowledgeandreasoningrequiredforthetestsetshouldbec ontainedinthetrainingset. Intermsof
+diversity,someofourtasksarerelatedtoexistingsetupsb utwealsoproposemanyadditionalones;
+tasks8and9 areinspiredbypreviousworkonlambdadependen cy-basedcompositionalsemantics
+(Lianget al.,2013;Liang,2013)forinstance. Forus,eacht askchecksoneskillthatthesystemmust
+1http://allenai.org/aristo.html
+2http://research.microsoft.com/mct
+2
+Underreviewasaconferencepaperat ICLR2016
+haveandwe postulatethatperformingwellonall ofthemisa p rerequisiteforanysystemaimingat
+fulltextunderstandingandreasoning.
+3 THETASKS
+Principles Our main idea is to provide a set of tasks, in a similar way to ho w software testing
+is built in computer science. Ideally each task is a “leaf” te st case, as independent from oth-
+ers as possible, and tests in the simplest way possible one as pect of intended behavior. Subse-
+quent (“non-leaf”) tests can build on these by testing combi nations as well. The tasks are pub-
+licly available at http://fb.ai/babi . Source code to generate the tasks is available at
+https://github.com/facebook/bAbI-tasks .
+Eachtaskprovidesasetoftrainingandtestdata,withthein tentionthatasuccessfulmodelperforms
+well on test data. FollowingWeston et al. (2014), the superv isionin the training set is given by the
+true answers to questions, and the set of relevantstatements for answering a given question, which
+may or may not be used by the learner. We set up the tasks so that correct answers are limited to a
+single word ( Q: Where is Mark? A: bathroom ), or else a list of words ( Q: What is Mark holding? )
+asevaluationis thenclear-cut,andismeasuredsimplyasri ghtorwrong.
+All of the tasks are noiseless and a human able to read that lan guage can potentially achieve 100%
+accuracy. We tried to choosetasks that are naturalto a human : theyare based onsimple usual situ-
+ationsand no backgroundin areas such as formalsemantics, m achinelearning,logic or knowledge
+representationisrequiredforanadulttosolvethem.
+The data itself is producedusing a simple simulation of char acters and objects moving around and
+interacting in locations, described in Section 4. The simul ation allows us to generate data in many
+different scenarios where the true labels are known by groun dingto the simulation. For each task,
+we describe it by giving a small sample of the dataset includi ng statements, questions and the true
+labels(inred)inTables1and2.
+Single Supporting Fact Task 1 consistsof questionswherea previouslygivensingle supporting
+fact, potentiallyamongst a set of other irrelevantfacts, p rovidesthe answer. We ﬁrst test one of the
+simplestcasesofthis,byaskingforthelocationofaperson ,e.g.“Marytravelledtotheofﬁce. Where
+isMary?” . ThiskindoftaskwasalreadyemployedinWestonet al.(2014 ). Itcanbeconsideredthe
+simplest caseofsomerealworldQA datasetssuchasinFadere t al.(2013).
+TwoorThreeSupportingFacts Ahardertaskistoanswerquestionswheretwosupportingsta te-
+mentshavetobechainedtoanswerthequestion,asin task2,w heretoanswerthequestion “Where
+is the football?” one has to combine information from two sentences “John is in the playground”
+and“Johnpickedupthefootball” . Again,thiskindoftaskwasalreadyusedinWestonet al.(20 14).
+Similarly, one can make a task with three supporting facts, g iven in task 3, whereby the ﬁrst three
+statementsareall requiredtoanswerthequestion“Wherewa stheapplebeforethekitchen?”.
+TwoorThreeArgumentRelations Toanswerquestionstheabilitytodifferentiateandrecogn ize
+subjects and objects is crucial. In task 4 we consider the ext reme case where sentences feature re-
+ordered words, i.e. a bag-of-words will not work. For exampl e, the questions “What is north of
+the bedroom?” and“What is the bedroom north of?” have exactly the same words, but a different
+order, with different answers. A step further, sometimes on e needs to differentiate three separate
+arguments. Task 5 involves statements like “Jeff was given the milk by Bill” and then queries who
+isthegiver,receiverorwhichobjectisinvolved.
+Yes/NoQuestions Task6tests,onsomeofthesimplestquestionspossible(spe ciﬁcally,oneswith
+a single supportingfact), the ability of a model to answer tr ue/false type questions like “Is John in
+theplayground?” .
+Counting and Lists/Sets Task 7 tests the ability of the QA system to perform simple cou nting
+operations,by asking about the numberof objects with a cert ain property,e.g. “How many objects
+isDanielholding?” . Similarly,task8teststheabilitytoproduceasetofsingl ewordanswersinthe
+formofa list, e.g. “WhatisDanielholding?” . ThesetaskscanbeseenasQA tasksrelatedtobasic
+databasesearchoperations.
+3
+Underreviewasaconferencepaperat ICLR2016
+Table1: Samplestatementsandquestionsfromtasks1to10.
+Task1: SingleSupportingFact Task2: TwoSupportingFacts
+Mary went tothe bathroom. John isinthe playground.
+John moved tothe hallway. John picked upthe football.
+Mary travelledtothe ofﬁce. Bobwent tothe kitchen.
+Where isMary? A:ofﬁce Where isthe football? A:playground
+Task3: ThreeSupportingFacts Task4: TwoArgument Relations
+John picked up the apple. The ofﬁce isnorth of the bedroom.
+John went tothe ofﬁce. The bedroom is northof the bathroom.
+John went tothe kitchen. The kitchen iswest of the garden.
+John dropped the apple. What isnorthof the bedroom? A: ofﬁce
+Where was the apple before the kitchen? A:ofﬁce What isthe bedroom north of? A: bathroom
+Task5: ThreeArgument Relations Task6: Yes/NoQuestions
+Mary gavethe cake toFred. John moved tothe playground.
+Fredgave the cake toBill. Daniel went tothe bathroom.
+Jeff was given the milkbyBill. John went back tothe hallway.
+Whogave the cake toFred? A:Mary Is Johninthe playground? A:no
+WhodidFredgive the cake to? A:Bill Is Daniel inthe bathroom? A:yes
+Task7: Counting Task8: Lists/Sets
+Daniel picked up the football. Daniel picks up the football.
+Daniel dropped the football. Daniel drops the newspaper.
+Daniel got the milk. Daniel picks up the milk.
+Daniel took the apple. John tookthe apple.
+How many objects is Daniel holding? A: two What isDaniel holding? milk,football
+Task9: SimpleNegation Task10: IndeﬁniteKnowledge
+Sandra travelledtothe ofﬁce. John iseither inthe classroom or the playground.
+Fredisno longer inthe ofﬁce. Sandra is inthe garden.
+Is Fredinthe ofﬁce? A:no Is Johninthe classroom? A:maybe
+Is Sandra inthe ofﬁce? A:yes Is Johninthe ofﬁce? A:no
+Simple Negation and Indeﬁnite Knowledge Tasks 9 and 10 test slightly more complex natural
+languageconstructs. Task 9testsoneofthesimplest formso fnegation,thatofsupportingfactsthat
+imply a statement is false e.g. “Fred is no longer in the ofﬁce” rather than “Fred travelled to the
+ofﬁce”. (In this case, task 6 (yes/no questions) is a prerequisite t o the task.) Task 10 tests if we
+can model statements that describe possibilities rather th an certainties, e.g. “John is either in the
+classroom or the playground.” , where in that case the answer is “maybe” to the question “Is John
+inthe classroom?” .
+Basic Coreference, Conjunctions and Compound Coreference Task 11 tests the simplest type
+of coreference,that of detectingthe nearest referent,e.g .“Daniel was in the kitchen. Then he went
+to the studio.” . Real-world data typically addresses this as a labeling pro blem and studies more
+sophisticated phenomena (Soonet al., 2001), whereas we eva luate it as in all our other tasks as a
+question answering problem. Task 12 (conjunctions)tests r eferring to multiple subjects in a single
+statement, e.g. “Mary and Jeff went to the kitchen.” . Task 13 tests coreference in the case where
+thepronouncanrefertomultipleactors,e.g. “DanielandSandrajourneyedtotheofﬁce. Thenthey
+went tothegarden” .
+Time Reasoning While our tasks so far have included time implicitly in the orderof the state-
+ments, task 14 tests understanding the use of time expressio ns within the statements, e.g. “In the
+afternoon Julie went to the park. Yesterday Julie was at scho ol.”, followed by questions about the
+orderofeventssuchas “WherewasJuliebeforethepark?” . Real-worlddatasetsaddressthetaskof
+evaluating time expressions typically as a labeling, rathe r than a QA task, see e.g. UzZamanetal.
+(2012).
+Basic Deduction and Induction Task 15 tests basic deduction via inheritance of properties , e.g.
+“Sheep are afraid of wolves. Gertrude is a sheep. What is Gert rude afraid of?” . Task 16 similarly
+4
+Underreviewasaconferencepaperat ICLR2016
+Table 2: Samplestatementsandquestionsfromtasks11to20.
+Task11: Basic Coreference Task 12: Conjunction
+Daniel was inthe kitchen. Mary andJeff went tothe kitchen.
+Thenhe went tothe studio. Then Jeffwent tothe park.
+Sandra was inthe ofﬁce. Where is Mary? A:kitchen
+Where isDaniel? A:studio Where is Jeff? A:park
+Task13: CompoundCoreference Task 14: Time Reasoning
+Daniel and Sandra journeyed tothe ofﬁce. Inthe afternoon Julie went tothe park.
+Thenthey went tothe garden. YesterdayJulie was at school.
+Sandra and John travelledtothe kitchen. Julie went tothe cinema this evening.
+After thattheymoved tothe hallway. Where didJulie goafter the park? A:cinema
+Where isDaniel? A:garden Where was Julie before the park? A:school
+Task15: Basic Deduction Task 16: Basic Induction
+Sheepare afraidof wolves. Lilyisa swan.
+Cats are afraidofdogs. Lilyiswhite.
+Mice are afraidof cats. Bernhard is green.
+Gertrude is a sheep. Gregis a swan.
+What isGertrude afraidof? A:wolves What color is Greg? A:white
+Task17: PositionalReasoning Task 18: Size Reasoning
+The triangle is tothe right of the blue square. The football ﬁtsinthe suitcase.
+The redsquare ison topof the blue square. The suitcase ﬁtsinthe cupboard.
+The redsphere istothe right of the blue square. The box issmaller thanthe football.
+Is the redsphere tothe right of the blue square? A:yes Willthe box ﬁtinthe suitcase? A:yes
+Is the redsquare tothe left of the triangle? A:yes Willthe cupboard ﬁtinthe box? A:no
+Task19: Path Finding Task 20: Agent’s Motivations
+The kitchen isnorth of the hallway. John is hungry.
+The bathroom is westof the bedroom. John goes tothe kitchen.
+The den iseast of the hallway. John grabbed the apple there.
+The ofﬁce is southof the bedroom. Daniel is hungry.
+How do yougo from dentokitchen? A: west,north Where does Daniel go? A:kitchen
+How do yougo from ofﬁce tobathroom? A: north, west WhydidJohn gotothe kitchen? A:hungry
+tests basic induction via inheritance of properties. A full analysis of induction and deduction is
+clearlybeyondthescopeofthiswork,andfuturetasksshoul danalysefurther,deeperaspects.
+Positional and Size Reasoning Task 17 tests spatial reasoning, one of many components of th e
+classical SHRDLU system (Winograd, 1972) by asking questio ns about the relative positions of
+colored blocks. Task 18 requires reasoning about the relati ve size of objects and is inspired by the
+commonsensereasoningexamplesintheWinogradschemachal lenge(Levesqueetal., 2011).
+Path Finding The goal of task 19 is to ﬁnd the path between locations: given the description
+of various locations, it asks: how do you get from one to anoth er? This is related to the work of
+Chen&Mooney(2011) andeffectivelyinvolvesasearchprobl em.
+Agent’s Motivations Finally, task 20 questions, in the simplest way possible, whyan agent per-
+formsanaction. Itaddressesthecaseofactorsbeingina giv enstate (hungry,thirsty,tired,...) and
+theactionstheythentake,e.g. itshouldlearnthathungryp eoplemightgotothekitchen,andsoon.
+As already stated, these tasks are meant to foster the develo pment and understanding of machine
+learning algorithms. A single model should be evaluated acr oss all the tasks (not tuning per task)
+andthenthe samemodelshouldbe testedonadditionalreal-w orldtasks.
+In our data release, in addition to providing the above 20 tas ks in English, we also provide them
+(i) in Hindi; and (ii) with shufﬂed English words so they are n o longer readable by humans. A
+good learning algorithm should perform similarly on all thr ee, which would likely not be the case
+for a method using external resources, a setting intended to mimic a learner being ﬁrst presented a
+languageandhavingto learnfromscratch.
+5
+Underreviewasaconferencepaperat ICLR2016
+4 SIMULATION
+All our tasks are generated with a simulation which behaves l ike a classic text adventure game.
+The idea is that generating text within this simulation allo ws us to ground the language used into
+a coherent and controlled (artiﬁcial) world. Our simulatio n follows those of Bordeset al. (2010);
+Weston etal. (2014)butissomewhatmorecomplex.
+The simulated world is composedof entities of varioustypes (locations,objects, persons. etc.) and
+ofvariousactionsthatoperateontheseentities. Entities haveinternalstates: theirlocation,whether
+they carry objects on top or inside them (e.g., tables and box es), the mental state of actors (e.g.
+hungry),aswell aspropertiessuchassize,color,andedibi lity. Forlocations,the nearbyplacesthat
+are connected (e.g. what lies to the east, or above) are encod ed. For actors, a set of pre-speciﬁed
+rulesperactorcanalsobespeciﬁedtocontroltheirbehavio r,e.g. iftheyarehungrytheymaytryto
+ﬁndfood. Randomvalidactionscanalsobeexecutedifnorule isset,e.g. walkingaroundrandomly.
+The actions an actor can execute in the simulation consist of the following: go<location>,get
+<object>,get<object1>from<object2>,put<object1>in/on<object2>,give<object>to
+<actor>,drop<object>,set<entitity> <state>,look,inventory andexamine<object>. A set
+of universal constraints is imposed on those actions to enfo rce coherence in the simulation. For
+example an actor cannot get something that they or someone el se already has, they cannot go to a
+place that isnot connectedto the currentlocation,cannotd ropsomethingthey donot alreadyhave,
+and so on. Using the underlying actions, rules for actors, an d their constraints, deﬁnes how actors
+act. Foreachtaskwe limittheactionsneededforthattask,e .g. task1onlyneeds gowhereastask2
+usesgo,getanddrop. If we write the commandsdownthis givesus a verysimple “sto ry” which is
+executablebythesimulation,e.g., joegoplayground;bobgoofﬁce;joeget football . Thisexample
+corresponds to task 2. The system can then ask questions abou t the state of the simulation e.g.,
+where john? ,where football? and so on. It is easy to calculate the true answers for these qu estions
+aswehaveaccesstotheunderlyingworld.
+Toproducemorenaturallookingtextwithlexicalvarietyfr omstatementsandquestionsweemploya
+simpleautomatedgrammar. Eachverbisassignedasetofsyno nyms,e.g.,thesimulationcommand
+getisreplacedwitheither pickedup ,got,grabbedortook,anddropisreplacedwitheither dropped,
+left,discarded orputdown. Similarly,eachobjectandactorcanhaveasetofreplaceme ntsynonyms
+aswell,e.g. replacingDanielwith heintask11. Adverbsarecrucialforsometaskssuchasthetime
+reasoningtask14.
+There are a great many aspects of language not yet modeled. Fo r example, all sentences are so far
+relativelyshort and containlittle nesting. Further,the e ntities and the vocabularysize is small (150
+words,andtypically4actors,6locationsand3objectsused pertask). Thehopeisthatdeﬁningaset
+ofwelldeﬁnedtaskswillhelpevaluatemodelsinacontrolle dwaywithinthesimulatedenvironment,
+which is hard to do with real data. That is, these tasks are not a substitute for real data, but should
+complementthem,especiallywhendevelopingandanalysing algorithms.
+5 EXPERIMENTS
+We compared the following methods on our tasks (on the Englis h dataset): (i) an N-
+gram classiﬁer baseline, (ii) LSTMs (long short term memory Recurrent Neural Networks)
+(Hochreiter& Schmidhuber, 1997), (iii) Memory Networks (M emNNs) (Westonet al., 2014), (iv)
+some extensions of Memory Networks we will detail; and (v) a s tructured SVM that incorporates
+externallabeleddatafromexistingNLPtasks. Thesemodels belongtothreeseparatetracks. Weakly
+supervisedmodelsareonlygivenquestionanswerpairsattr ainingtime,whereasstrongsupervision
+provides the set of supporting facts at training time (but no t testing time) as well. Strongly super-
+vised ones give accuracy upper boundsfor weakly supervised models, i.e. the performanceshould
+besuperiorgiventhesamemodelclass. Methodsinthelastex ternalresourcestrackcanuselabeled
+datafromothersourcesratherthanjustthetrainingsetpro vided,e.g. coreferenceandsemanticrole
+labeling tasks, as well as strong supervision. For each task we use 1000questions for training, and
+1000 for testing, and report the test accuracy. We consider a task successfully passed if ≥95%
+accuracyis obtained3.
+3The choice of 95% (and1000 trainingexamples) isarbitrary.
+6
+Underreviewasaconferencepaperat ICLR2016
+Table3: Testaccuracy(%)onour 20Tasksforvarious methods (1000tr ainingexamples each). Ourproposed
+extensions toMemNNs are incolumns 5-9: with adaptive memor y (AM),N-grams (NG),nonlinear matching
+function (NL), and combinations thereof. Bold numbers indi cate tasks where our extensions achieve ≥95%
+accuracy but the original MemNN model of Westonet al. (2014) did not. The last two columns (10-11) give
+extra analysis of the MemNN
+AM +NG +NLmethod. Column 10 gives the amount of training data for each t ask needed to
+obtain≥95%accuracy, or FAILif this is not achievable with1000 training examples. The ﬁn al column gives
+the accuracy when trainingonalldata atonce, rather thanse parately.
+Weakly UsesExternal StrongSupervision
+Supervised Resources (usingsupportingfacts)
+TASK N-gramClassiﬁerLSTMStructuredSVMCOREF+SRL featuresMemNN
+Weston etal. (2014)MemNN
+ADAPTIVE MEMORYMemNN
+AM +N-GRAMSMemNN
+AM +NONLINEARMemNNAM +NG +NLNo. ofex. req.≥95
+MultiTask Training
+1-SingleSupportingFact 3650 99 100 100 100 100100250ex.100
+2-Two SupportingFacts 220 74 100 100 100 100100500ex.100
+3-ThreeSupportingFacts 720 17 20 100 99100100500ex.98
+4-Two Arg. Relations 5061 98 71 69100 73100500ex.80
+5-ThreeArg. Relations 2070 83 83 83 86 86981000 ex.99
+6-Yes/NoQuestions 4948 99 47 52 53100100500ex.100
+7-Counting 5249 69 68 78 86 8385FAIL 86
+8-Lists/Sets 4045 70 77 90 88 9491FAIL 93
+9-SimpleNegation 6264 100 65 71 63100100500ex.100
+10- IndeﬁniteKnowledge 4544 99 59 57 54 97981000 ex.98
+11- Basic Coreference 2972 100 100 100 100 100100250ex.100
+12- Conjunction 974 96 100 100 100 100100250ex.100
+13- CompoundCoref. 2694 99 100 100 100 100100250ex.100
+14- TimeReasoning 1927 99 99 100 99100 99500ex.99
+15- Basic Deduction 2021 96 74 73100 77100100ex.100
+16- Basic Induction 4323 24 27 100 100 100100100ex.94
+17- PositionalReasoning 4651 61 54 46 49 5765FAIL 72
+18- SizeReasoning 5252 62 57 50 74 54951000 ex.93
+19- PathFinding 08 49 0 9 31536FAIL 19
+20- Agent’sMotivations 7691 95 100 100 100 100100250ex.100
+MeanPerformance 3449 79 75 79 83 8793 10092
+Methods TheN-gram classiﬁer baseline is inspired by the baselines in Ric hardsonetal. (2013)
+but applied to the case of producing a 1-word answer rather th an a multiple choice question: we
+construct a bag-of- N-grams for all sentences in the story that share at least one w ord with the
+question,andthenlearna linearclassiﬁer to predictthean swerusingthosefeatures4.
+LSTMs are a popularmethodfor sequenceprediction(Sutskev eret al., 2014) and outperformstan-
+dardRNNs (RecurrentNeuralNetworks)fortaskssimilar to o urs(Weston etal., 2014). Theywork
+byreadingthestoryuntilthepointtheyreachaquestionand thenhavetooutputananswer. Notethat
+they are weakly supervised by answers only, and are hence at a disadvantagecompared to strongly
+supervisedmethodsormethodsthatuse externalresources.
+MemNNs (Weston et al., 2014) are a recently proposed class of models that have been shown to
+perform well at QA. They work by a “controller” neural networ k performing inference over the
+stored memories that consist of the previous statements in t he story. The original proposed model
+performs 2 hopsof inference: ﬁndingthe ﬁrst supportingfact with the maxim ummatch score with
+the question, and then the second supporting fact with the ma ximum match score with both the
+question and the ﬁrst fact that was found. The matching funct ion consists of mapping the bag-of-
+wordsforthequestionandfactsintoanembeddingspacebysu mmingwordembeddings. Theword
+embeddings are learnt using strong supervision to optimize the QA task. After ﬁnding supporting
+facts, a ﬁnal rankingis performedto rank possible response s(answer words) given those facts. We
+also considersomeextensionstothismodel:
+•Adaptive memories performing a variable number of hops rather than 2, the model is
+trainedtopredictahoporthespecial“STOP”class. Asimila rprocedurecanbeappliedto
+outputmultipletokensaswell.
+4Constructing N-grams from allsentences rather thanusing the ﬁlteredset g ave worse results.
+7
+Underreviewasaconferencepaperat ICLR2016
+•N-gramsWe triedusingabagof3-gramsratherthanabag-of-wordstor epresentthetext.
+Inbothcasestheﬁrst step oftheMemNNistoconvertthese int ovectorialembeddings.
+•Nonlinearity We apply a classical 2-layer neural network with tanh nonlin earity in the
+matchingfunction.
+MoredetailsofthesevariantsisgiveninSec A oftheappendi x.
+Finally, we built a classical cascade NLP system baseline us ing a structured support vector ma-
+chine (SVM), which incorporates coreference resolution an d semantic role labeling (SRL) prepro-
+cessing steps, which are themselves trained on large amount s of costly labeled data. The Stanford
+coreferencesystem(Raghunathanetal.,2010)andtheSENNA semanticrolelabeling(SRL)system
+(Collobertet al.,2011)areusedtobuildfeaturesforthein puttotheSVM,trainedwithstrongsuper-
+vision to ﬁnd the supportingfacts, e.g. features based on wo rds, word pairs, and the SRL verb and
+verb-argumentpairs. After ﬁnding the supporting facts, we build a similar structured SVM for the
+responsestage,withfeaturestunedforthatgoalaswell. Mo redetailsareinSec. Boftheappendix.
+Learning rates and other hyperparameters for all methods ar e chosen using the training set. The
+summaryofourexperimentalresultsonthetasksisgiveninT able3. Wegiveresultsforeachofthe
+20tasksseparately,aswell asmeanperformanceandnumbero ffailedtasksin theﬁnaltwo rows.
+Results StandardMemNNsgenerallyoutperformthe N-gramandLSTMbaselines,whichiscon-
+sistent with the results in Westonet al.(2014). However the y still “fail” at a number of tasks; that
+is, test accuracy is less than 95%. Some of these failures are expecteddue to insufﬁcient modeling
+power as described in more detail in Sec. A.1, e.g. k= 2facts, single word answers and bag-of-
+wordsdonotsucceedontasks3,4,5,7,8and18. However,ther ewerealsofailuresontaskswedid
+notatﬁrstexpect,forexampleyes/noquestions(6)andinde ﬁniteknowledge(10). Givenhindsight,
+we realize that the linear scoring function of standard MemN Ns cannot model the match between
+query,supportingfactanda yes/noanswerasthisrequirest hree-wayinteractions.
+Columns 5-9 of Table 3 give the results for our MemNN extensio ns: adaptive memories (AM),
+N-grams (NG) and nonlinearities (NL), plus combinationsthe reof. The adaptive approach gives a
+straight-forwardimprovementintasks3 and16 becausethey bothrequiremorethantwosupporting
+facts,andalsogives(small)improvementsin8 and19becaus etheyrequiremulti-wordoutputs(but
+still remain difﬁcult). We hence use the AM model in combinat ionwith all our other extensionsin
+thesubsequentexperiments.
+MemNNs with N-gram modeling yield clear improvements when word order mat ters, e.g. tasks
+4 and 15. However, N-grams do not seem to be a substitute for nonlinearities in th e embedding
+functionas the NL model outperforms N-gramson average, especially in the yes/no (6) and indef-
+inite tasks (10), as explained before. On the other hand, the NL method cannot model word order
+and so fails e.g., on task 4. The obvious step is thus to combin e these complimentary approaches:
+indeed AM+NG+NL (column 9) gives improvedresults over both , with a total of 9 tasks that have
+beenupgradedfromfailuretosuccesscomparedtothe origin alMemNNmodel.
+The structuredSVM, despite havingaccess to externalresou rces, doesnot performbetter, still fail-
+ing at 9 tasks. It does perform better than vanilla MemNNs (wi thout extensions) on tasks 6, 9 and
+10 where the hand-built feature conjunctions capture the ne cessary nonlinearities. However, com-
+pared to MemNN (AM+NG+NL) it seems to do signiﬁcantly worse o n tasks requiring three (and
+sometimes,two)supportingfacts(e.g. tasks3,16and2)pre sumablyasrankingoversomanypossi-
+bilitiesintroducesmoremistakes. However,itsnon-greed ysearchdoesseemtohelponothertasks,
+such as path ﬁnding (task 19) where search is very important. Since it relies on external resources
+speciﬁcally designedfor English,it is unsurethat it would performaswell on otherlanguages,like
+Hindi,wheresuchexternalresourcesmightbeofworsequali ty.
+The ﬁnal two columns (10-11) give further analysis of the AM+ NG+NL MemNN method. The
+secondto last column(10)showsthe minimumnumberof traini ngexamplesrequiredto achieve ≥
+95%accuracy,or FAILifthisisnotachievedwith1000examples. Thisisimportant asitisnotonly
+desirable to perform well on a task, but also using the fewest number of examples (to generalize
+well, quickly). Most succeeding tasks require 100-500 exam ples. Task 8 requires 5000 examples
+and 7 requires10000,hence theyare labeled as FAIL. The latter task can presumablybe solved by
+adding all the times an object is picked up, and subtracting t he times it is dropped, which seems
+8
+Underreviewasaconferencepaperat ICLR2016
+possible for an MemNN, but it does not do perfectly. Two tasks , positional reasoning 17 and path
+ﬁnding19 cannotbe solved evenwith 10000examples,it seems those (andindeedmore advanced
+formsof inductionand deduction,which we plan to build) req uirea generalsearch algorithmto be
+builtintotheinferenceprocedure,whichMemNN(andthe oth erapproachestried)arelacking.
+The last column shows the performance of AM+NG+NL MemNNs whe n training on allthe tasks
+jointly,ratherthanjustonasingleone. Theperformanceis generallyencouraginglysimilar,showing
+suchamodelcanlearnmanyaspectsoftextunderstandingand reasoningsimultaneously. Themain
+issuesarethatthesemodelsstillfailonseveralofthetask s,anduseafarstrongerformofsupervision
+(usingsupportingfacts) thanistypicallyrealistic.
+6 DISCUSSION
+A prerequisite set We developeda set of tasks that we believe are a prerequisite to full language
+understanding and reasoning. While any learner that can sol ve these tasks is not necessarily close
+to full reasoning, if a learner fails on any of our tasks then t here are likely real-world tasks that it
+will failontoo(i.e.,real-worldtasksthatrequirethesam ekindofreasoning). Evenifthesituations
+andthelanguageofthetasksareartiﬁcial,we believethatt hemechanismsrequiredto learnhowto
+solvethemarepartofthe keytowardstextunderstandingand reasoning.
+A ﬂexible framework This set of tasks is not a deﬁnitive set. The purpose of a simul ation-based
+approachis to provideﬂexibility andcontrolof the tasks’ c onstruction. We groundedthe tasks into
+language because it is then easier to understand the usefuln ess of the tasks and to interpret their
+results. However, our primary goal is to ﬁnd models able to le arn to detect and combine patterns
+in symbolic sequences. One might even want to decrease the in trinsic difﬁculty by removing any
+lexical variability and ambiguity and reason only over bare symbols, stripped down from their lin-
+guistic meaning. One could also decorrelatethe long-termm emoryfrom the reasoningcapabilities
+of systems by, for instance, arranging the supporting facts closer to the questions. In the opposing
+view, one could instead want to transform the tasks into more realistic stories using annotators or
+more complex grammars. The set of 20 tasks presented here is a subset of what can be achieved
+with a simulation. We chose them because they offer a variety of skills that we would like a text
+reasoning model to have, but we hope researchers from the com munity will develop more tasks of
+varyingcomplexityinordertodevelopandanalyzemodelsth attrytosolvethem. Transferlearning
+across tasks is also a very important goal, beyond the scope o f this paper. We have thus made the
+simulatorandcodeforthetaskspubliclyavailableforthos epurposes.
+Testing learningmethods Our tasksare designedasa test-bedforlearningmethods: we provide
+training and test sets because we intend to evaluate the capa bility of models to discover how to
+reason from patterns hidden within them. It could be temptin g to hand-code solutions for them or
+touseexistinglarge-scaleQAsystemslikeCyc(Curtiset al .,2005). Theymightsucceedat solving
+them, even if our structured SVM results (a cascaded NLP syst em with hand-built features) show
+thatthisis notstraightforward;howeverthisisnotthe tas ks’purposesince thoseapproacheswould
+not be learningto solve them. Our experimentsshow that some existingmachine learningmethods
+aresuccessfulonsomeofthetasks,inparticularMemoryNet works,forwhichweintroducedsome
+useful extensions(in Sec. A). However,those modelsstill f ail on several of the tasks, and use a far
+strongerformofsupervision(usingsupportingfacts)than istypicallyrealistic.
+These datasets are not yet solved. Future research should ai m to minimize the amount of required
+supervision,as well as the numberof trainingexamplesneed edto solve a new task, to movecloser
+to the task transfer capabilities of humans. That is, in the w eakly supervised case with only 1000
+training examples or less there is no known general (i.e. non -hand engineered) method that solves
+the tasks. Further, importantly, our hope is that a feedback loop of developing more challenging
+tasks, andthenalgorithmsthatcansolvethem,leadsusto fr uitfulresearchdirections.
+Notethatthesetasksarenotasubstituteforrealdata,buts houldcomplementthem,especiallywhen
+developing and analysing algorithms. There are many comple mentary real-world datasets, see for
+example Hermannet al. (2015); Bordeset al. (2015); Hill et a l. (2015). That is, even if a method
+workswell onour20tasks,it shouldbeshowntobeusefulonre aldataaswell.
+9
+Underreviewasaconferencepaperat ICLR2016
+Impact Since being online, the bAbI tasks have already directly inﬂ uenced the development
+of several promising new algorithms, including weakly supe rvised end-to-end Memory Networks
+(MemN2N) of Sukhbaataret al. (2015), Dynamic Memory Networ ks of Kumaret al. (2015), and
+the Neural Reasoner (Penget al., 2015). MemN2N has since bee n shown to performwell on some
+real-worldtasks(Hillet al., 2015).
+REFERENCES
+Bache, K. and Lichman, M. UCI machine learning repository, 2 013. URL
+http://archive.ics.uci.edu/ml .
+Berant,Jonathan,Chou,Andrew,Frostig,Roy,andLiang,Pe rcy. Semanticparsingonfreebasefrom
+question-answerpairs. In EMNLP, pp.1533–1544,2013.
+Berant, Jonathan, Srikumar, Vivek, Chen, Pei-Chun, Huang, Brad, Manning, Christopher D, Van-
+derLinden,Abby,Harding,Brittany,andClark,Peter. Mode lingbiologicalprocessesforreading
+comprehension. In Proc.EMNLP , 2014.
+Bordes, Antoine, Usunier, Nicolas, Collobert, Ronan, and W eston, Jason. Towards understanding
+situatednaturallanguage. In AISTATS,2010.
+Bordes,Antoine,Usunier,Nicolas,Chopra,Sumit,andWest on, Jason. Large-scalesimplequestion
+answeringwithmemorynetworks. arXivpreprintarXiv:1506.02075 ,2015.
+Chen,David L andMooney,RaymondJ. Learningto interpretna turallanguagenavigationinstruc-
+tionsfromobservations. SanFrancisco,CA , pp.859–865,2011.
+Collobert,Ronan, Weston, Jason, Bottou, L´ eon,Karlen,Mi chael, Kavukcuoglu,Koray,andKuksa,
+Pavel. Natural language processing (almost) from scratch. The Journal of Machine Learning
+Research,12:2493–2537,2011.
+Curtis,Jon,Matthews,Gavin,andBaxter,David. Ontheeffe ctiveuseofcycinaquestionanswering
+system. In IJCAI Workshop on Knowledge and Reasoning for Answering Que stions, pp. 61–70,
+2005.
+Fader,Anthony,Zettlemoyer,Luke,andEtzioni,Oren. Para phrase-drivenlearningforopenquestion
+answering. In ACL,pp.1608–1618,2013.
+Fader, Anthony, Zettlemoyer, Luke, and Etzioni, Oren. Open question answering over curated and
+extracted knowledge bases. In Proceedings of the 20th ACM SIGKDD international conferenc e
+onKnowledgediscoveryanddatamining ,pp.1156–1165.ACM,2014.
+Graves, Alex, Wayne, Greg, and Danihelka, Ivo. Neural turin g machines. arXiv preprint
+arXiv:1410.5401 ,2014.
+Halevy,Alon,Norvig,Peter,andPereira,Fernando. Theunr easonableeffectivenessofdata. Intelli-
+gentSystems,IEEE ,24(2):8–12,2009.
+Hermann, Karl Moritz, Koˇ cisk´ y, Tom´ aˇ s, Grefenstette, E dward, Espeholt, Lasse, Kay, Will,
+Suleyman, Mustafa, and Blunsom, Phil. Teaching machines to read and compre-
+hend. In Advances in Neural Information Processing Systems (NIPS) , 2015. URL
+http://arxiv.org/abs/1506.03340 .
+Hill, Felix,Bordes,Antoine,Chopra,Sumit,andWeston, Ja son. Thegoldilocksprinciple: Reading
+children’sbookswith explicitmemoryrepresentations. arXivpreprintarXiv:1511.02301 ,2015.
+Hochreiter, Sepp and Schmidhuber, J¨ urgen. Long short-ter m memory. Neural computation , 9(8):
+1735–1780,1997.
+Kumar, Ankit, Irsoy, Ozan, Su, Jonathan, Bradbury, James, E nglish, Robert, Pierce, ˜Brian, On-
+druska, Peter, Gulrajani, Ishaan, and Socher, Richard. Ask me anything: Dynamic memory net-
+worksfornaturallanguageprocessing. http://arxiv.org/abs/1506.07285 ,2015.
+10
+Underreviewasaconferencepaperat ICLR2016
+Levesque, Hector J, Davis, Ernest, and Morgenstern, Leora. The winograd schema challenge. In
+AAAISpringSymposium: LogicalFormalizationsof Commonse nseReasoning ,2011.
+Liang,Percy.Lambdadependency-basedcompositionalsema ntics.arXivpreprintarXiv:1309.4408 ,
+2013.
+Liang,Percy,Jordan,MichaelI,andKlein,Dan. Learningde pendency-basedcompositionalseman-
+tics.ComputationalLinguistics ,39(2):389–446,2013.
+Minsky,MarvinandPapert,Seymour. Perceptron: anintrodu ctionto computationalgeometry. The
+MIT Press, Cambridge,expandededition ,19:88,1969.
+Montfort,Nick. Twisty Little Passages: anapproachtointeractiveﬁction . Mit Press,2005.
+M¨ uller, K-R, Smola, Alex J, R¨ atsch, Gunnar,Sch¨ olkopf,B ernhard,Kohlmorgen,Jens, and Vapnik,
+Vladimir. Predicting time series with support vector machi nes. InArtiﬁcial Neural NetworksI-
+CANN’97 ,pp.999–1004.Springer,1997.
+Ng, Andrew Y, Jordan, Michael I, Weiss, Yair, et al. On spectr al clustering: Analysis and an algo-
+rithm.Advancesin neuralinformationprocessingsystems , 2:849–856,2002.
+Peng, Baolin, Lu, Zhengdong,Li, Hang, and Wong, Kam-Fai. To wards neural network-based rea-
+soning.arXivpreprintarXiv:1508.05508 ,2015.
+Raghunathan, Karthik, Lee, Heeyoung, Rangarajan, Sudarsh an, Chambers, Nathanael, Surdeanu,
+Mihai, Jurafsky, Dan, and Manning, Christopher. A multi-pa ss sieve for coreference resolution.
+InProceedings of the 2010 Conference on Empirical Methods in N atural Language Processing ,
+pp.492–501.AssociationforComputationalLinguistics,2 010.
+Richardson,Matthew, Burges,ChristopherJC, and Renshaw, Erin. Mctest: A challengedataset for
+theopen-domainmachinecomprehensionoftext. In EMNLP, pp.193–203,2013.
+Rumelhart,DavidE,Hinton,GeoffreyE,andWilliams,Ronal dJ. Learninginternalrepresentations
+byerrorpropagation. Technicalreport,DTICDocument,198 5.
+Soon, Wee Meng, Ng, Hwee Tou, and Lim, Daniel Chung Yong. A mac hine learning approach to
+coreferenceresolutionofnounphrases. Computationallinguistics ,27(4):521–544,2001.
+Sukhbaatar, Sainbayar, Szlam, Arthur, Weston, Jason, and F ergus, Rob. End-to-end memory net-
+works.ProceedingsofNIPS ,2015.
+Sutskever, Ilya, Vinyals, Oriol, and Le, Quoc VV. Sequence t o sequence learning with neural net-
+works. In AdvancesinNeuralInformationProcessingSystems , pp.3104–3112,2014.
+UzZaman, Naushad,Llorens, Hector, Allen, James, Derczyns ki, Leon,Verhagen,Marc, and Puste-
+jovsky, James. Tempeval-3: Evaluating events, time expres sions, and temporal relations. arXiv
+preprintarXiv:1206.5333 ,2012.
+Weston, Jason, Chopra, Sumit, and Bordes, Antoine. Memory n etworks. CoRR, abs/1410.3916,
+2014.
+Winograd,Terry. Understandingnaturallanguage. Cognitivepsychology ,3(1):1–191,1972.
+Yao,Xuchen,Berant, Jonathan,and VanDurme,Benjamin. Fre ebase qa: Informationextractionor
+semanticparsing? ACL 2014 ,pp. 82,2014.
+Yu, Mo, Gormley,Matthew R, and Dredze, Mark. Factor-basedc ompositional embeddingmodels.
+NIPS2014workshoponLearningSemantics ,2014.
+Zhu, Xiaojin, Ghahramani, Zoubin, Lafferty, John, et al. Se mi-supervised learning using gaussian
+ﬁeldsandharmonicfunctions. In ICML, volume3,pp.912–919,2003.
+11
+Underreviewasaconferencepaperat ICLR2016
+A EXTENSIONS TO MEMORYNETWORKS
+Memory Networks Weston et al. (2014) are a promising class of models, shown to perform well at
+QA, that we can apply to our tasks. They consist of a memory m(an array of objects indexed by
+mi) andfourpotentiallylearnablecomponents I,G,OandRthatareexecutedgivenaninput:
+I: (inputfeaturemap)–convertinputsentence xto aninternalfeaturerepresentation I(x).
+G: (generalization) – update the current memory state mgiven the new input: mi=
+G(mi,I(x),m),∀i.
+O: (output feature map) – compute output ogiven the new input and the memory: o=
+O(I(x),m).
+R: (response)– ﬁnally, decode output features oto give the ﬁnal textual response to the user:
+r=R(o).
+Potentially, component Ican make use of standard pre-processing, e.g., parsing and e ntity resolu-
+tion, but the simplest form is to do no processing at all. The s implest form of Gis store the new
+incomingexamplein an emptymemoryslot, and leave the rest o f the memoryuntouched. Thus, in
+Weston etal. (2014) the actual implementation used is exact ly this simple form, where the bulk of
+the work is in the OandRcomponents. The former is responsible for reading from memo ry and
+performinginference,e.g.,calculatingwhataretherelev antmemoriestoansweraquestion,andthe
+latterforproducingthe actualwordingoftheanswergiven O.
+TheOmoduleproducesoutputfeaturesbyﬁnding ksupportingmemoriesgiven x. Theyuse k= 2.
+Fork= 1thehighestscoringsupportingmemoryisretrievedwith:
+o1=O1(x,m) = argmax
+i=1,...,NsO(x,mi) (1)
+wheresOis a function that scores the match between the pair of senten cesxandmi. For the case
+k= 2theythenﬁnda secondsupportingmemorygiventheﬁrst found inthepreviousiteration:
+o2=O2(q,m) = argmax
+i=1,...,NsO([x,mo1],mi) (2)
+wherethecandidatesupportingmemory miisnowscoredwithrespecttoboththeoriginalinputand
+theﬁrstsupportingmemory,wheresquarebracketsdenoteal ist. Theﬁnaloutput ois[x,mo1,mo2],
+whichisinputto themodule R.
+Finally,Rneedsto producea textualresponse r. While the authorsalso considerRecurrentNeural
+Networks (RNNs), their standard setup limits responses to b e a single word (out of all the words
+seenbythemodel)byrankingthem:
+r=R(q,w) =argmaxw∈WsR([x,mo1,mo2],w) (3)
+whereWisthe set ofallwordsinthe dictionary,and sRisa functionthat scoresthematch.
+Thescoringfunctions sOandsRhavethesame form,thatofanembeddingmodel:
+s(x,y) = Φx(x)⊤U⊤UΦy(y). (4)
+whereUis an×Dmatrix where Dis the number of features and nis the embeddingdimension.
+The role of ΦxandΦyis to map the originaltext to the D-dimensionalfeaturespace. Theychoose
+a bag of words representation, and D= 3|W|forsO, i.e., every word in the dictionary has three
+different representations: one for Φy(.)and two for Φx(.)depending on whether the words of the
+input arguments are from the actual input xor from the supporting memories so that they can be
+modeleddifferently.
+They consider various extensions of their model, in particu lar modeling write time and modeling
+unseen words. Here we only discuss the former which we also us e. In orderfor the model to work
+on QA tasks over stories it needs to know which order the sente nces were uttered which is not
+available in the model directly. They thus add extra write ti me extra features to SOwhich take on
+thevalue0or1indicatingwhichsentenceisolderthananoth erbeingcompared,andcomparetriples
+of pairs of sentences and the question itself. Training is ca rried out by stochastic gradient descent
+using supervision from both the question answer pairs and th e supporting memories (to select o1
+ando2). See Weston etal. (2014) formoredetails.
+12
+Underreviewasaconferencepaperat ICLR2016
+A.1 S HORTCOMINGS OF THE EXISTING MEMNNS
+TheMemoryNetworksmodelsdeﬁnedin(Westonet al.,2014)ar eonepossibletechniquetotryon
+ourtasks, howeverthereareseveraltaskswhichtheyare lik elytofail on:
+•They model sentences with a bag of words so are likely to fail o n tasks such as the 2-
+argument(task4)and3-argument(task 5)relationproblems .
+•Theyperformonly two max operations( k= 2) so they cannothandlequestionsinvolving
+morethantwosupportingfactssuchastasks3and7.
+•Unless a RNN is employed in the R module, they are unable to pro vide multiple answers
+in the standard setting using eq. (3). This is required for th e list (8) and path ﬁnding (19)
+tasks.
+We thereforeproposeimprovementstotheirmodelin thefoll owingsection.
+A.2 I MPROVING MEMORYNETWORKS
+A.2.1 A DAPTIVE MEMORIES (ANDRESPONSES )
+We consider a variable number of supporting facts that is aut omatically adapted dependent on the
+questionbeingasked. To do thiswe considerscoringa specia l factm∅. Computationof supporting
+memoriesthenbecomes:
+i= 1
+oi=O(x,m)
+whileoi/negationslash=m∅do
+i←i+1
+oi=O([x,mo1,...,m oi−1],m)
+endwhile
+That is, we keep predicting supporting facts i, conditioning at each step on the previously found
+facts,until m∅ispredictedatwhichpointwestop. m∅hasitsownuniqueembeddingvector,which
+is also learned. In practice we still impose a hard maximumnu mberof loopsin our experimentsto
+avoidfailcaseswherethecomputationneverstops(inourex perimentswe usea limitof10).
+MultipleAnswers Weuseasimilartrickfortheresponsemoduleaswellinorder tooutputmulti-
+plewords. Thatis,weaddaspecialword w∅tothedictionaryandpredictword wioneachiteration
+iconditional on the previous words, i.e., wi=R([x,mo1,...,m |o|,wi,...,w i−1],w), until we
+predictw∅.
+A.2.2 N ONLINEAR SENTENCE MODELING
+Thereareseveralwaysofmodelingsentencesthatgobeyonda bag-of-words,andwe explorethree
+variantshere. Thesimplest isabag-of- N-grams,weconsider N= 1,2and3inthebag. Themain
+disadvantage of such a method is that the dictionary grows ra pidly with N. We therefore consider
+an alternativeneuralnetworkapproach,which we call a multilinear map. Eachword in a sentence
+is binnedintoone of Pszpositionswith p(i,l) =⌈(iPsz)/l)⌉whereiis the positionof the wordin
+a sentence of length l, and for each position we employ a n×nmatrixPp(i,l). We then model the
+matchingscorewith:
+s(q,d) =E(q)·E(d);E(x) =tanh(/summationdisplay
+i=1,...,lPp(i,l)Φx(xi)⊤U) (5)
+whereby we apply a linear map for each word dependent on its po sition, followed by a tanhnon-
+linearity on the sum of mappings. Note that this is related to the model of (Yuet al., 2014) who
+considertagsratherthanpositions. Whiletheresultsofth ismethodarenotshowninthemainpaper
+due to space restrictions, it performssimilarly well to N-gramsto and may be useful in real-world
+cases where N-grams cause the dictionary to be too large. Comparing to Tab le 3 MemNN with
+adaptive memories (AM) + multilinear obtains a mean perform ance of 93, the same as MemNNs
+withAM+NG+NL(i.e.,usingN-gramsinstead).
+13
+Underreviewasaconferencepaperat ICLR2016
+Finally, to assess the performanceof nonlinearmapsthat do not modelword positionat all we also
+considerthefollowing nonlinear embedding:
+E(x) =tanh(Wtanh(Φx(x)⊤U)). (6)
+whereWis an×nmatrix. This is similar to a classical two-layer neural netw ork, but applied to
+bothsides qanddofs(q,d). Wealsoconsiderthestraight-forwardcombinationofbag- of-N-grams
+followedbythisnonlinearity.
+B BASELINE USING EXTERNAL RESOURCES
+We also built a classical cascade NLP system baseline using a structured SVM, which incorpo-
+rates coreference resolution and semantic role labeling pr eprocessing steps, which are themselves
+trained on large amounts of costly labeled data. We ﬁrst run t he Stanford coreference system
+(Raghunathanetal.,2010)onthestoriesandeachmentionis thenreplacedwiththeﬁrstmentionof
+its entity class. Second,the SENNA semantic rolelabelings ystem (SRL) (Collobertetal., 2011) is
+run,andwecollecttheset ofargumentsforeachverb. We then deﬁnearankingtaskforﬁndingthe
+supportingfacts(trainedusingstrongsupervision):
+o1,o2,o3= argmax
+o∈OSO(x,fo1,fo2,fo3;Θ)
+where given the question xwe ﬁnd at most three supporting facts with indices oifrom the set
+of factsfin the story (we also consider selecting an “empty fact” for t he case of less than
+three), and SOis a linear scoring function with parameters Θ. Computing the argmax requires
+doing exhaustive search, unlike e.g. the MemNN method which is greedy. For scalability, we
+thus prune the set of possible matches by requiring that fact s share one common non-determiner
+word with each other match or with x.SOis constructed as a set of indicator features. For
+simplicity each of the features only looks at pairs of senten ces, i.e. SO(x,fo1,fo2,fo3;Θ) =
+Θ∗(g(x,fo1),g(x,fo2),g(x,fo3),g(fo1,fo2),g(fo2,fo3), g(fo1,fo3)). The feature function gis
+made up of the following feature types, shown here for g(fo1,fo2): (1) Word pairs: One indicator
+variablefor each pair of wordsin fo1andfo2. (2) Pair distance: Indicatorfor the distance between
+the sentence, i.e. o1−o2. (3) Pair order: Indicator for the order of the sentence, i.e .o1> o2. (4)
+SRL Verb Pair: Indicator variables for each pair of SRL verbs info1andfo2. (5) SRL Verb-Arg
+Pair: Indicatorvariables for each pair of SRL argumentsin fo1,fo2and their correspondingverbs.
+After ﬁnding the supporting facts, we build a similar struct ured SVM for the response stage, also
+with features tuned for that goal: Words – indicator for each word inx, Word Pairs – indicator for
+eachpairofwordsin xandsupportingfacts,andsimilarSRLVerbandSRLVerb-ArgP airfeatures
+asbefore.
+ResultsaregiveninTable3. ThestructuredSVM,despitehav ingaccesstoexternalresources,does
+not perform better than MemNNs overall, still failing at 9 ta sks. It does perform well on tasks
+6, 9 and 10where the hand-built feature conjunctions captur e the necessary nonlinearities that the
+original MemNNs do not. However, it seems to do signiﬁcantly worse on tasks requiring three
+(andsometimes, two) supportingfacts(e.g. tasks 3, 16 and 2 )presumablyas rankingoverso many
+possibilities introducesmore mistakes. However,its non- greedysearch does seem to help on other
+tasks, suchaspathﬁnding(task19)wheresearchisveryimpo rtant.
+14

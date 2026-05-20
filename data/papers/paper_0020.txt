@@ -1,0 +1,683 @@
+Title: Intracranial Error Detection via Deep Learning
+
+Intracranial Error Detection via Deep Learning
+Martin V ¨olker
+Graduate School of Robotics
+Albert-Ludwigs-University
+Freiburg, Germany
+martin.voelker@uniklinik-freiburg.deJiˇr´ı Hammer
+Department of Neurology
+Motol University Hospital, Charles University
+Prague, Czech Republic
+jiri.hammer@lfmotol.cuni.czRobin T. Schirrmeister
+Translational Neurotechnology Lab
+University Medical Center Freiburg
+Freiburg, Germany
+robin.schirrmeister@uniklinik-freiburg.de
+Joos Behncke
+Department of Computer Science
+Albert-Ludwigs-University
+Freiburg, Germany
+joos.behncke@uniklinik-freiburg.deLukas D.J. Fiederer
+Faculty of Biology
+Albert-Ludwigs-University
+Freiburg, Germany
+lukas.ﬁederer@uniklinik-freiburg.deAndreas Schulze-Bonhage
+Epilepsy Center
+University Medical Center Freiburg
+Freiburg, Germany
+andreas.schulze-bonhage@uniklinik-freiburg.de
+Petr Marusi ˇc
+Department of Neurology
+Motol University Hospital, Charles University
+Prague, Czech Republic
+petr.marusic@lfmotol.cuni.czWolfram Burgard
+Department of Computer Science
+Albert-Ludwigs-University
+Freiburg, Germany
+burgard@informatik.uni-freiburg.deTonio Ball
+Translational Neurotechnology Lab
+University Medical Center Freiburg
+Freiburg, Germany
+tonio.ball@uniklinik-freiburg.de
+Abstract —Deep learning techniques have revolutionized the
+ﬁeld of machine learning and were recently successfully applied to
+various classiﬁcation problems in noninvasive electroencephalog-
+raphy (EEG). However, these methods were so far only rarely
+evaluated for use in intracranial EEG. We employed convo-
+lutional neural networks (CNNs) to classify and characterize
+the error-related brain response as measured in 24 intracranial
+EEG recordings. Decoding accuracies of CNNs were signiﬁcantly
+higher than those of a regularized linear discriminant analysis.
+Using time-resolved deep decoding, it was possible to classify er-
+rors in various regions in the human brain, and further to decode
+errors over 200 ms before the actual erroneous button press, e.g.,
+in the precentral gyrus. Moreover, deeper networks performed
+better than shallower networks in distinguishing correct from
+error trials in all-channel decoding. In single recordings, up
+to 100 % decoding accuracy was achieved. Visualization of the
+networks’ learned features indicated that multivariate decoding
+on an ensemble of channels yields related, albeit non-redundant
+information compared to single-channel decoding. In summary,
+here we show the usefulness of deep learning for both intracranial
+error decoding and mapping of the spatio-temporal structure of
+the human error processing network.
+Index Terms —Error Processing, Intracranial EEG, Deep
+Learning, BCI, Convolutional Neural Networks, Error Prediction
+I. I NTRODUCTION
+Neurotechnological applications such as brain-computer in-
+terfaces (BCIs) can be improved by error decoding in elec-
+troencephalography (EEG) [1]–[5]. In addition to noninvasive
+recording techniques, intracranial EEG was also shown to be
+useable for error decoding [6]–[8].
+This work was supported by DFG grant EXC1086 BrainLinks-BrainTools,
+Baden-W ¨urttemberg Stiftung grant BMI-Bot, Graduate School of Robotics
+in Freiburg, Germany and the State Graduate Funding Program of Baden-
+W¨urttemberg, Germany.However, when it comes to real-life applications, a high
+accuracy is decisive for the usefulness of such error decoding.
+In recent years, deep learning has driven the state-of-the-art
+of decoding accuracies in various ﬁelds of research [9], [10],
+especially in computer vision [11] and speech recognition
+[12] or generation [13]. Newly, deep learning techniques have
+also been successfully applied to an increasing number of
+decoding problems in EEG [14]–[18] and further utilized
+for extraction and visualization of learned features [19]. We
+previously reported that convolutional neural networks (CNNs)
+performed better than regularized linear discriminant analysis
+(rLDA) and ﬁlter bank common spatial patterns (FBCSP)
+algorithms in error decoding from noninvasive EEG [20],
+and can be used to reliably classify errors in inter-subject
+decoding [21]. From different CNN architectures, residual
+neural networks (ResNets) are a particularly promising ar-
+chitecture for challenging classiﬁcation problems. ResNets
+employ a specialized CNN architecture with a typically very
+large number of convolutional layers [22], and have only
+recently been applied for classiﬁcation in noninvasive EEG
+[14], [23]. Deep neural networks have also been successfully
+applied in the classiﬁcation or prediction of epileptic signals
+[24]–[28] and movements [29], [30]. Other than that, deep
+learning techniques for BCIs based on intracranial recordings
+are so far mostly unexplored. Here we show for the ﬁrst time
+the usefulness of CNNs and ResNets for both intracranial
+error decoding and as a tool for precise spatio-temporal brain
+mapping.
+II. E XPERIMENT
+In Freiburg, Germany, and in Prague, Czech Republic, 23
+patients who were implanted with intracranial electrodes duearXiv:1805.01667v3  [cs.LG]  2 Nov 2018
+to pharmacoresistant epilepsy participated in a ﬂanker task
+experiment as described in [31]. One patient participated in
+two recording sessions on different days with a different subset
+of the intracranial electrodes; thus, 24 recording sessions were
+available overall. All patients gave their written informed
+consent before participating in the study. The study was
+approved by the local Ethics Committees. Trials were epoched
+on the onset of the correct or erroneous movement with the left
+or right index ﬁnger, as measured by analog joystick buttons.
+On average, patients executed 212 ± 12 (mean ± SEM) correct
+and 51 ± 5 error trials and had an error rate of 19.34 ± 1.79 %.
+III. P REPROCESSING , DECODING & S TATISTICS
+Locations of the stereotactic depth electrodes were iden-
+tiﬁed with the help of post-implantation MRI or CT as in
+[32] and transformed into the MNI coordinate space [33].
+Each electrode was then assigned to a speciﬁc brain re-
+gion by calculating cytoarchitectonic probabilistic maps in
+the SPM anatomy toolbox [34]. Intracranial EEG data were
+re-referenced bipolarly between the respective neighbors to
+be speciﬁc for local effects and reduce external noise con-
+tamination, and resampled to 250 Hz. Other than that, the
+EEG data were only minimally pre-processed, as described
+in [21], to operate under application-oriented conditions. We
+used open-source python implementations for both rLDA [35]
+and CNN classiﬁers. Deep4Net and ShallowNet architectures
+were employed as described in [14] and available in the
+Braindecode Toolbox1. Additionally, we used a 34-layered
+ResNet architecture2and the compact EEGNet architecture
+was reimplemented as described in [36], as the EEGNet code
+from the original publication was not available. As optimizer,
+we used AdamW [37] with cosine annealing [38], a weight
+decay of 0.002 and an initial learning rate of0:01
+32. For each
+recording, the ﬁrst 60 % of the data was used for training, and
+the last 40 % were reserved as ﬁnal evaluation set, which was
+only used to test the ﬁnal accuracies.
+Statistical signiﬁcance of the single-channel classiﬁcations
+was evaluated by randomly permuting the true labels of the test
+set106times to generate a null distribution. For signiﬁcance
+of brain region accuracy averages and classiﬁer comparisons,
+a Wilcoxon signed rank test was employed [39].
+The classiﬁcation of errors is typically a problem with a
+strong trial imbalance, as correct trials occur far more often
+in realistic applications. Error decoding studies also usually
+report a higher classiﬁcation accuracy for the correct class
+[40]. In a decoding problem with such a strongly imbalanced
+number of trials per class, it is thus advisable to deﬁne a
+normalized accuracy acc norm as:
+acc norm =1
+nClassesnClassesX
+i=1TPR (class i) (1)
+with the True Positive Rate (TPR or sensitivity [41]) as:
+1https://robintibor.github.io/braindecode/source/braindecode.models.html
+2https://github.com/robintibor/adamw-eeg-eval/blob/
+445cc5d471d8eea3814ffa39621974dda7c471a6/adamweegeval/resnet.pyTPR (class i) =TP(class i)
+TP(class i) +FN(class i)(2)
+TP is the number of true positives, and FN the number
+of false negative decoding results per class. Thus, when
+speaking of acc normin the context of our binary error decoding
+problem, we deﬁne it as arithmetic mean of TPR(correct) and
+TPR(error); this method is also known as macro-averaging
+[42]. Macro-averaging prohibits classiﬁers from achieving
+seemingly high accuracies by exploiting the trial imbalance,
+e.g., by only predicting the most abundant class for all trials, as
+the chance level of acc normalways stays at1
+nClasses. To get an
+idea of the number of true negatives (TN) and false positives
+(FP), we also included the speciﬁcity (or true negative rate),
+specificity (class i) =TN(class i)
+TN(class i) +FP(class i)(3)
+as well as the F1 score, i.e., the harmonic mean of precision
+and sensitivity, as further measures.
+F1(class i) =2TP(class i)
+2TP(class i) +FP(class i) +FN(class i)
+(4)
+To cope with the class imbalance, we further used Brain-
+decode’s ClassBalancedBatchSizeIterator , which draws the
+training samples such that, in expectation, the same number
+of examples is drawn per class. Other metrics, like training
+accuracies, were also macro-averaged.
+IV. C OMPARISON OF CLASSIFIERS
+A. Single-Channel Decoding
+Channel-selection in intracranial EEG is not trivial, espe-
+cially as the electrode locations are unique in every measure-
+ment and do not follow a certain spatial pattern as is usually
+the case in noninvasive EEG. Therefore, we ﬁrst compared the
+classiﬁers methods in single-channel decoding. Table I gives a
+comparison of classiﬁer performance in this setting, evaluated
+with 200 training epochs.
+TABLE I
+CLASSIFIER PERFORMANCE IN SINGLE -CHANNEL DECODING . FOR BOTH
+SINGLE -CLASS AND NORMALIZED ACCURACY ,MEAN ±SEM ARE LISTED .
+Classiﬁer accnorm (%) acccorrect (%) accerror (%)
+Deep4Net 59.28 ± 0.50 69.37 ± 0.44 49.19 ± 0.56
+ShallowNet 58.42 ± 0.32 74.83 ± 0.25 42.01 ± 0.40
+EEGNet 57.73 ± 0.52 57.78 ± 0.48 57.68 ± 0.56
+rLDA 53.76 ± 0.32 76.12 ± 0.26 31.40 ± 0.38
+ResNet 52.45 ± 0.21 95.47 ± 0.14 09.43 ± 0.28
+In single-channel decoding, the Deep4Net had the best
+normalized accuracy. This difference was signiﬁcant with
+p<0.001 (Wilcoxon signed-rank test) in regard to all other
+methods. For the Deep4Net, we thus visualized the single
+channel accuracies in Fig. 1. The broad distribution of elec-
+trodes with high accuracies indicates that errors were not only
+decodable from limited brain regions; rather, there seems to
+Fig. 1. Single-channel decoding using the Deep4Net on a 2s-window (-0.5s to 1.5s in regard to the button press event) of intracranial EEG data. All 2332
+channels are marked according their MNI coordinates in an ICBM152 brain template [43]; normalized accuracies >60 % are plotted color- and size-coded.
+Fig. 2. Classiﬁer performance in all-channel decoding. Here, the classiﬁers were trained on all available channels per patient. A) Confusion matrices of the
+four models used for decoding. The matrices display the sum of all trials over the 24 recordings. On top of the matrices, the normalized accuracy over all
+trials, i.e., acc norm, and the mean of the single recordings’ normalized accuracy, i.e., mean (acc norm) is displayed; please note that these two measures differ
+slightly, as the patients had a varying number of total trials and trials per class. B) Box plots for speciﬁcity, precision and F1 score. The box represents the
+interquartile range (IQR) of the data, the circle within the mean, the horizontal line depicts the median. The lower whiskers include all data points that have
+the minimal value of 25thpercentile-1.5*IQR , the upper whiskers include all points that are maximally 75thpercentile+1.5*IQR .
+be an extended error-processing network, and the CNN was
+able to classify errors in multiple nodes within this network.
+All in all, electrodes in central and frontal regions had higher
+accuracies than electrodes in parietal locations.
+B. Decoding Using All Channels
+As individual channels may carry non-redundant informa-
+tion, multivariate decoding from all available channels simul-
+taneously may increase decoding performance. We compared
+network architectures in this application scenario (Fig. 2 A) us-
+ing 1000 training epochs. Here, the Deep4Net performed bestwith an normalized accuracy of 74.84 %, ResNet (72.67 %),
+and EEGNet (69.37 %) followed, while the ShallowNet was
+far behind (61.50 %). Measures of speciﬁcity, precision, and
+the F1 score per class (Fig. 2 B), indicate that especially the
+two smaller networks (i.e., networks with fewer parameters,
+EEGNet and ShallowNet) tended to overpredict the ”correct”
+class, leading to low sensitivity for the error class. The aver-
+age F1 score for the ShallowNet was signiﬁcantly (p <0.01,
+Wilcoxon signed-rank test) lower than that for the other 3
+architectures. We plotted the confusion matrices of the single
+recordings for the Deep4Net in Fig. 3. While there were
+Fig. 3. Single-recording confusion matrices of the Deep4 network performing all-channel error decoding. The matrices are sorted in a descending order
+according to the normalized decoding accuracy. On top of each confusion matrix, the corresponding normalized accuracy is speciﬁed.
+recordings in which the CNN performed with 100 % or very
+close to perfect accuracy, there were also some in which the
+classiﬁer predicted nearly only one class and thus performed
+with an acc normaround 50 %. There could be multiple reasons
+for that. First, as the location of the electrodes is determined
+by the epilepsy focus, it could be that those recordings did
+not include any useful locations for error decoding. Second, it
+could be that a strong class imbalance led to an overﬁtting on
+one class. Third, some recordings had very little training data,
+and one could assume that the CNN was not able to learn the
+class representations reliably. However, using Spearman’s rank
+correlation, the decoding performance did neither signiﬁcantly
+correlate with the number of errors (r=0.23, p=0.28), the
+correct trials in the training data (r=-0.07, p=0.75), nor the
+total error rate (r=-0.05, p=0.82).
+Generally, it is a known problem in the ﬁeld of error
+decoding that classiﬁers have a higher sensitivity on the correct
+class. It is believed that the strong trial imbalance could be
+one reason for this issue [40]. We used a class-balanced batch
+size iterator to reduce this problem; but as this method can
+repeatedly choose samples of the less frequent class, it could
+theoretically still overﬁt on this class. To test for that, we
+repeated the classiﬁcation with the Deep4Net, while keeping
+the number of trials of each class in training and test set
+equal (Fig. 4). For each error trial, the nearest correct trial
+(randomly before or after) was chosen to keep. In that way, any
+changes over the time of the experiment could not inﬂuence
+the decoding; otherwise the CNN might mistakenly associate
+Fig. 4. All-channel decoding (Deep4Net) on the original, imbalanced data
+and a balanced dataset using sub-sampling of the more frequent class.
+unrelated slow changes in the EEG signal with the class that
+was more prominent during that time of the recording.
+Interestingly, after trial balancing, the sensitivity for the
+correct class decreased distinctly, while the sensitivity for the
+error class increased. However, the precision did not improve
+for the error class, while it decreased for the correct class.
+The F1 score of the correct class decreased strongly, while
+the error class saw only little improvement. The average F1
+score decreased. All in all, it does not seem to be advisable
+to balance the number of trials by sub-sampling.
+Superior frontal gyrus (n=45)
+       -1500-1000-5000500100015000.450.50.550.6mean accnorm************
+-1500-1000-50005001000150000.10.20.30.4Anterior cingulate cortex (n=50)
+       -1500-1000-5000500100015000.450.50.550.6
+*********
+-1500-1000-50005001000150000.10.20.30.4Inferior temporal gyrus (n=195)
+       -1500-1000-5000500100015000.450.50.550.6
+*****************************************
+-1500-1000-50005001000150000.10.20.30.4Middle frontal gyrus (n=133)
+       -1500-1000-5000500100015000.450.50.550.6
+*************************************************
+-1500-1000-50005001000150000.10.20.30.4
+mean abs(correlation coefficient)
+Postcentral gyrus (n=117)
+       -1500-1000-5000500100015000.450.50.550.6mean accnorm*****************
+-1500-1000-50005001000150000.10.20.30.4Superior parietal lobule (n=34)
+       -1500-1000-5000500100015000.450.50.550.6
+*
+-1500-1000-50005001000150000.10.20.30.4Middle temporal gyrus (n=326)
+       -1500-1000-5000500100015000.450.50.550.6
+*****************************************
+-1500-1000-50005001000150000.10.20.30.4Precentral gyrus (n=106)
+       -1500-1000-5000500100015000.450.50.550.6
+****************************************************
+-1500-1000-50005001000150000.10.20.30.4
+mean abs(correlation coefficient)
+Amygdala (n=20)
+       -1500-1000-5000500100015000.450.50.550.6mean accnorm
+-1500-1000-50005001000150000.10.20.30.4Temporal pole (n=85)
+       -1500-1000-5000500100015000.450.50.550.6
+****
+-1500-1000-50005001000150000.10.20.30.4Hippocampus (n=158)
+       -1500-1000-5000500100015000.450.50.550.6
+***********************
+-1500-1000-50005001000150000.10.20.30.4Inferior parietal lobule (n=184)
+       -1500-1000-5000500100015000.450.50.550.6
+***********************************************
+-1500-1000-50005001000150000.10.20.30.4
+mean abs(correlation coefficient)
+Insular cortex (n=154)
+       -1500-1000-5000500100015000.450.50.550.6mean accnorm****************************************
+-1500-1000-50005001000150000.10.20.30.4Orbitofrontal cortex (n=131)
+       -1500-1000-5000500100015000.450.50.550.6
+***********************
+-1500-1000-50005001000150000.10.20.30.4Fusiform gyrus (n=128)
+       -1500-1000-5000500100015000.450.50.550.6
+****
+-1500-1000-50005001000150000.10.20.30.4Inferior frontal gyrus (n=166)
+       -1500-1000-5000500100015000.450.50.550.6
+**************************************************
+-1500-1000-50005001000150000.10.20.30.4
+mean abs(correlation coefficient)
+Middle cingulate cortex (n=26)
+       -1500-1000-500050010001500
+Time (ms)0.450.50.550.6mean accnorm***
+-1500-1000-50005001000150000.10.20.30.4Rolandic operculum (n=81)
+       -1500-1000-500050010001500
+Time (ms)0.450.50.550.6
+*****
+-1500-1000-50005001000150000.10.20.30.4Superior Temporal gyrus (n=138)
+       -1500-1000-500050010001500
+Time (ms)0.450.50.550.6
+**
+-1500-1000-50005001000150000.10.20.30.4Posterior cingulate cortex (n=8)
+       
+0.60.650.70.750.80.850.90.951
+single channel accnorm
+-1500-1000-500050010001500
+Time (ms)0.450.50.550.6
+-1500-1000-50005001000150000.10.20.30.4
+mean abs(correlation coefficient)Fig. 5. Single-channel decoding using the Deep4Net in a time-resolved manner. Per area, signiﬁcant (p <0.01, permutation test) single-channel accuracies are
+plotted color-coded in the background. The black curve displays the mean normalized decoding accuracy in the respective area, as calculated within a 200 ms
+sliding window (50 ms step size), and the standard error of the mean (SEM) is plotted semitransparent. Time points with accuracies signiﬁcantly higher than
+the the 50 % chance level are highlighted by asterisks (* = p <0.001, ** = p <0.0001, Wilcoxon signed-rank test). The plots were sorted according to the time
+point of the highest mean accuracy per area (red line). The blue curve represents a visualization of the CNN’s learned attributes, as calculated by time-resolved
+voltage feature input-perturbation network-prediction correlation mapping. Analog to the 200 ms decoding window, we applied a moving-average ﬁlter with
+a 200 ms gaussian window on the correlation values.
+Fig. 6. Time-resolved normalized decoding accuracy in the precentral gyrus in relation to the spatial distribution of channels in 3D space. In the bottom left
+corners, the precentral gyrus was visualized with Brainstorm [44] with the respective orientation (left side purple, right side green).
+V. V ISUALIZING THE SPATIO -TEMPORAL PROPERTIES OF
+THE ERROR RESPONSE
+To further dissect the temporal evolution of the error-
+related response, we used a shifting 200 ms window on each
+channel for decoding with the Deep4Net. Due to the short
+time window, we had to deviate here from the default network
+parameters and use a stride of 2 samples, as well as reduced
+ﬁlter time lengths of 2 samples. Moreover, time-resolved volt-
+age feature input-perturbation network-prediction correlations
+were calculated to visualize the network’s learned features
+(detailed description in [14], [19]).
+Importantly, the decoding results were obtained via single-
+channel decoding, while the input-perturbation network-
+prediction correlations were calculated on a model trained
+on all channels of the respective patient. To ensure a proper
+comparison of the two methods, we used the same network
+parameters as in the shifting-window classiﬁcation for this
+analysis. Results from electrodes in each of 20 regions of
+interest (ROIs) were then pooled and illustrated in Fig. 5.
+In the precentral gyrus, it was possible to signiﬁcantly
+(p<0.001 in the region mean) decode errors 250 ms (window
+center) before the actual button-press event; In the middle
+and inferior frontal gyrus, errors were signiﬁcantly decodable
+150 ms before the event. Activity in the hippocampus could
+even be predictive 1 s and 0.5 s before an error.
+Generally, the peak of maximal decodability shifted from
+frontal to parietal and temporal brain regions over the time
+course of the error response. The reduced stride and ﬁlter time
+lengths resulted in lower total decoding accuracies; neverthe-
+less, for comparison of the spatio-temporal distribution of the
+error response, this proved to be a useful method.Input-perturbation network-prediction correlations (Fig. 5,
+blue curves) and time-resolved decoding accuracies shared
+a similar development over time, although there are some
+differences, e.g., in the time point of the peak and sharpess
+of the slope, as seen in the inferior frontal gyrus or in the
+superior temporal gyrus.
+In contrast to the single-channel decoding accuracies, the
+highest normalized network-prediction correlation values were
+found at parietal sites, such as the superior parietal lobule.
+This could indicate that parietal sites rely more on large-scale
+network-based activity during error processing, which is not
+easily decodable from single channels.
+Similar to the accuracies’ development over time, activities
+at frontal and precentral areas, such as the precentral gyrus
+and the middle frontal gyrus, were the ﬁrst to exhibit a sharp
+increase of the correlation values before the actual error event,
+indicating that the network learned these to be predictive to
+the event outcome.
+As the precentral gyrus was the most promising area for
+the detection of errors prior to the erroneous event, we further
+sorted the single channel accuracies according to their spatial
+distribution in the MNI space, to examine which exact parts
+of the precentral gyrus are activated earliest (Fig. 6).
+Distinctively, activity in the anterior parts of the precentral
+gyrus was predictive for errors earlier than in the posterior part.
+This ﬁts the observation that frontal regions were also activated
+slightly before the error event. Moreover, central parts of the
+precentral gyrus were predictive earlier than lateral (left and
+right) regions. This hints toward a central origin of the error
+response, which is then distributed to lateral parts of the motor
+system.
+VI. D ISCUSSION
+A. Classiﬁer Comparison
+When decoding on all channels, especially deeper networks
+strongly gained accuracy compared to single-channel decod-
+ing. Notably, the ShallowNet performed second-best on single-
+channel decoding and last in all-channel decoding, while the
+ResNet, which is the deepest of the tested architectures with
+34 convolutional layers, performed worst in single-channel
+decoding, and second-best in all-channel decoding on all
+channels. One could thus speculate that deeper networks need
+a broader spectrum of data to perform reliably, while very
+shallow networks cannot cope with the amount of noise in all-
+channel decoding. The 4-layered Deep4Net, however, seems to
+be a good compromise, as it performed best in both modalities.
+B. Error Detection & Prediction
+We have shown that CNNs are able to detect errors on
+a single-trial basis in intracranial recordings from precentral
+and frontal brain regions even before the actual error event,
+i.e., the false button press, happened. Especially activity in
+the precentral gyrus was predictive for errors at early time
+points. Even earlier decodability in the hippocampus could
+hint toward a role of memory recall for the task performance.
+The predictability of errors is an active topic in many areas
+of neuroimaging; e.g., error-prone patterns were identiﬁed in
+fMRI [45], preceding errors up to 30s in the default mode
+network (DMN), especially in the medial prefrontal cortex
+(mPFC). There, preparatory action in a prefrontal–extrastriate
+network is assumed to happen. Moreover, the contingent
+negative variation (CNV), an event-related slow wave related
+to preparatory attention [46] was shown to be reduced from
+100 ms before an actual error [47] and is assumed to be partly
+generated in the pre-supplementary motor area (pre-SMA). It
+has also been shown that the DMN can be mapped using
+intracranial measurements in humans, and that precentral and
+midfrontal regions are an important part of the human DMN
+[48]. In noninvasive EEG, activity at frontocentral scalp sites
+proximal to the anterior cingulate cortex (ACC) were shown
+to be predictive for errors [49]. The mPFC has further been
+linked to cognitive control dynamics during action monitoring
+[50] in a ﬂanker task. The motor cortex is further involved
+in predictive coding of future movements [51], and it has
+been shown that premotor and motor cortices encode expected
+rewards [52]. Moreover, activity in the mPFC, the prefrontal
+cortex and motor cortex might serve as a top-down control
+signal that inhibits inappropriate responding [53].
+Thus, our results ﬁt very well in the involvement of frontal
+and precentral brain regions in action control and preparatory
+motor planning.
+VII. C ONCLUSION
+Here we have shown that deep learning methods, especially
+deep convolutional neural networks including residual neural
+networks, are not only among the best available machine
+learning methods for various decoding problems, but are alsoan invaluable tool for brain mapping, as shown in human in-
+tracranial recordings during error processing. By using sliding-
+window short-time decoding on single channels, we character-
+ized the intracranial error response in depth; in comparison
+with the visualization of learned attributes in all-channel
+decoding, we could further show that both methods reveal
+overlapping, but not similar information, hinting towards the
+ability of CNNs to extract hidden connectivity features.
+Deep convolutional networks were very accurate in all-
+channel decoding of errors from intracranial EEG electrodes in
+epilepsy patients, even though many of the channels were not
+informative. More compact or shallower networks, however,
+were prone to overﬁtting and not able to solve this challenging
+task reliably. For the intracranial classiﬁcation of errors, we
+thus would recommend the use of at least 4-layered CNNs to
+reach an adequate number of parameters and thereby sufﬁcient
+ability to learn.
+ACKNOWLEDGMENT
+The authors would like to thank Pavel Kr ˇsek, Martin
+Tom´aˇsek, Peter C. Reinacher and V olker A. Coenen for their
+support, and the involved patients for their participation.
+REFERENCES
+[1] M. Sp ¨uler, M. Bensch, S. Kleih, W. Rosenstiel, M. Bogdan, and
+A. K ¨ubler, “Online use of error-related potentials in healthy users and
+people with severe motor impairment increases performance of a p300-
+bci,” Clinical Neurophysiology , vol. 123, no. 7, pp. 1328–1337, 2012.
+[2] I. Iturrate, L. Montesano, and J. Minguez, “Shared-control brain-
+computer interface for a two dimensional reaching task using eeg error-
+related potentials,” in 35th Annual International Conference of the IEEE
+Engineering in Medicine and Biology Society (EMBC) . IEEE, 2013,
+pp. 5258–5262.
+[3] R. Chavarriaga, I. Iturrate, Q. Wannebroucq, and J. d. R. Mill ´an,
+“Decoding fast-paced error-related potentials in monitoring protocols,”
+in37th Annual International Conference of the IEEE Engineering in
+Medicine and Biology Society (EMBC) . IEEE, 2015, pp. 1111–1114.
+[4] A. Kreilinger, C. Neuper, and G. R. M ¨uller-Putz, “Error potential
+detection during continuous movement of an artiﬁcial arm controlled
+by brain–computer interface,” Medical & biological engineering &
+computing , vol. 50, no. 3, pp. 223–230, 2012.
+[5] C. L. Dias, A. I. Sburlea, and G. R. M ¨uller-Putz, “Masked and unmasked
+error-related potentials during continuous control and feedback,” Journal
+of Neural Engineering , 2018.
+[6] T. Milekovic, T. Ball, A. Schulze-Bonhage, A. Aertsen, and C. Mehring,
+“Detection of error related neuronal responses recorded by electrocor-
+ticography in humans during continuous movements,” PloS one , vol. 8,
+no. 2, 2013.
+[7] J. Wander, J. Olson, J. Ojemann, and R. Rao, “Cortically-derived error-
+signals during bci use,” in Proceedings of the 5th International Brain-
+Computer Interface Meeting , 2013.
+[8] N. Even-Chen, S. D. Stavisky, J. C. Kao, S. I. Ryu, and K. V . Shenoy,
+“Augmenting intracortical brain-machine interface with neurally driven
+error detectors,” Journal of neural engineering , vol. 14, no. 6, p. 066007,
+2017.
+[9] Y . LeCun, Y . Bengio, and G. Hinton, “Deep learning,” nature , vol. 521,
+no. 7553, p. 436, 2015.
+[10] I. Goodfellow, Y . Bengio, A. Courville, and Y . Bengio, Deep learning .
+MIT press Cambridge, 2016, vol. 1.
+[11] A. Krizhevsky, I. Sutskever, and G. E. Hinton, “Imagenet classiﬁcation
+with deep convolutional neural networks,” in Advances in neural infor-
+mation processing systems , 2012, pp. 1097–1105.
+[12] D. Amodei, S. Ananthanarayanan, R. Anubhai, J. Bai, E. Battenberg,
+C. Case, J. Casper, B. Catanzaro, Q. Cheng, G. Chen et al. , “Deep
+speech 2: End-to-end speech recognition in english and mandarin,” in
+International Conference on Machine Learning , 2016, pp. 173–182.
+[13] A. Van Den Oord, S. Dieleman, H. Zen, K. Simonyan, O. Vinyals,
+A. Graves, N. Kalchbrenner, A. Senior, and K. Kavukcuoglu, “Wavenet:
+A generative model for raw audio,” arXiv preprint arXiv:1609.03499 ,
+2016.
+[14] R. T. Schirrmeister, J. T. Springenberg, L. D. J. Fiederer, M. Glasstetter,
+K. Eggensperger, M. Tangermann, F. Hutter, W. Burgard, and T. Ball,
+“Deep learning with convolutional neural networks for EEG decoding
+and visualization.” Human brain mapping , vol. 38, no. 11, pp. 5391–
+5420, Nov. 2017.
+[15] J. Behncke, R. T. Schirrmeister, W. Burgard, and T. Ball, “The signature
+of robot action success in EEG signals of a human observer: Decoding
+and visualization using deep convolutional neural networks,” in 6th
+International Conference on Brain-Computer Interface (BCI) . IEEE,
+2018.
+[16] R. Schirrmeister, L. Gemein, K. Eggensperger, F. Hutter, and T. Ball,
+“Deep learning with convolutional neural networks for decoding and
+visualization of eeg pathology,” in Signal Processing in Medicine and
+Biology Symposium (SPMB), 2017 IEEE . IEEE, 2017, pp. 1–7.
+[17] M. J. Putten, S. Olbrich, and M. Arns, “Predicting sex from brain
+rhythms with deep learning,” Scientiﬁc reports , vol. 8, no. 1, p. 3069,
+2018.
+[18] A. Sors, S. Bonnet, S. Mirek, L. Vercueil, and J.-F. Payen, “A convo-
+lutional neural network for sleep stage scoring from raw single-channel
+eeg,” Biomedical Signal Processing and Control , vol. 42, pp. 107–114,
+2018.
+[19] K. G. Hartmann, R. T. Schirrmeister, and T. Ball, “Hierarchical internal
+representation of spectral features in deep convolutional networks trained
+for eeg decoding,” in 6th International Conference on Brain-Computer
+Interface (BCI) . IEEE, 2018.
+[20] M. V ¨olker, S. Berberich, E. Andreev, L. D. Fiederer, W. Burgard, and
+T. Ball, “Between-subject transfer learning for classiﬁcation of error-
+related signals in high-density eeg,” in The First Biannual Neuroadaptive
+Technology Conference , vol. 81, no. 8.8, 2017, p. 47.
+[21] M. V ¨olker, R. T. Schirrmeister, L. D. Fiederer, W. Burgard, and T. Ball,
+“Deep transfer learning for error decoding from non-invasive EEG,”
+in6th International Conference on Brain-Computer Interface (BCI) .
+IEEE, 2018.
+[22] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image
+recognition,” in Proceedings of the IEEE conference on computer vision
+and pattern recognition , 2016, pp. 770–778.
+[23] F. Wang, S.-h. Zhong, J. Peng, J. Jiang, and Y . Liu, “Data augmentation
+for eeg-based emotion recognition with deep convolutional neural net-
+works,” in International Conference on Multimedia Modeling . Springer,
+2018, pp. 82–93.
+[24] D. Krug, C. E. Elger, and K. Lehnertz, “A cnn-based synchronization
+analysis for epileptic seizure prediction: Inter-and intraindividual gener-
+alization properties,” in 11th International Workshop on Cellular Neural
+Networks and Their Applications. IEEE, 2008, pp. 92–95.
+[25] A. Antoniades, L. Spyrou, C. C. Took, and S. Sanei, “Deep learning for
+epileptic intracranial eeg data,” in IEEE 26th International Workshop
+on Machine Learning for Signal Processing (MLSP) . IEEE, 2016, pp.
+1–6.
+[26] D. Ahmedt-Aristizabal, C. Fookes, K. Nguyen, and S. Sridharan, “Deep
+classiﬁcation of epileptic signals,” arXiv preprint arXiv:1801.03610 ,
+2018.
+[27] A. Antoniades, L. Spyrou, D. Martin-Lopez, A. Valentin, G. Alarcon,
+S. Sanei, and C. C. Took, “Detection of interictal discharges with
+convolutional neural networks using discrete ordered multichannel in-
+tracranial eeg,” IEEE Transactions on Neural Systems and Rehabilitation
+Engineering , vol. 25, no. 12, pp. 2285–2294, 2017.
+[28] M.-P. Hosseini, D. Pompili, K. Elisevich, and H. Soltanian-Zadeh,
+“Optimized deep learning for eeg big data and seizure prediction bci
+via internet of things,” IEEE Transactions on Big Data , vol. 3, no. 4,
+pp. 392–404, 2017.
+[29] Z. Xie, O. Schwartz, and A. Prasad, “Decoding of ﬁnger trajectory from
+ecog using deep learning,” Journal of neural engineering , vol. 15, no. 3,
+p. 036009, 2018.
+[30] X. R. N. Wang, A. Farhadi, R. Rao, and B. Brunton, “AJILE move-
+ment prediction: Multimodal deep learning for natural human neural
+recordings and video,” in Proceedings of the 32nd AAAI Conference on
+Artiﬁcial Intelligence , 2018.
+[31] M. V ¨olker, L. D. Fiederer, S. Berberich, J. Hammer, J. Behncke,
+P. Kr ˇseket al. , “The dynamics of error processing in the human brain asreﬂected by high-gamma activity in noninvasive and intracranial EEG,”
+NeuroImage , 2018.
+[32] T. Pistohl, A. Schulze-Bonhage, A. Aertsen, C. Mehring, and T. Ball,
+“Decoding natural grasp types from human ecog,” Neuroimage , vol. 59,
+no. 1, pp. 248–260, 2012.
+[33] A. C. Evans, S. Marrett, P. Neelin, L. Collins, K. Worsley, W. Dai,
+S. Milot, E. Meyer, and D. Bub, “Anatomical mapping of functional
+activation in stereotactic coordinate space,” Neuroimage , vol. 1, no. 1,
+pp. 43–53, 1992.
+[34] S. B. Eickhoff, K. E. Stephan, H. Mohlberg, C. Grefkes, G. R. Fink,
+K. Amunts, and K. Zilles, “A new spm toolbox for combining probabilis-
+tic cytoarchitectonic maps and functional imaging data,” Neuroimage ,
+vol. 25, no. 4, pp. 1325–1335, 2005.
+[35] O. Ledoit and M. Wolf, “A well-conditioned estimator for large-
+dimensional covariance matrices,” Journal of multivariate analysis ,
+vol. 88, no. 2, pp. 365–411, 2004.
+[36] V . J. Lawhern, A. J. Solon, N. R. Waytowich, S. M. Gordon, C. P. Hung,
+and B. J. Lance, “EEGNet: A Compact Convolutional Network for EEG-
+based Brain-Computer Interfaces,” arXiv preprint arXiv:1611.08024v2 ,
+Nov. 2016.
+[37] I. Loshchilov and F. Hutter, “Fixing weight decay regularization in
+adam,” arXiv preprint arXiv:1711.05101 , 2017.
+[38] ——, “SGDR: Stochastic gradient descent with warm restarts,” arXiv
+preprint arXiv:1608.03983 , 2016.
+[39] F. Wilcoxon, “Individual comparisons by ranking methods,” Biometrics
+bulletin , vol. 1, no. 6, pp. 80–83, 1945.
+[40] R. Chavarriaga, A. Sobolewski, and J. d. R. Mill ´an, “Errare machinale
+est: the use of error-related potentials in brain-machine interfaces,”
+Frontiers in neuroscience , vol. 8, p. 208, 2014.
+[41] D. G. Altman and J. M. Bland, “Diagnostic tests. 1: Sensitivity and
+speciﬁcity.” BMJ: British Medical Journal , vol. 308, no. 6943, p. 1552,
+1994.
+[42] D. D. Lewis, “An evaluation of phrasal and clustered representations on a
+text categorization task,” in Proceedings of the 15th annual international
+ACM SIGIR conference on Research and development in information
+retrieval . ACM, 1992, pp. 37–50.
+[43] J. Mazziotta, A. Toga, A. Evans, P. Fox, J. Lancaster, K. Zilles,
+R. Woods, T. Paus, G. Simpson, B. Pike et al. , “A probabilistic atlas
+and reference system for the human brain: International consortium for
+brain mapping (icbm),” Philosophical Transactions of the Royal Society
+B: Biological Sciences , vol. 356, no. 1412, pp. 1293–1322, 2001.
+[44] F. Tadel, S. Baillet, J. C. Mosher, D. Pantazis, and R. M. Leahy, “Brain-
+storm: a user-friendly application for meg/eeg analysis,” Computational
+intelligence and neuroscience , vol. 2011, p. 8, 2011.
+[45] T. Eichele, S. Debener, V . D. Calhoun, K. Specht, A. K. Engel,
+K. Hugdahl, D. Y . von Cramon, and M. Ullsperger, “Prediction of
+human errors by maladaptive changes in event-related brain networks,”
+Proceedings of the National Academy of Sciences , vol. 105, no. 16, pp.
+6173–6178, 2008.
+[46] J. J. Tecce, “Contingent negative variation (cnv) and psychological
+processes in man.” Psychological bulletin , vol. 77, no. 2, p. 73, 1972.
+[47] M. L. Padilla, R. A. Wood, L. A. Hale, and R. T. Knight, “Lapses in
+a prefrontal-extrastriate preparatory attention network predict mistakes,”
+Journal of cognitive neuroscience , vol. 18, no. 9, pp. 1477–1487, 2006.
+[48] K. J. Miller, K. E. Weaver, and J. G. Ojemann, “Direct electrophysio-
+logical measurement of human default network areas,” Proceedings of
+the National Academy of Sciences , vol. 106, 2009.
+[49] K. R. Ridderinkhof, S. Nieuwenhuis, and T. R. Bashore, “Errors are
+foreshadowed in brain potentials associated with action monitoring in
+cingulate cortex in humans,” Neuroscience letters , vol. 348, no. 1, pp.
+1–4, 2003.
+[50] J. F. Cavanagh, M. X. Cohen, and J. J. Allen, “Prelude to and resolution
+of an error: Eeg phase synchrony reveals cognitive control dynamics
+during action monitoring,” Journal of Neuroscience , vol. 29, no. 1, pp.
+98–105, 2009.
+[51] S. Shipp, R. A. Adams, and K. J. Friston, “Reﬂections on agranular
+architecture: predictive coding in the motor cortex,” Trends in neuro-
+sciences , vol. 36, no. 12, pp. 706–716, 2013.
+[52] P. Ramkumar, B. Dekleva, S. Cooler, L. Miller, and K. Kording,
+“Premotor and motor cortices encode reward,” PloS one , vol. 11, no. 8,
+p. e0160851, 2016.
+[53] N. S. Narayanan and M. Laubach, “Top-down control of motor cortex
+ensembles by dorsomedial prefrontal cortex,” Neuron , vol. 52, no. 5, pp.
+921–931, 2006.

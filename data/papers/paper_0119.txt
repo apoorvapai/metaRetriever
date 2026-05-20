@@ -1,0 +1,725 @@
+Title: mPLUG-Owl: Modularization Empowers Large Language Models with Multimodality
+
+mPLUG-Owl
+ : Modularization Empowers Large
+Language Models with Multimodality
+Qinghao Ye, Haiyang Xu, Guohai Xu, Jiabo Ye, Ming Yany, Yiyang Zhou,
+Junyang Wang, Anwen Hu, Pengcheng Shi, Yaya Shi, Chenliang Li, Yuanhong Xu,
+Hehong Chen, Junfeng Tian, Qian Qi, Ji Zhang, Fei Huang
+DAMO Academy, Alibaba Group
+{yeqinghao.yqh, shuofeng.xhy, guohai.xgh, ym119608}@alibaba-inc.com
+Abstract
+Large language models (LLMs) have demonstrated impressive zero-shot abilities
+on a variety of open-ended tasks, while recent research has also explored the use
+of LLMs for multi-modal generation. In this study, we introduce mPLUG-Owl ,
+a novel training paradigm that equips LLMs with multi-modal abilities through
+modularized learning of foundation LLM, a visual knowledge module, and a vi-
+sual abstractor module. This approach can support multiple modalities and facil-
+itate diverse unimodal and multimodal abilities through modality collaboration.
+The training paradigm of mPLUG-Owl involves a two-stage method for align-
+ing image and text, which learns visual knowledge with the assistance of LLM,
+while maintaining and even improving the generation abilities of LLM. In the
+ﬁrst stage, the visual knowledge module and abstractor module are trained with
+frozen LLM module to align the image and text. In the second stage, language-
+only and multi-modal supervised datasets are used to jointly ﬁne-tune a low-rank
+adaption (LoRA) module on LLM and the abstractor module by freezing the vi-
+sual knowledge module. We carefully build a visually-related instruction evalua-
+tion set OwlEval . Experimental results show that our model outperform existing
+multi-modal models, demonstrating mPLUG-Owl’s impressive instruction and vi-
+sual understanding ability, multi-turn conversation ability and knowledge reason-
+ing ability. Besides, we observe some unexpected and exciting abilities such as
+multi-image correlation and scene text understanding, which makes it possible to
+leverage it for harder real scenarios, such as vision-only document comprehen-
+sion. Our code, pre-trained model, instruction-tuned models, and evaluation set
+are available at https://github.com/X-PLUG/mPLUG-Owl. The online demo is
+available at https://www.modelscope.cn/studios/damo/mPLUG-Owl.
+1 Introduction
+Large language models (LLMs) such as GPT-3 [Brown et al., 2020], BLOOM [Scao et al., 2022],
+LLaMA [Touvron et al., 2023] have experienced rapid development to make general artiﬁcial intelli-
+gence possible, which demonstrates impressive zero-shot abilities on various linguistic applications.
+However, except GPT-4 [OpenAI, 2023], current general LLMs cannot support different modalities
+of input and develop impressive multimodal abilities.
+Although GPT-4 [OpenAI, 2023] has exhibited remarkable multimodal abilities, the methods be-
+hind its extraordinary abilities remain a mystery. Recently, researchers have been extending LLMs
+Equal contribution
+yCorresponding author
+Preprint. Under review.arXiv:2304.14178v1  [cs.CL]  27 Apr 2023
+to understand visual inputs in two different paradigms: systematic collaboration and end-to-end
+trained models. However, systematic collaboration approaches, including Visual ChatGPT [Wu
+et al., 2023], MM-REACT [Yang et al., 2023], and HuggingGPT [Shen et al., 2023], are designed
+to facilitate the coordination of various vision models or tools to express visual information with
+text descriptions. However, these approaches may not be able to comprehend speciﬁc multimodal
+instructions due to their lack of alignment with different modalities. Additionally, these approaches
+may encounter challenges related to inference efﬁciency and cost. End-to-end models, such as
+BLIP-2 [Li et al., 2023], LLaV A [Liu et al., 2023], and MiniGPT-4 [Zhu et al., 2023a] aim to use
+uniﬁed models to support different modalities. However, these models have some limitations as they
+take frozen visual models, which may lead to inadequate alignment due to the limited number of pa-
+rameters. Moreover, they cannot unlock various abilities due to missing unimodal and multimodal
+instruction.
+In this paper, we present mPLUG-Owl with an innovative modularized training paradigm for large
+multi-modal language models that can support multiple modalities concurrently, drawing inspiration
+from the concept of modularization [Xu et al., 2023b, Li et al., 2022, Xu et al., 2021, Ye et al., 2022].
+Our method harnesses the power of pre-trained LLM, visual knowledge module, and connected
+visual abstractor module to achieve effective alignment between images and text, and utilizes a two-
+stage training scheme to stimulate impressive unimodal and multimodal abilities. Our approach even
+enhances the strong generation abilities of LLM by modality collaboration between modalities. In
+the ﬁrst step, we align the image and text to acquire comprehensive visual knowledge using text-
+image pairs, which is accomplished by training the visual knowledge module and abstractor module
+with the frozen LLM module. Subsequently, we ﬁne-tune mPLUG-Owl with language-only and
+multi-modal instructions to unlock a range of unimodal and multimodal abilities. We freeze the
+visual knowledge module and train low-rank adaption (LoRA) [Hu et al., 2022] on LLM and visual
+abstractor module jointly. This approach allows for the effective integration of textual and visual
+information, facilitating the development of versatile and robust cognitive abilities.
+Our experiments on a carefully-built visually related instruction evaluation set OwlEval shows that
+mPLUG-Owl outperforms existing models such as MiniGPT-4 [Zhu et al., 2023a] and LLaV A [Liu
+et al., 2023]. We separately veriﬁes mPLUG-Owl’s remarkable abilities in instruction understand-
+ing, visual understanding, knowledge transfer, and multi-turn dialogue. Abundant ablation study is
+performed to show the effectiveness of our training paradigm. Furthermore, we ﬁnd some unex-
+pected emerging ability such as multi-image correlation, multilingual conversation and scene text
+understanding.
+Our main contributions can be highlighted as follows:
+• We propose mPLUG-Owl, a novel training paradigm for large language models through
+modularization.
+• We carefully construct an instruction evaluation set, dubbed OwlEval , to assess the capa-
+bilities of different models in the context of visual-related tasks.
+• Experimental results demonstrate that mPLUG-Owl excels in multi-modal instruction un-
+derstanding and multi-turn dialogue, surpassing the performance of existing models.
+2 Related Work
+2.1 Large Language Models
+In recent times, Large Language Models (LLMs) have garnered increasing attention for their ex-
+ceptional performance in diverse natural language processing (NLP) tasks. Initially, transformer
+models such as BERT [Devlin et al., 2019], GPT [Radford and Narasimhan, 2018], and T5 [Raffel
+et al., 2020] were developed with different pre-training objectives. However, the emergence of GPT-
+3 [Brown et al., 2020], which scales up the number of model parameters and data size, showcases
+signiﬁcant zero-shot generalization abilities, enabling them to perform commendably on previously
+unseen tasks. Consequently, numerous LLMs such as OPT [Zhang et al., 2022], BLOOM [Scao
+et al., 2022], PaLM [Chowdhery et al., 2022], and LLaMA [Touvron et al., 2023] are created, usher-
+ing in the success of LLMs. Additionally, Ouyang et al. [Ouyang et al., 2022] propose InstructGPT
+by aligning human instruction and feedback with GPT-3. Furthermore, it has been applied to Chat-
+2
+GPT [OpenAI, 2022], which facilitates conversational interaction with humans by responding to a
+broad range of diverse and intricate queries and instructions.
+2.2 Multi-Modal Large Language Models
+Despite the successful applications of LLMs in natural language processing, it is still struggling for
+LLMs to perceive other modalities such as vision and audio. Recently, researchers have been extend-
+ing language models to understand visual inputs in two different paradigms: systematic collabora-
+tion and end-to-end trained models. Systematic collaboration approaches, such as Visual ChatGPT
+[Wu et al., 2023], MM-REACT [Yang et al., 2023], and HuggingGPT [Shen et al., 2023], leverage
+various vision experts or tools to express visual information with text descriptions. Subsequently,
+large language models, such as ChatGPT, can act as the agents, and be prompted to select the ap-
+propriate experts and tools for visual understanding. Finally, LLMs would summarize the output of
+these experts to answer user queries. On the other hand, some approaches [Li et al., 2023, Alayrac
+et al., 2022, Liu et al., 2023] leverage the pre-trained large language model to build uniﬁed models
+for multi-modality. For example, Flamingo [Alayrac et al., 2022] freezes the pre-trained vision en-
+coder and large language model and fuses vision and language modalities with gated cross-attention
+showing impressive few-shot capabilities. Additionally, BLIP-2 [Li et al., 2023] designs Q-Former
+to align the visual features from the frozen visual encoder and large language models with Flan-T5
+[Chung et al., 2022] and OPT [Zhang et al., 2022]. Moreover, PaLM-E [Driess et al., 2023] directly
+inputs features from sensor modalities with PaLM [Chowdhery et al., 2022], which has 520 billion
+parameters, contributing to robust performance in real-world perceptions. Furthermore, some pow-
+erful instruction-tuned language models that built upon open-sourced foundation model LLaMA
+[Touvron et al., 2023], such as Alpaca [Taori et al., 2023] and Vicuna [Vicuna, 2023], exhibit com-
+parable performance to ChatGPT [OpenAI, 2022] and GPT-4 [OpenAI, 2023]. MiniGPT-4 [Zhu
+et al., 2023a] and LLaV A [Liu et al., 2023] align these ﬁnetuned models with extracted visual fea-
+tures from the frozen visual backbone. In contrast, mPLUG-Owl not only aligns the representation
+between the vision and language foundation model (e.g. CLIP and LLaMA) in terms of knowl-
+edge acquisition and grounding to the real world but also can understand language and multi-modal
+instructions, showcasing strong zero-shot generalization and multi-turn conversation capabilities.
+3 mPLUG-Owl
+LLaVAVisualEncoderVisualEncoderLLMLLM
+❄Stage 2(
+$+
+%/
+$)
+❄
+"
+"Stage 1 (
+!+
+%)mPLUG-Owl
+!(Ours)(a)(c)(d)
+❄
+"FrozenTrainable
+$+
+%
+$Text DataMulti-Modal Data
+VisualEncoderVisualEncoderLLMLLM
+❄Stage 2(
+$+
+%)
+❄
+"Stage 1 (
+!+
+%)
+❄Kosmos-1(b)
+VisualEncoderVisualEncoderLLMLLMStage 2(
+$)
+❄
+"Stage 1 (
+!+
+%)
+❄
+"
+MiniGPT4VisualEncoderVisualEncoderLLMLLMStage 2(
+$+
+%)
+❄Stage 1 (
+!+
+%)
+❄
+❄
+❄
+Figure 1: Comparison between different training paradigms. All of these methods are trained in a
+two-stage fashion. Stage 1 stands for pre-training and Stage 2 represents instruction tuning.
+3.1 Architecture Overview
+As illustrated in Figure 1, there exist mainly three types of end-to-end multimodal LLMs: 1) models
+that utilize limited parameters with frozen LLM and visual models during pretraining and instruction
+tuning, such as MiniGPT4; 2) models that incorporate trainable LLMs and frozen visual models,
+exempliﬁed by Kosmos-1; and 3) models that involve trainable LLMs during instruction tuning and
+frozen visual models, as seen in LLaV A. Nevertheless, these models exhibit certain constraints since
+they depend on frozen visual models, which can lead to insufﬁcient alignment due to the limited
+number of parameters. Furthermore, they fail to effectively stimulate a diverse set of abilities, as
+they lack both unimodal and multimodal instruction.
+3
+Thiscutelittledogistired,andistryingtoexpressitswearinessbysaying"monday....just....monday."Thisphrasehasbecomeapopularsayingforpeoplewhoareexhausted,especiallyonMondays,asthedayistypicallyassociatedwithastartofanotherworkweek.Thedog,however,hastakenthisphrasetothenextlevel,makingitmoreadorableandrelatablebyusingthecutestpuppyvoiceandasleepyexpression.Pre-trained  LLM(e.g., LLaMA, GPT)
+Visual EncoderVisual AbstractorExplain why this meme is funny.Cross AttentionConcatenateLearnable TokenPatch Feature
+Pre-trained  LLMVisual AbstractorVisual Encoder
+Pre-trained  LLMLoRAVisual AbstractorVisual Encoder
+Stage-1: Pre-training
+Stage-2: Instruction tuningModel Overview
+!
+Training Paradigm
+Figure 2: Our training paradigm and model overview.
+To this end, we propose mPLUG-Owl, a multi-modal language model that is capable of perceiv-
+ing various modalities while taking the visual context and information into account and generating
+corresponding outputs. Speciﬁcally, as illustrated in Figure 2, mPLUG-Owl consists of a vision
+foundation model fVto encode the visual knowledge, a language foundation model fL, and a visual
+abstractor module fK. We ﬁrst obtain dense image representations from the pre-trained visual foun-
+dation model fV. However, such dense features would fragment the ﬁne-grained image information
+and bring large computation due to the lengthy sequence when feeding into fL. To mitigate this
+issue, we employ the visual abstractor module fKto summarize visual information within several
+learnable tokens, thereby obtaining higher semantic visual representations and reducing computa-
+tion, as illustrated in Figure 2. The visual representations are combined with text queries and fed
+into the language model to generate the response.
+3.2 Training Scheme
+Multimodal Pretraining Large-scale language models, such as GPT-3 [Brown et al., 2020] and
+LLaMA [Touvron et al., 2023], are trained on extensive and diverse data collected from the internet,
+providing them with a comprehensive understanding of the world. This vast knowledge base en-
+dows these models with remarkable capabilities across a range of tasks. However, the utilization of
+visual information in such models remains underexplored. Previous approaches [Zhu et al., 2023a,
+Liu et al., 2023] have employed a limited number of additional parameters to learn the alignment
+between visual data and language models, constraining their capacity to comprehend complex visual
+information. To enhance the ability of large-scale language models to perceive visual information
+while integrating their internal abilities, we propose a novel training paradigm that incorporates a
+trainable visual backbone fVand an additional visual abstractor fK, while maintaining the pre-
+trained language model fLin a frozen state. This approach enables the model to effectively capture
+both low-level and higher semantic visual information and align it with the pre-trained language
+model without compromising its performance.
+Joint Instruction Tuning Upon completion of the prior phase, the model acquires the ability
+to retain a considerable amount of knowledge and provide reasonable answers to human queries.
+Nonetheless, it continues to exhibit challenges in generating coherent linguistic responses. As
+posited in GPT-3 [Brown et al., 2020], reﬁning the model through instruction tuning is essential for
+accurately discerning user intentions. Previous attempts [Li et al., 2022, Xu et al., 2023b] in multi-
+modal learning have demonstrated that joint learning from uni-modal and multi-modal sources can
+lead to signiﬁcant improvements owing to the collaboration between different modalities. Build-
+ing on this insight, we present a novel vision-language joint instruction tuning strategy to facilitate
+better alignment between mPLUG-Owl and human instructions and intentions. Speciﬁcally, given
+that the model can comprehend the visual concepts and knowledge depicted in images through vi-
+sual knowledge learning, we freeze the entire model and employ low-rank adaption (i.e., LoRA [Hu
+4
+et al., 2022]) to adapt fLby training multiple low-rank matrices for efﬁcient alignment with human
+instructions. For each data record, we uniﬁed them in a snippet of conversation following Vicuna
+[Vicuna, 2023], and we compute the loss on the response. During the training, we accumulate the
+gradient for text-only instruction data and multi-modal instruction data for multiple batches and up-
+dated the parameters. Therefore, by joint training with both language and multi-modal instructions,
+mPLUG-Owl can better understand a wide range of instructions and respond with more natural and
+reliable output. Moreover, our approach can easily handle various text and multi-modal instructions
+without the need for realignment of the vision and language models, as required by methods such as
+MiniGPT-4 [Zhu et al., 2023a] and LLaV A [Liu et al., 2023].
+Training Objective The model is trained using the language modeling task, which entails learning
+to generate subsequent tokens based on the preceding context. The primary objective of the training
+process is to maximize the log-likelihood of the tokens. It is important to note that only discrete
+tokens, such as text tokens, are considered in the calculation of the training loss. Most signiﬁcantly,
+the emergence of diverse capabilities resulting from the training task during the joint instruction
+tuning stage enhances the performance of mPLUG-Owl in downstream applications.
+4 Experiment
+4.1 Experimental Setup
+Model Settings. We choose ViT-L/14 [Dosovitskiy et al., 2021] as the visual foundation model
+fVwhich has 24 layers with hidden dimension set as 1024 and patch size set as 14. For faster
+convergence, the ViT is initialized from CLIP ViT-L/14 model pre-trained via contrastive learning.
+Different with LLaV A [Liu et al., 2023] and MiniGPT-4 [Zhu et al., 2023a], to demonstrate the
+effectiveness and generalization ability, we utilize raw LLaMA-7B [Touvron et al., 2023] rather
+than its instruction-tuned variants such as Alpaca [Taori et al., 2023] and Vicuna [Vicuna, 2023].
+The total number of parameters of mPLUG-Owl is about 7.2B. More details about hyper-parameters
+can be found in Appendix.
+Data and Training Details. For the ﬁrst stage, we utilize the image-caption pairs from several
+datasets, including LAION-400M [Schuhmann et al., 2021], COYO-700M [Byeon et al., 2022],
+Conceptual Captions [Sharma et al., 2018] and MSCOCO [Chen et al., 2015]. We use a batch
+size of 2.1 million tokens and train mPLUG-Owl for 50k steps, corresponding to about 104 billion
+tokens. We adopt the AdamW optimizer with = (0:9;0:98), and set the learning rate and weight
+decay to 0.0001 and 0.1 respectively. We warm up the training with 2k warm-up steps then decay
+the learning rate with the cosine schedule. The input image is randomly resized to 224224.
+Besides, we tokenize the text input with SentencePiece [Kudo and Richardson, 2018] tokenizer. For
+the second stage, we gather pure text instruction data from three distinct sources: 102k data from
+the Alpaca [Taori et al., 2023], 90k from the Vicuna [Vicuna, 2023], and 50k from the Baize [Xu
+et al., 2023a]. Additionally, we utilize 150k multi-modal instruction data from the LLaV A dataset
+[Liu et al., 2023]. We train mPLUG-Owl for 2k steps with the batch size 256, and the learning rate
+is set to 0.00002.
+Baselines. We compare our mPLUG-Owl with end-to-end models and systematic collaboration
+approaches as follows:
+•OpenFlamingo [Zhu et al., 2023b] is an open-source version of Flamingo [Alayrac et al.,
+2022] model. We use the released code of OpenFlamingo-9B3to run zero-shot generation.
+•BLIP-2 [Li et al., 2023] is pre-trained through bootstrapped learning from off-the-shelf
+frozen pre-trained image models and large language models using an efﬁcient pre-training
+strategy. We use the released code of BLIP-2 ViT-G FlanT5 XXL4to perform zero-shot
+generation.
+•MiniGPT-4 [Zhu et al., 2023a] utilizes a single projection layer to align visual information
+from a pre-trained vision encoder with LLM. Speciﬁcally, they employ the same visual
+3https://github.com/mlfoundations/open_ﬂamingo
+4https://github.com/salesforce/LA VIS/tree/main/projects/blip2
+5
+encoder as used in BLIP-2, a ViT coupled with their pre-trained Q-Former, and Vicuna as
+LLM. We use the released demonstration5to perform image-instruction generation.
+•LLaVA [Liu et al., 2023] applies a single projection layer to convert image features from
+pre-trained CLIP visual encoder ViT-L/14 into the language embedding space of Vicuna.
+We use their released demonstration6to perform image-instruction generation.
+•MM-REACT [Yang et al., 2023] integrates ChatGPT/GPT-4 with various specialized vision
+experts to achieve multimodal reasoning and action. We use their released demonstration7
+to get responses.
+4.2 Quantitative analysis
+OpenFlamingo BLIP-2 LLaVA MiniGPT-4 mPLUG-Owl0%25%50%75%100%
+44
+22
+2 2 026
+22
+26 26
+166
+18
+22
+8
+156 20 32 46 51A B C D
+Figure 3: The comparison between mPLUG-Owl and baselines on OwlEval with manual evaluation
+metrics. The order of response quality ranking is as follows: A > B > C > D.
+In order to comprehensively evaluate various models, we construct a visually-related evaluation set
+OwlEval by collecting 82 artiﬁcially constructed questions based on 50 images, where 21 from
+MiniGPT-4, 13 from MM-REACT, 9 from BLIP-2, 3 from GPT-4 and 4 collected by us. Partial im-
+ages have multiple rounds of questions, refers to multi-turn conversation cases. These questions ex-
+amine a variety of model capabilities including natural image understanding, diagram and ﬂowchart
+comprehension, optical character recognition (OCR), multi-modal creation, knowledge-intensive
+QA, and referential interaction QA. As questions are open-ended, we employ manual evaluation
+metrics to rate the model’s responses as A, B, C, or D following the rating method proposed in
+Self-Instruct [Wang et al., 2022].
+We manually score 82 responses given by mPLUG-Owl and baselines. The comparison results
+are shown in Figure 3. First, mPLUG-Owl gets 66 AandB, while the most competitive baseline
+MiniGPT-4 gets 54. Second, mPLUG-Owl doesn’t get any Dscores, outperforming all the models.
+These results suggest that mPLUG-Owl can better understand both instructions and images, which
+results in a stronger capability in generating satisfactory responses. For a fair comparison, we have
+excluded those cases in which MM-REACT failed to make predictions. The results are shown
+separately in Figure 15 and mPLUG-Owl still exhibits superior performance.
+To separately examine the single-turn and multi-turn conversation capabilities, we reorganize 82
+questions into a single-turn conversation set and a multi-turn conversation set. The former contains
+the ﬁrst question from 50 images. The latter contains 52 questions from multi-turn conversation
+cases. As shown in Figure 4, the mPLUG-Owl achieves outstanding performance in both single-
+turn and multi-turn conversations.
+5https://huggingface.co/spaces/Vision-CAIR/minigpt4
+6https://llava.hliu.cc
+7https://huggingface.co/spaces/microsoft-cognitive-service/mm-react
+6
+Figure 4: The comparison results of 50 single-turn responses (left) and 52 multi-turn responses
+(right) among mPLUG-Owl and baselines on OwlEval with manual evaluation metrics.
+4.3 Ablation Study
+We ablate the two-stage training scheme and the data modality of instruction tuning. Six dimensions
+of abilities are deﬁned to complete visually related tasks, as shown in Table 1. For each question,
+we manually label the required abilities and annotate which abilities are reﬂected in the model’s
+response. Table 2 shows the ability accuracy of different variants of mPLUG-Owl.
+Training Strategy Ablation. As shown in Table 2, without joint instruction tuning, the model is
+not good at instruction understanding and fail to generalize pre-training abilities to other tasks (r1
+vs r5). With the instruction tuning alone, although the model can better comprehend instructions,
+the model is incapable of achieving promising performance in visual knowledge-related tasks due to
+lacking of visually-related knowledge pretraining (r2 vs r5). With both multimodal pretraining and
+joint instruction tuning, the model achieves the best performance and demonstrates the effectiveness
+of our two-stage training scheme.
+Instruction Data Ablation. By comparing r3 with r4, text-only instruction tuning brings more im-
+provement in instruction understanding, while multi-modal instruction tuning achieves better knowl-
+edge and reasoning capabilities. This is due to that visual question answering mainly requires the
+alignment of vision and language knowledge, which is not optimized during text-only instruction
+tuning. Besides, we also verify that introducing multi-modal data during instruction tuning could
+further improve the model’s performance on text-only tasks, as shown in Table 3 (r5 vs r4). Con-
+cretely, following the evaluation setting as Vicuna[Vicuna, 2023], for each question, we pair the
+response of each model with the one given by ChatGPT and prompt ChatGPT8to give two scores
+respectively for these two responses. Table 3 shows the total score and the score ratio with the
+ChatGPT score as a reference.
+4.4 Qualitative Analysis
+In this section, we show qualitative results from our evaluation set OwlEval.
+Knowledge-intensive QA As shown in Figure 5, the instruction expects the model to identify
+the movie characters in the image. MM-REACT is unable to provide an effective response to the
+instruction, while MiniGPT-4 understands the instruction but failed to answer the movie charac-
+ters. In contrast, mPLUG-Owl answers four out of the ﬁve characters present in the image. This
+demonstrates that mPLUG-Owl has a better understanding of the knowledge in the image.
+8Without access to the GPT-4, we use the ChatGPT as the suboptimal scorer.
+7
+Meaning Deﬁnition
+IU Instruction Understanding1. Understand text instruction.
+2. Do not require a correct answer, but the response
+should be related to the instruction.
+VU Visual Understanding1. Identify image information.
+2. The answer faithfully reﬂects over 60% of visual
+information in the image.
+OCR Optical Character Recognition1. Recognize text information in the image.
+2. The answer faithfully reﬂects over 60% of text
+information in the image.
+KTA Knowledge Transfer Ability1. Transfer knowledge between language and vision.
+(1) understand textual and visual content
+(2) align and transfer visual and language knowledge
+2. Answers are mostly accurate with accuracy rate over 80%.
+RA Reasoning Ability1. Combine image and text for reasoning.
+(1) understand textual and visual content
+(2) conduct multi-step reasoning
+(3) generate answers based on multi-step reasoning process
+2. The ﬁnal answer is essentially correct, but it lacks an
+explicit reasoning process. Alternatively, the ﬁnal answer is
+mostly correct, and the reasoning process is over 80% accurate.
+3. For example
+(1) Commonsense Knowledge Reasoning
+(2) Counterfactual Reasoning
+(3) Spatial Relation Reasoning
+(4) Numerical Computation
+(5) Coding
+MDA Multi-turn Dialogue Ability1. Understand instructions and handle multi-turn conversations.
+2. It includes clear references to multiple conversations and
+handles natural language semantics in context effectively.
+3. The semantics and references are mostly correct, with an
+accuracy rate of over 80%.
+Table 1: The deﬁnition of 6 abilities to complete visually-related tasks.
+Multimodal
+PretrainingPure Text
+InstructionMulti-modal
+InstructionAbility
+IU VU OCR KTA RA MDA
+r1 X 58:5( 41:5) 38:1( 57:1) 13:3( 43:4) 16:7( 70:8) 17:1( 62:9) 40:0( 55:0)
+r2 X X 93:9( 6:1) 47:6( 47:6) 23:3( 33:4) 29:2( 58:3) 14:3( 65:7) 45:0( 50:0)
+r3 X X 93:0( 7:0) 73:0( 22:2) 40:0( 16:7) 41:7( 45:8) 48:6( 31:4) 80:0( 15:0)
+r4 X X 86:6( 13:4) 68:3( 26:9) 40:0( 16:7) 50:0( 37:5) 60:0( 20:0) 75:0( 20:0)
+r5 X X X 100.0 95.2 56.7 87.5 80.0 95.0
+MiniGPT-4 [Zhu et al., 2023a] 97.6 81.0 40.0 83.3 65.7 75.0
+Table 2: The ablation results. Each value represents the proportion of questions where the corre-
+sponding ability is correctly reﬂected in the model’s response. IU: instruction understanding, VU:
+visual understanding, OCR: optical character recognition, KTA: knowledge transferability, RA: rea-
+soning ability, MDA: multi-turn dialogue ability.
+Multi-round Conversation The instruction in Figure 6 requires the model to identify the content
+of the image based on the referential information. The baseline models often made mistakes when
+faced with referential expressions related to spatial orientation, human behavior, and target attributes
+in the questions, whereas mPLUG-Owl provided the most accurate response. This capability stems
+from mPLUG-Owl’s ﬁne-grained understanding of the image, allowing it to locate the corresponding
+part of the image based on the referential information in the instruction.
+Reasoning Figure 7 shows an instruction asking models to give a prediction based on visual in-
+formation and explain the reason. mPLUG-Owl analyzes the characteristics of the two teams from
+8
+Model Tuning Strategy Model Score ChatGPT Score Ratio
+Alpaca-7B Full 573 708 80.93%
+Vicuna-7B Full 612 684 89.47%
+mPLUG-Owl w/o multimodal tuning (r4) LoRA 587 682 86.07%
+mPLUG-Owl (r5) LoRA 600 692 86.71%
+Table 3: The performance of 80 text-only questions from Vicuna[Vicuna, 2023] assessed by Chat-
+GPT.
+Figure 5: A comparison of Knowledge-intensive QA.
+Figure 6: A comparison of Multi-turn Conversation.
+the aspects of the lineup and tactics and uses them to reason for the outcome. Although MiniGPT-4
+also performs well, its persuasiveness in reasoning is slightly inferior to mPLUG-Owl.
+Joke Comprehension The case in Figure 8 comes from the GPT-4[OpenAI, 2023], which requires
+the model to understand and explain a visually related joke. GPT-4 not only follows the instructions
+in performing analysis panel by panel but also almost perfectly understands the humor of the charg-
+ing method. mPLUG-Owl also understands this unusual humor, but it incorrectly identiﬁed the
+“VGA” to “USB”. This is mainly due to the limitation of visual information in our training data.
+More cases about joke comprehension are shown in Figure 9.
+9
+Figure 7: A comparison of Reasoning QA.
+Figure 8: A comparison of Joke Understanding.
+Theimagefeaturesafunnysceneofananimatedsquirreltakingapicturewhileholdingadigitalcamera.Squirrelsareknownfortheirmischievousbehavior,soseeingoneusingacameratocapturetheiranticscouldamuseviewers.Additionally,thesceneispresentedwithanartisticstylethataddstothecomicalatmosphere,makingitevenfunniertoview.Thejuxtapositionoftheserious-lookingsquirrelandthelightheartednatureoftheimagecreatesasenseofhumorandplayfulnessthatappealstotheviewer,invokinglaughterandenjoyment.Whywouldapersonfindthisimagefunny?
+!
+WhatmakesthissceneunusualisthepresenceofamanironingclothesonabusyNewYorkCitystreetwhilealargeyellowtaxidrivesbyinthebackground.Usually,peoplewouldnotironclothesinsuchanurbanenvironment,asitismorecommontodosoinamoreprivateorquieterlocation.Thecombinationofastreetsceneandamanironinghisclothesinpubliccancreateauniquevisualimpressionanddrawattentiontotheman'sunusualactivity.Whatisunusualaboutthisimage?
+!
+Thehumorinthismemecomesfromitsplayfuluseofwordsandthevisualdepictionofacute,tiredFrenchbulldoglyingdownonitsside,possiblyafteralongday.Thephrase"just...Monday,"iscommonlyusedtoexpressafeelingofwearinessorfrustrationwiththestartofanewweek,andthedog'sexpressionofexhaustionperfectlycapturesthismood.Theimageisvisuallyappealingandrelatable,makingitafunnyandentertainingwaytoexpressacommonsentiment.Explainwhythismemeisfunny.
+!
+Theimageshowcasesacatsittingonachairandwearingabluesweatshirt,surroundedbyapileofcookies.Thecatappearstobeenjoyingthecookiesasithasbothitsfrontpawsonthepile.Thechairisplacednearatable,andtherearemultiplecupsscatteredacrossthetable,likelyusedinservingthecookies.Thecat'spresenceinanunusualsettingaddstothecomedicaspectoftheimage.Thecatappearstobedressedup,whichmakesitlookevenmorecuriousaboutthesituationanditssurroundings.Thecombinationofcookies,acomfychair,andvariouscupscreatesacozyandrelaxedatmosphereintheroom,makingthesceneseemlikeafunandenjoyablewaytospendaSaturdaynight.Describethisimage.
+!
+Explainwhythisimageisfunny.
+Thisimageisfunnybecauseitportraysadomesticatedanimalinanunusual,unexpected,andcomedicsetting.Inthescene,anadorablecatissittingonabluesweatshirt,surroundedbyamassivepileofcookiesandafewcups.Thecatisdressedupinasweatshirt,whichmakesitssituationevenmoreunusual.Thistypeofscenarioisoftenassociatedwithhumanbehavior,suchaswhenachildwearstheirHalloweencostumeforanunexpectedevent.Thecat'spresenceinthissettingmakesforahumorous,entertaining,andlight-heartedscenethatevokeslaughterandamusementfromviewers.
+!ThisimageisfunnybecauseitshowsapersonholdingacellphoneandaUSBcord,withasmallbatteryandaUSBchargerplug.ThepersonisusingtheUSBchargertochargethephoneusingthebattery,whichisanunusualandcomedicwaytochargeacellphone.Itishumorousbecauseitshowstheperson'sresourcefulnessinfindingwaystochargetheirphonewithouttheusualchargingcableorplug-in.Additionally,theperson'shandholdingthephoneandthebatteryispositionedinawaythatmakesitappearasiftheyaretryingtokeepthebatteryandthephonetogether,addingtothecomedicelement.Overall,theimageisfunnyduetotheunusualchargingmethod,thepositioningofthehandholdingthephoneandthebattery,andthesmallbatteryandUSBchargerbeingcombined.Whatisfunnyaboutthisimage?Describeitpanelbypanel.
+!
+Figure 9: More cases of Jokes Comprehension by mPLUG-Owl.
+10
+5 Discussion and Limitation
+In this section, we show some nascent abilities of mPLUG-Owl that is not yet fully developed and
+discuss the limitation. Part of cases (without scores) in this section are not in OwlEval.
+Figure 10: Multi-image correlation cases.
+Multi-image Correlation In Figure 10, mPLUG-Owl shows a emerging but not strong vision
+correlation capability across multiple images. In the left case, the model could identify an identical
+person in two images and correctly tell the difference of cloth color. But in the left case, the model
+fails to relate 4 images and produces some text hallucinations.
+Figure 11: Example prompt of multilingual understanding which showcases the multilingual abili-
+ties across Chinese, French, and Japanese, respectively.
+11
+Multilingual Conversation Besides English, we further test the model’s multilingual ability. As
+shown in Figure 11, although there is no multilingual data during our two-stage training, mPLUG-
+Owl shows a promising multilingual understanding for Chinese, French and Japanese. We mainly
+attribute this ability to the raw text knowledge in LLaMa[Touvron et al., 2023]. However, due to the
+lacking of multilingual training, mPLUG-Owl may fail to response in corresponding languages.
+Scene Text Understanding In Figure 16, mPLUG-Owl demonstrates its OCR ability in some
+simple scenes, but we can see that the model’s perception of numbers in images is still limited.
+However, for the OCR of complex scenes, as shown in Figure 17-18, the performance of mPLUG-
+Owl is more general, mainly because the perception of numbers in images is weak, which affects
+the subsequent reasoning calculation.
+Vision-only Document Comprehension Although we did not use any document annotation data
+for training, the model exhibited some text recognition and document understanding capabilities.
+Hence, we delved deeper into the combination of document understanding and functionality of our
+model. as illustrated in Figure 12, we explored movie review writing, code generation, code expla-
+nation, chat summary, and application guidance. The model show decent performance in (a) and
+(b), but still, had some errors. Meanwhile, it was unable to provide usable responses in (d), (e), and
+(f). Therefore, there is further scope to explore our model’s potential in document understanding
+and downstream applications.
+They are talking about the man on the lawn, who is sitting on the grass, playing with a dog, and enjoying the fresh air. The man is holding a frisbee, and the dog is chasing it in the air. The conversation between the man and the woman is about the man playing with the dog, and the woman is asking about the location of the frisbee.Whataretheytalkingabout?
+!The code snippet is a Python function nameddef fibonacci(n)that returns the nth element of the Fibonacci sequence. It takes an input parameternthat is used to define the starting index of the sequence and the number of elements to be returned, respectively.The function starts by initializing two variables,aandb, to 0. It then iterates through the loop, incrementing the value ofaandbby one each time. If the current value ofaequalsb, it returns the result ofaand continues to the next iteration. If the current value ofais greater thanb, it returns the result ofb, and ifais less thanbit returns the result ofaandb.Finally, the function returns the last value ofnelements, which is calculated using the formula for the nth Fibonacci number.In this case, the input parameternis set to 5, and the function returns 5.Explain this code 
+!
+Here is the HTML code for the webpage screenshot with a search bar:Write HTML code for this webpage screenshot
+!
+The movie "The Irishman" tells the story of mobster Frank Sheeran and his involvement with the Bufalinocrime family, as well as his relationship with Teamster leader Jimmy Hoffa. Directed by Martin Scorsese, the film features a star-studded cast including Robert De Niro, Al Pacino, Joe Pesci, and Ray Romano, who portray the central characters. The movie spans several decades, starting in the 1950s when Frank Sheeran first meets Hoffa, and continuing until the 1990s when the characters' lives have drastically changed.The movie begins with the murder of Jimmy Hoffa, who disappeared in 1975. The film then follows Sheeran's life, starting from his early days in the Bufalinofamily. We learn about his relationship with Hoffa, as well as his involvement in various crimes and mob activities. The movie also explores Sheeran's personal life and the toll that the mob lifestyle took on his relationships and mental health.Write a movie review about this film. 
+!
+If you want to watch videos on your phone, you can use the YouTube application. It is one of the default applications on the iPhone, allowing you to easily browse and play a large collection of videos. The app can also be used to upload and share videos, and you can access YouTube content from within your phone.Which app in this phone should I use if I want watch videos? 
+!Or if I want to go home but I forget the route?
+To help you find your way home, you could use the Maps application. It is another one of the default applications on the iPhone, and it provides turn-by-turn navigation, directions, and real-time traffic updates. You can also use the app to search for local businesses and attractions, as well as plan routes and share them with friends.
+!
+(a) movie review writing(b) code explanation(b) application guidance(b) code generation(b) chat summary
+Figure 12: Examples about various document understanding and application.
+Open-ended Creation mPLUG-Owl performs well in the creation of poetry, lyrics, advertise-
+ments and other works based on images. Its performance in some cases is shown in Figure 13-14.
+However, further exploration is needed for more functional and practical creations.
+12
+Sure,amasterrapsongthatrhymesverywellbasedonthisimagecouldgosomethinglikethis:Igotmysunglassesonandmygreenjacket,I'mreadytorockthedancefloorwithmyoldschoolmoves.I'vegotmywalkerinhandandmyhearingaidinplace,BecauseI'mthegrandmotherofthepartyandI'mreadytorap.AsI'mshakingitup,I'llshowyoumyskills,Myhip-hopdancemovesaresosmoothandslick.Theoldladiesareimpressedwithmymovesonthefloor,Andmygrandsoncan'tbelievehisgranny'sdoingthisformore.I'mshowingtheyoung'unshowit'sdone,I'mthecoolestgrandmaaround,Andthey'relearningthemovesfromme,I'vegotthebestdancemovesofanyoneintheroom.So,don'tbesurprisedifyouseemeshakingituponthefloor,Myhearingaidandsunglassesaremysignatureaccessories,AndI'mheretoshowyouthatageisn'tabarriertohavingfun,BecauseI'mthegrandmotherofthepartyandI'mheretobustamove.Canyouwritemeamasterrapsongthatrhymesverywellbasedonthisimage?
+!Theancientmanintheimageisamonkwithagrayishskintone,wearingatraditionalmonkoutfitandcarryingalargebraininonehand.Hestandstallandproud,withaconfidentdemeanor.Themonkcouldbefromafar-offlandoradistantera,wherehepracticesancientknowledgeandwisdom.Hemayhavedevotedhislifetostudyingandunderstandingthemysteriouspropertiesofthebrainanditsroleinthehumanmind.Hisknowledgeandunderstandingofthebraincouldhavecomefromextensivemeditationandcontemplation,orperhapsfromstudyingancienttextsandartifacts.Hisquestforknowledgecouldstemfromadesiretounlockthesecretsofconsciousnessandthehumanpsyche,orsimplyfromacuriosityaboutthehumanbrainanditscapabilities.Idesignedacharacterformygameasshownintheimage.Canyouwritemeabackgroundstoryforhim?
+!Asthedaydrawstoaclose,theyoungmanandhisgoldenretrievershareamomentofcompanionship.Thesunisbeginningtoset,castingitsglowonthecityscape,creatingapicturesquescene.Theyaresittingatopahill,surroundedbythebeautyofnature.Themanholdshispetclosetohisheart,sharingabondofloveandaffection.Theirconnectiontranscendswords,andtheirsharedexperiencecreatesasenseofpeace.Asthemanleansdowntohisbeloveddog,hefeelsthewarmthofitsfurandtheunconditionalloveitgivesinreturn.Thisspecialmomentbetweenthemanandhisdogcapturestheessenceofcompanionship,trust,andthejoyofspendingtimetogether.Asthesunsets,theirbondgrowsstronger,andtheybecomepartofthescenery,embracingtheserenityoftheevening.Canyouwritemeabeautifulpoemaboutthisimage?
+!
+Advertisementfortheuniqueandeye-catchingCockatooTableLamp,alampdesignedtoresemblearealisticandvibrantcockatoo.Thislampfeaturesarealisticbody,head,andtailmadeofdurablemetalwithanauthentic-lookingfeatherdetail,addingatouchofwhimsyandcharactertoanyspace.Thelampisalsoequippedwithanenergy-efficientLEDlightthatprovidesbrightandevenilluminationwithouttheheatandglareoftraditionallightbulbs.Thisfunctionalyetvisuallystrikinglampisaperfectadditiontoanylivingspace,office,bedroom,orevenoutdoorarea.Itcanbeusedasanaccentlamp,anightlight,orasafunctionaldesklampforwork,study,orplay.Helpmewriteanadvertisementforthis.
+!
+Sure,amasterrapsongthatrhymesverywellbasedonthisimagecouldgosomethinglikethis:Igotmysunglassesonandmygreenjacket,I'mreadytorockthedancefloorwithmyoldschoolmoves.I'vegotmywalkerinhandandmyhearingaidinplace,BecauseI'mthegrandmotherofthepartyandI'mreadytorap.AsI'mshakingitup,I'llshowyoumyskills,Myhip-hopdancemovesaresosmoothandslick.Theoldladiesareimpressedwithmymovesonthefloor,Andmygrandsoncan'tbelievehisgranny'sdoingthisformore.I'mshowingtheyoung'unshowit'sdone,I'mthecoolestgrandmaaround,Andthey'relearningthemovesfromme,I'vegotthebestdancemovesofanyoneintheroom.So,don'tbesurprisedifyouseemeshakingituponthefloor,Myhearingaidandsunglassesaremysignatureaccessories,AndI'mheretoshowyouthatageisn'tabarriertohavingfun,BecauseI'mthegrandmotherofthepartyandI'mheretobustamove.Canyouwritemeamasterrapsongthatrhymesverywellbasedonthisimage?
+!Theancientmanintheimageisamonkwithagrayishskintone,wearingatraditionalmonkoutfitandcarryingalargebraininonehand.Hestandstallandproud,withaconfidentdemeanor.Themonkcouldbefromafar-offlandoradistantera,wherehepracticesancientknowledgeandwisdom.Hemayhavedevotedhislifetostudyingandunderstandingthemysteriouspropertiesofthebrainanditsroleinthehumanmind.Hisknowledgeandunderstandingofthebraincouldhavecomefromextensivemeditationandcontemplation,orperhapsfromstudyingancienttextsandartifacts.Hisquestforknowledgecouldstemfromadesiretounlockthesecretsofconsciousnessandthehumanpsyche,orsimplyfromacuriosityaboutthehumanbrainanditscapabilities.Idesignedacharacterformygameasshownintheimage.Canyouwritemeabackgroundstoryforhim?
+!Asthedaydrawstoaclose,theyoungmanandhisgoldenretrievershareamomentofcompanionship.Thesunisbeginningtoset,castingitsglowonthecityscape,creatingapicturesquescene.Theyaresittingatopahill,surroundedbythebeautyofnature.Themanholdshispetclosetohisheart,sharingabondofloveandaffection.Theirconnectiontranscendswords,andtheirsharedexperiencecreatesasenseofpeace.Asthemanleansdowntohisbeloveddog,hefeelsthewarmthofitsfurandtheunconditionalloveitgivesinreturn.Thisspecialmomentbetweenthemanandhisdogcapturestheessenceofcompanionship,trust,andthejoyofspendingtimetogether.Asthesunsets,theirbondgrowsstronger,andtheybecomepartofthescenery,embracingtheserenityoftheevening.Canyouwritemeabeautifulpoemaboutthisimage?
+!
+Advertisementfortheuniqueandeye-catchingCockatooTableLamp,alampdesignedtoresemblearealisticandvibrantcockatoo.Thislampfeaturesarealisticbody,head,andtailmadeofdurablemetalwithanauthentic-lookingfeatherdetail,addingatouchofwhimsyandcharactertoanyspace.Thelampisalsoequippedwithanenergy-efficientLEDlightthatprovidesbrightandevenilluminationwithouttheheatandglareoftraditionallightbulbs.Thisfunctionalyetvisuallystrikinglampisaperfectadditiontoanylivingspace,office,bedroom,orevenoutdoorarea.Itcanbeusedasanaccentlamp,anightlight,orasafunctionaldesklampforwork,study,orplay.Helpmewriteanadvertisementforthis.
+!
+Sure,amasterrapsongthatrhymesverywellbasedonthisimagecouldgosomethinglikethis:Igotmysunglassesonandmygreenjacket,I'mreadytorockthedancefloorwithmyoldschoolmoves.I'vegotmywalkerinhandandmyhearingaidinplace,BecauseI'mthegrandmotherofthepartyandI'mreadytorap.AsI'mshakingitup,I'llshowyoumyskills,Myhip-hopdancemovesaresosmoothandslick.Theoldladiesareimpressedwithmymovesonthefloor,Andmygrandsoncan'tbelievehisgranny'sdoingthisformore.I'mshowingtheyoung'unshowit'sdone,I'mthecoolestgrandmaaround,Andthey'relearningthemovesfromme,I'vegotthebestdancemovesofanyoneintheroom.So,don'tbesurprisedifyouseemeshakingituponthefloor,Myhearingaidandsunglassesaremysignatureaccessories,AndI'mheretoshowyouthatageisn'tabarriertohavingfun,BecauseI'mthegrandmotherofthepartyandI'mheretobustamove.Canyouwritemeamasterrapsongthatrhymesverywellbasedonthisimage?
+!Theancientmanintheimageisamonkwithagrayishskintone,wearingatraditionalmonkoutfitandcarryingalargebraininonehand.Hestandstallandproud,withaconfidentdemeanor.Themonkcouldbefromafar-offlandoradistantera,wherehepracticesancientknowledgeandwisdom.Hemayhavedevotedhislifetostudyingandunderstandingthemysteriouspropertiesofthebrainanditsroleinthehumanmind.Hisknowledgeandunderstandingofthebraincouldhavecomefromextensivemeditationandcontemplation,orperhapsfromstudyingancienttextsandartifacts.Hisquestforknowledgecouldstemfromadesiretounlockthesecretsofconsciousnessandthehumanpsyche,orsimplyfromacuriosityaboutthehumanbrainanditscapabilities.Idesignedacharacterformygameasshownintheimage.Canyouwritemeabackgroundstoryforhim?
+!Asthedaydrawstoaclose,theyoungmanandhisgoldenretrievershareamomentofcompanionship.Thesunisbeginningtoset,castingitsglowonthecityscape,creatingapicturesquescene.Theyaresittingatopahill,surroundedbythebeautyofnature.Themanholdshispetclosetohisheart,sharingabondofloveandaffection.Theirconnectiontranscendswords,andtheirsharedexperiencecreatesasenseofpeace.Asthemanleansdowntohisbeloveddog,hefeelsthewarmthofitsfurandtheunconditionalloveitgivesinreturn.Thisspecialmomentbetweenthemanandhisdogcapturestheessenceofcompanionship,trust,andthejoyofspendingtimetogether.Asthesunsets,theirbondgrowsstronger,andtheybecomepartofthescenery,embracingtheserenityoftheevening.Canyouwritemeabeautifulpoemaboutthisimage?
+!
+Advertisementfortheuniqueandeye-catchingCockatooTableLamp,alampdesignedtoresemblearealisticandvibrantcockatoo.Thislampfeaturesarealisticbody,head,andtailmadeofdurablemetalwithanauthentic-lookingfeatherdetail,addingatouchofwhimsyandcharactertoanyspace.Thelampisalsoequippedwithanenergy-efficientLEDlightthatprovidesbrightandevenilluminationwithouttheheatandglareoftraditionallightbulbs.Thisfunctionalyetvisuallystrikinglampisaperfectadditiontoanylivingspace,office,bedroom,orevenoutdoorarea.Itcanbeusedasanaccentlamp,anightlight,orasafunctionaldesklampforwork,study,orplay.Helpmewriteanadvertisementforthis.
+!
+Sure,amasterrapsongthatrhymesverywellbasedonthisimagecouldgosomethinglikethis:Igotmysunglassesonandmygreenjacket,I'mreadytorockthedancefloorwithmyoldschoolmoves.I'vegotmywalkerinhandandmyhearingaidinplace,BecauseI'mthegrandmotherofthepartyandI'mreadytorap.AsI'mshakingitup,I'llshowyoumyskills,Myhip-hopdancemovesaresosmoothandslick.Theoldladiesareimpressedwithmymovesonthefloor,Andmygrandsoncan'tbelievehisgranny'sdoingthisformore.I'mshowingtheyoung'unshowit'sdone,I'mthecoolestgrandmaaround,Andthey'relearningthemovesfromme,I'vegotthebestdancemovesofanyoneintheroom.So,don'tbesurprisedifyouseemeshakingituponthefloor,Myhearingaidandsunglassesaremysignatureaccessories,AndI'mheretoshowyouthatageisn'tabarriertohavingfun,BecauseI'mthegrandmotherofthepartyandI'mheretobustamove.Canyouwritemeamasterrapsongthatrhymesverywellbasedonthisimage?
+!Theancientmanintheimageisamonkwithagrayishskintone,wearingatraditionalmonkoutfitandcarryingalargebraininonehand.Hestandstallandproud,withaconfidentdemeanor.Themonkcouldbefromafar-offlandoradistantera,wherehepracticesancientknowledgeandwisdom.Hemayhavedevotedhislifetostudyingandunderstandingthemysteriouspropertiesofthebrainanditsroleinthehumanmind.Hisknowledgeandunderstandingofthebraincouldhavecomefromextensivemeditationandcontemplation,orperhapsfromstudyingancienttextsandartifacts.Hisquestforknowledgecouldstemfromadesiretounlockthesecretsofconsciousnessandthehumanpsyche,orsimplyfromacuriosityaboutthehumanbrainanditscapabilities.Idesignedacharacterformygameasshownintheimage.Canyouwritemeabackgroundstoryforhim?
+!Asthedaydrawstoaclose,theyoungmanandhisgoldenretrievershareamomentofcompanionship.Thesunisbeginningtoset,castingitsglowonthecityscape,creatingapicturesquescene.Theyaresittingatopahill,surroundedbythebeautyofnature.Themanholdshispetclosetohisheart,sharingabondofloveandaffection.Theirconnectiontranscendswords,andtheirsharedexperiencecreatesasenseofpeace.Asthemanleansdowntohisbeloveddog,hefeelsthewarmthofitsfurandtheunconditionalloveitgivesinreturn.Thisspecialmomentbetweenthemanandhisdogcapturestheessenceofcompanionship,trust,andthejoyofspendingtimetogether.Asthesunsets,theirbondgrowsstronger,andtheybecomepartofthescenery,embracingtheserenityoftheevening.Canyouwritemeabeautifulpoemaboutthisimage?
+!
+Advertisementfortheuniqueandeye-catchingCockatooTableLamp,alampdesignedtoresemblearealisticandvibrantcockatoo.Thislampfeaturesarealisticbody,head,andtailmadeofdurablemetalwithanauthentic-lookingfeatherdetail,addingatouchofwhimsyandcharactertoanyspace.Thelampisalsoequippedwithanenergy-efficientLEDlightthatprovidesbrightandevenilluminationwithouttheheatandglareoftraditionallightbulbs.Thisfunctionalyetvisuallystrikinglampisaperfectadditiontoanylivingspace,office,bedroom,orevenoutdoorarea.Itcanbeusedasanaccentlamp,anightlight,orasafunctionaldesklampforwork,study,orplay.Helpmewriteanadvertisementforthis.
+!
+Sure,amasterrapsongthatrhymesverywellbasedonthisimagecouldgosomethinglikethis:Igotmysunglassesonandmygreenjacket,I'mreadytorockthedancefloorwithmyoldschoolmoves.I'vegotmywalkerinhandandmyhearingaidinplace,BecauseI'mthegrandmotherofthepartyandI'mreadytorap.AsI'mshakingitup,I'llshowyoumyskills,Myhip-hopdancemovesaresosmoothandslick.Theoldladiesareimpressedwithmymovesonthefloor,Andmygrandsoncan'tbelievehisgranny'sdoingthisformore.I'mshowingtheyoung'unshowit'sdone,I'mthecoolestgrandmaaround,Andthey'relearningthemovesfromme,I'vegotthebestdancemovesofanyoneintheroom.So,don'tbesurprisedifyouseemeshakingituponthefloor,Myhearingaidandsunglassesaremysignatureaccessories,AndI'mheretoshowyouthatageisn'tabarriertohavingfun,BecauseI'mthegrandmotherofthepartyandI'mheretobustamove.Canyouwritemeamasterrapsongthatrhymesverywellbasedonthisimage?
+!Theancientmanintheimageisamonkwithagrayishskintone,wearingatraditionalmonkoutfitandcarryingalargebraininonehand.Hestandstallandproud,withaconfidentdemeanor.Themonkcouldbefromafar-offlandoradistantera,wherehepracticesancientknowledgeandwisdom.Hemayhavedevotedhislifetostudyingandunderstandingthemysteriouspropertiesofthebrainanditsroleinthehumanmind.Hisknowledgeandunderstandingofthebraincouldhavecomefromextensivemeditationandcontemplation,orperhapsfromstudyingancienttextsandartifacts.Hisquestforknowledgecouldstemfromadesiretounlockthesecretsofconsciousnessandthehumanpsyche,orsimplyfromacuriosityaboutthehumanbrainanditscapabilities.Idesignedacharacterformygameasshownintheimage.Canyouwritemeabackgroundstoryforhim?
+!Asthedaydrawstoaclose,theyoungmanandhisgoldenretrievershareamomentofcompanionship.Thesunisbeginningtoset,castingitsglowonthecityscape,creatingapicturesquescene.Theyaresittingatopahill,surroundedbythebeautyofnature.Themanholdshispetclosetohisheart,sharingabondofloveandaffection.Theirconnectiontranscendswords,andtheirsharedexperiencecreatesasenseofpeace.Asthemanleansdowntohisbeloveddog,hefeelsthewarmthofitsfurandtheunconditionalloveitgivesinreturn.Thisspecialmomentbetweenthemanandhisdogcapturestheessenceofcompanionship,trust,andthejoyofspendingtimetogether.Asthesunsets,theirbondgrowsstronger,andtheybecomepartofthescenery,embracingtheserenityoftheevening.Canyouwritemeabeautifulpoemaboutthisimage?
+!
+Advertisementfortheuniqueandeye-catchingCockatooTableLamp,alampdesignedtoresemblearealisticandvibrantcockatoo.Thislampfeaturesarealisticbody,head,andtailmadeofdurablemetalwithanauthentic-lookingfeatherdetail,addingatouchofwhimsyandcharactertoanyspace.Thelampisalsoequippedwithanenergy-efficientLEDlightthatprovidesbrightandevenilluminationwithouttheheatandglareoftraditionallightbulbs.Thisfunctionalyetvisuallystrikinglampisaperfectadditiontoanylivingspace,office,bedroom,orevenoutdoorarea.Itcanbeusedasanaccentlamp,anightlight,orasafunctionaldesklampforwork,study,orplay.Helpmewriteanadvertisementforthis.
+!
+Figure 13: Open-ended creation cases.
+6 Conclusion
+We propose mPLUG-Owl, a novel training paradigm that enhances the multi-modal abilities of large
+language models (LLMs). Our approach consists of modularized learning of foundation LLM, a vi-
+sual knowledge module, and a visual abstractor module, which can support multiple modalities and
+facilitate diverse unimodal and multimodal abilities through modality collaboration. We employ a
+two-stage method for aligning image and text, which learns visual knowledge with the assistance
+of LLM while maintaining and even improving the generation abilities of LLM. Experimental re-
+sults demonstrate the impressive capabilities of mPLUG-Owl, indicating its potential for various
+applications in multi-modal generation.
+13
+Figure 14: Copywriting cases.
+14
+References
+J. Alayrac, J. Donahue, P. Luc, A. Miech, I. Barr, Y . Hasson, K. Lenc, A. Mensch, K. Millican,
+M. Reynolds, R. Ring, E. Rutherford, S. Cabi, T. Han, Z. Gong, S. Samangooei, M. Monteiro,
+J. Menick, S. Borgeaud, A. Brock, A. Nematzadeh, S. Sharifzadeh, M. Binkowski, R. Barreira,
+O. Vinyals, A. Zisserman, and K. Simonyan. Flamingo: a visual language model for few-shot
+learning. CoRR , abs/2204.14198, 2022.
+T. B. Brown, B. Mann, N. Ryder, M. Subbiah, J. Kaplan, P. Dhariwal, A. Neelakantan, P. Shyam,
+G. Sastry, A. Askell, S. Agarwal, A. Herbert-V oss, G. Krueger, T. Henighan, R. Child, A. Ramesh,
+D. M. Ziegler, J. Wu, C. Winter, C. Hesse, M. Chen, E. Sigler, M. Litwin, S. Gray, B. Chess,
+J. Clark, C. Berner, S. McCandlish, A. Radford, I. Sutskever, and D. Amodei. Language models
+are few-shot learners. In NeurIPS , 2020.
+M. Byeon, B. Park, H. Kim, S. Lee, W. Baek, and S. Kim. Coyo-700m: Image-text pair dataset.
+https://github.com/kakaobrain/coyo-dataset , 2022.
+X. Chen, H. Fang, T. Lin, R. Vedantam, S. Gupta, P. Dollár, and C. L. Zitnick. Microsoft COCO
+captions: Data collection and evaluation server. CoRR , abs/1504.00325, 2015.
+A. Chowdhery, S. Narang, J. Devlin, M. Bosma, G. Mishra, A. Roberts, P. Barham, H. W. Chung,
+C. Sutton, S. Gehrmann, P. Schuh, K. Shi, S. Tsvyashchenko, J. Maynez, A. Rao, P. Barnes,
+Y . Tay, N. Shazeer, V . Prabhakaran, E. Reif, N. Du, B. Hutchinson, R. Pope, J. Bradbury, J. Austin,
+M. Isard, G. Gur-Ari, P. Yin, T. Duke, A. Levskaya, S. Ghemawat, S. Dev, H. Michalewski,
+X. Garcia, V . Misra, K. Robinson, L. Fedus, D. Zhou, D. Ippolito, D. Luan, H. Lim, B. Zoph,
+A. Spiridonov, R. Sepassi, D. Dohan, S. Agrawal, M. Omernick, A. M. Dai, T. S. Pillai, M. Pellat,
+A. Lewkowycz, E. Moreira, R. Child, O. Polozov, K. Lee, Z. Zhou, X. Wang, B. Saeta, M. Diaz,
+O. Firat, M. Catasta, J. Wei, K. Meier-Hellstern, D. Eck, J. Dean, S. Petrov, and N. Fiedel. Palm:
+Scaling language modeling with pathways. CoRR , abs/2204.02311, 2022.
+H. W. Chung, L. Hou, S. Longpre, B. Zoph, Y . Tay, W. Fedus, E. Li, X. Wang, M. Dehghani,
+S. Brahma, A. Webson, S. S. Gu, Z. Dai, M. Suzgun, X. Chen, A. Chowdhery, S. Narang,
+G. Mishra, A. Yu, V . Y . Zhao, Y . Huang, A. M. Dai, H. Yu, S. Petrov, E. H. Chi, J. Dean, J. Devlin,
+A. Roberts, D. Zhou, Q. V . Le, and J. Wei. Scaling instruction-ﬁnetuned language models. CoRR ,
+abs/2210.11416, 2022.
+J. Devlin, M. Chang, K. Lee, and K. Toutanova. BERT: pre-training of deep bidirectional transform-
+ers for language understanding. In NAACL-HLT (1) , pages 4171–4186. Association for Compu-
+tational Linguistics, 2019.
+A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai, T. Unterthiner, M. Dehghani,
+M. Minderer, G. Heigold, S. Gelly, J. Uszkoreit, and N. Houlsby. An image is worth 16x16 words:
+Transformers for image recognition at scale. In ICLR . OpenReview.net, 2021.
+D. Driess, F. Xia, M. S. M. Sajjadi, C. Lynch, A. Chowdhery, B. Ichter, A. Wahid, J. Tompson,
+Q. Vuong, T. Yu, W. Huang, Y . Chebotar, P. Sermanet, D. Duckworth, S. Levine, V . Vanhoucke,
+K. Hausman, M. Toussaint, K. Greff, A. Zeng, I. Mordatch, and P. Florence. Palm-e: An embodied
+multimodal language model. CoRR , abs/2303.03378, 2023.
+E. J. Hu, Y . Shen, P. Wallis, Z. Allen-Zhu, Y . Li, S. Wang, L. Wang, and W. Chen. Lora: Low-rank
+adaptation of large language models. In ICLR . OpenReview.net, 2022.
+T. Kudo and J. Richardson. Sentencepiece: A simple and language independent subword tokenizer
+and detokenizer for neural text processing. In EMNLP (Demonstration) , pages 66–71. Association
+for Computational Linguistics, 2018.
+C. Li, H. Xu, J. Tian, W. Wang, M. Yan, B. Bi, J. Ye, H. Chen, G. Xu, Z. Cao, J. Zhang, S. Huang,
+F. Huang, J. Zhou, and L. Si. mplug: Effective and efﬁcient vision-language learning by cross-
+modal skip-connections. In EMNLP , pages 7241–7259. Association for Computational Linguis-
+tics, 2022.
+J. Li, D. Li, S. Savarese, and S. C. H. Hoi. BLIP-2: bootstrapping language-image pre-training with
+frozen image encoders and large language models. CoRR , abs/2301.12597, 2023.
+15
+H. Liu, C. Li, Q. Wu, and Y . J. Lee. Visual instruction tuning. CoRR , abs/2304.08485, 2023.
+OpenAI. Introducing chatgpt. https://openai.com/blog/chatgpt , 2022.
+OpenAI. GPT-4 technical report. CoRR , abs/2303.08774, 2023.
+L. Ouyang, J. Wu, X. Jiang, D. Almeida, C. L. Wainwright, P. Mishkin, C. Zhang, S. Agarwal,
+K. Slama, A. Ray, J. Schulman, J. Hilton, F. Kelton, L. Miller, M. Simens, A. Askell, P. Welinder,
+P. F. Christiano, J. Leike, and R. Lowe. Training language models to follow instructions with
+human feedback. CoRR , abs/2203.02155, 2022.
+A. Radford and K. Narasimhan. Improving language understanding by generative pre-training.
+2018.
+C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena, Y . Zhou, W. Li, and P. J. Liu.
+Exploring the limits of transfer learning with a uniﬁed text-to-text transformer. J. Mach. Learn.
+Res., 21:140:1–140:67, 2020.
+T. L. Scao, A. Fan, C. Akiki, E. Pavlick, S. Ilic, D. Hesslow, R. Castagné, A. S. Luccioni, F. Yvon,
+M. Gallé, J. Tow, A. M. Rush, S. Biderman, A. Webson, P. S. Ammanamanchi, T. Wang, B. Sagot,
+N. Muennighoff, A. V . del Moral, O. Ruwase, R. Bawden, S. Bekman, A. McMillan-Major,
+I. Beltagy, H. Nguyen, L. Saulnier, S. Tan, P. O. Suarez, V . Sanh, H. Laurençon, Y . Jernite,
+J. Launay, M. Mitchell, C. Raffel, A. Gokaslan, A. Simhi, A. Soroa, A. F. Aji, A. Alfassy,
+A. Rogers, A. K. Nitzav, C. Xu, C. Mou, C. Emezue, C. Klamm, C. Leong, D. van Strien, D. I.
+Adelani, and et al. BLOOM: A 176b-parameter open-access multilingual language model. CoRR ,
+abs/2211.05100, 2022.
+C. Schuhmann, R. Vencu, R. Beaumont, R. Kaczmarczyk, C. Mullis, A. Katta, T. Coombes, J. Jitsev,
+and A. Komatsuzaki. LAION-400M: open dataset of clip-ﬁltered 400 million image-text pairs.
+CoRR , abs/2111.02114, 2021.
+P. Sharma, N. Ding, S. Goodman, and R. Soricut. Conceptual captions: A cleaned, hypernymed,
+image alt-text dataset for automatic image captioning. In ACL (1) , pages 2556–2565. Association
+for Computational Linguistics, 2018.
+Y . Shen, K. Song, X. Tan, D. Li, W. Lu, and Y . Zhuang. Hugginggpt: Solving AI tasks with chatgpt
+and its friends in huggingface. CoRR , abs/2303.17580, 2023.
+R. Taori, I. Gulrajani, T. Zhang, Y . Dubois, X. Li, C. Guestrin, P. Liang, and T. B. Hashimoto.
+Stanford alpaca: An instruction-following llama model. https://github.com/tatsu-lab/
+stanford_alpaca , 2023.
+H. Touvron, T. Lavril, G. Izacard, X. Martinet, M. Lachaux, T. Lacroix, B. Rozière, N. Goyal,
+E. Hambro, F. Azhar, A. Rodriguez, A. Joulin, E. Grave, and G. Lample. Llama: Open and
+efﬁcient foundation language models. CoRR , abs/2302.13971, 2023.
+Vicuna. Vicuna: An open chatbot impressing gpt-4. https://github.com/lm-sys/FastChat ,
+2023.
+Y . Wang, Y . Kordi, S. Mishra, A. Liu, N. A. Smith, D. Khashabi, and H. Hajishirzi. Self-instruct:
+Aligning language model with self generated instructions. CoRR , abs/2212.10560, 2022. doi:
+10.48550/arXiv.2212.10560. URL https://doi.org/10.48550/arXiv.2212.10560 .
+C. Wu, S. Yin, W. Qi, X. Wang, Z. Tang, and N. Duan. Visual chatgpt: Talking, drawing and editing
+with visual foundation models. CoRR , abs/2303.04671, 2023.
+C. Xu, D. Guo, N. Duan, and J. J. McAuley. Baize: An open-source chat model with parameter-
+efﬁcient tuning on self-chat data. CoRR , abs/2304.01196, 2023a.
+H. Xu, M. Yan, C. Li, B. Bi, S. Huang, W. Xiao, and F. Huang. E2E-VLP: end-to-end vision-
+language pre-training enhanced by visual learning. In ACL/IJCNLP (1) , pages 503–513. Associ-
+ation for Computational Linguistics, 2021.
+16
+H. Xu, Q. Ye, M. Yan, Y . Shi, J. Ye, Y . Xu, C. Li, B. Bi, Q. Qian, W. Wang, G. Xu, J. Zhang,
+S. Huang, F. Huang, and J. Zhou. mplug-2: A modularized multi-modal foundation model across
+text, image and video. CoRR , abs/2302.00402, 2023b.
+Z. Yang, L. Li, J. Wang, K. Lin, E. Azarnasab, F. Ahmed, Z. Liu, C. Liu, M. Zeng, and L. Wang.
+MM-REACT: prompting chatgpt for multimodal reasoning and action. CoRR , abs/2303.11381,
+2023.
+Q. Ye, G. Xu, M. Yan, H. Xu, Q. Qian, J. Zhang, and F. Huang. Hitea: Hierarchical temporal-aware
+video-language pre-training. CoRR , abs/2212.14546, 2022. doi: 10.48550/arXiv.2212.14546.
+URL https://doi.org/10.48550/arXiv.2212.14546 .
+S. Zhang, S. Roller, N. Goyal, M. Artetxe, M. Chen, S. Chen, C. Dewan, M. T. Diab, X. Li, X. V .
+Lin, T. Mihaylov, M. Ott, S. Shleifer, K. Shuster, D. Simig, P. S. Koura, A. Sridhar, T. Wang, and
+L. Zettlemoyer. OPT: open pre-trained transformer language models. CoRR , abs/2205.01068,
+2022.
+D. Zhu, J. Chen, X. Shen, X. Li, and M. Elhoseiny. Minigpt-4: Enhancing vision-language under-
+standing with advanced large language models, 2023a.
+W. Zhu, J. Hessel, A. Awadalla, S. Y . Gadre, J. Dodge, A. Fang, Y . Yu, L. Schmidt, W. Y . Wang, and
+Y . Choi. Multimodal C4: an open, billion-scale corpus of images interleaved with text. CoRR ,
+abs/2304.06939, 2023b.
+17
+A Training Hyperparameters
+We report the detailed model training hyperparameters for visual knowledge learning in Table 4 and
+vision-language joint instruction tuning in Table 5.
+Hyperparameters
+Training steps 50,000
+Warmup steps 375
+Max length 512
+Batch size of image-caption pairs 4,096
+Optimizer AdamW
+Learning rate 2e-4
+Learning rate decay Cosine
+Adam 1e-6
+Adam (0.9, 0.98)
+Weight decay 0.01
+Table 4: Training hyperparameters for multi-modal pre-training stage.
+Hyperparameters
+Training steps 2,000
+Warmup steps 50
+Max length 1,024
+Batch size of text instruction data 128
+Batch size of multi-modal instruction data 128
+Optimizer AdamW
+Learning rate 2e-5
+Learning rate decay Cosine
+AdamW 1e-6
+AdamW (0.9, 0.999)
+Weight decay 0.0001
+Table 5: Training hyperparameters for vision-language joint instruction tuning stage.
+B Comparison with MM-REACT
+Figure 15: The comparison results which exclude the cases that were generated unsuccessfully by
+MM-REACT.
+18
+Therearetwobedroomsinthisfloorplan.Howmanybedroomsarethereinthisfloorplan?
+!12'x10'WhatisthedimensionofMasterBedroom?
+!Yes,thereisabathroominmasterbedroom.Isthereabathroominmasterbedroom?
+!11'x8'WhatisthedimensionofSecondBedroom？
+!Yes,theterraceisbiggerthanthekitchen.Istheterracebiggerthanthekitchen?
+!Stove,Refrigerator,Microwave,DishwasherWhataretheappliancesinthekitcheninthisfloorplan？
+!Whatwillyouseewhenyouenterthroughtheentrance?andwhatisthedimensionofit？
+Whenyouenterthroughtheentrance,youwillseethekitchenwithalargerefrigeratorinit.Theentrancedoorwayis10feetlong,whichgivesanideaofthesizeandlayoutofthisspace.Thisisafloorplanforanewhouse,andthedimensionsofthekitchenandtheentrancedoorwaysuggestalarger,morespaciouslivingarea.
+!
+Aspaciousfloorplanwithtwomainlivingareas,alargelivingroomandadiningroom,both15feetwide.Amasterbedroomwithasizeof12feetby10feetandabathroom.Aterracebiggerthanthekitchen,offeringadditionallivingspaceandagreatview.Akitchenwithbasicappliances,suchasastove,refrigerator,microwave,anddishwasher.CanyousummarizethisfloorplanbasedontheaspectsIwasinterestedin,inafewsentences？
+!WritebriefHTML/JStoturnthismock-upintoacolorfulwebsite,wherethejokesarereplacedbyarealjoke
+!
+Figure 16: OCR of simple scenes (mostly scenes with few numbers and no calculation a).
+19
+Theflowchartdisplaysinstructionsforpreparingadrink,specificallyamixtureoforangejuiceandmilk,whichareplacedinablender.Theprocessconsistsoffoursteps-slicingtheoranges,puttingthemintheblender,addingmilk,andthenturningontheblender.Thefinalstepinstructstoservetheblendeddrinkinaglass.Thissimpleandstraightforwardflowchartprovidesaclearguideforthepersonfollowingtheinstructionstocreatetheorangeandmilkdrinkeasilyandefficiently.Canyoureadthetextinthisflowchartandexplainittome?
+!Theaveragetotalchargingcostforthethreeelectriccars,includingtheFordF150Lightning,canbecalculatedbymultiplyingthecostperkWhofelectricityforeachcar,asprovidedintheimage,bythenumberofmilesdriven.Forexample,theFordF150Lightningconsumes12kWhpermile,theChevyBoltconsumes35kWhpermile,andtheTeslaModelSconsumes36kWhpermile.Thetotalchargingcostwouldthenbe:($1.02perkWhfortheFordF150Lightning)x(12kWh/milefortheFordF150Lightning)x(200milesfortheFordF150Lightning)=$24.24.FortheChevyBolt,itwouldbe($1.49perkWhfortheChevyBolt)x(35kWh/milefortheChevyBolt)x(200milesfortheChevyBolt)=$1,138.40,andfortheTeslaModelS,itwouldbe($0.94perkWhfortheTeslaModelS)x(36kWh/milefortheTeslaModelS)x(200milesfortheTeslaModelS)=$316.48.Thesecostsareestimatesbasedontheinformationavailableintheimage,andtheactualchargingcostsmaydifferdependingonfactorslikelocalelectricitypricesanddrivinghabits.ExcludingFordF150Lightning,whatistheaveragetotalchargingcost?
+!
+Calculatetheaveragetotalfuelingcostofthegasolinecars:FordF150RegularCab:Averagefuelingcostis$1,240peryearFordF150RegularCab(EcoBoost):Averagefuelingcostis$1,324peryearFordF150SuperCrew(4x2):Averagefuelingcostis$1,360peryearFordF150SuperCrew(4x4):Averagefuelingcostis$1,396peryearFordF150SuperCrewEcoBoost(4x2):Averagefuelingcostis$1,408peryearCalculatetheaveragetotalchargingcostoftheelectriccars:FordF150Lightning:Averagechargingcostis$5,400RivianR1T:Averagechargingcostis$2,490TeslaModel3:Averagechargingcostis$2,490ChevyBolt:Averagechargingcostis$2,490NissanLeaf:Averagechargingcostis$1,484Calculatethedifferencebetweenthetwoaveragetotalcosts:Gasolinecars:Averagetotalfuelingcost=$37,560($1,240+$1,324+$1,360+$1,396+$1,408)Electricvehicles:Averagetotalchargingcost=$47,340($5,400+$2,490+$2,490+$2,490+$1,484)Theaveragetotalfuelingcostforthegasolinecarsis$37,560,andtheaveragetotalchargingcostfortheelectricvehiclesis$47,340.Therefore,theelectricvehicleshaveatotalsavingof$9,780over5years,orabout$1,958peryear.Thismeansthat,onaverage,theelectricvehicleshaveasavingsofabout$1,958peryearwhencomparedtothegasoline-poweredvehicles.Thisisduetothereducedfuelcostandmaintenanceassociatedwithelectriccars.Nowhowmuchcheaperistheaveragechargingcostovertheelectriccars(includingFordF150Lightning)thantheaveragefuelingcostoverthegasolinecars(includingFordF150(RegularCab))?Let'sthinkstep-by-step.
+!
+Figure 17: OCR of complex scenes (a).
+20
+Thetotalamountofmoneyintheimageis$33.83.Whatisthetotalamount?
+!Yes,thereistextintheimage.Thetextreads"Before...Idon'tfeelgoodaboutmylooks,testthetext,amIpregnant?Now...Idon'tfeelgoodaboutmylooks,takethetest,doIhavethecon?"Thismessageisajokeaboutaperson'sinsecuritiesabouttheirappearanceandthestresstheyfeelabouttakingapregnancytest.Istheretextintheimage?Ifso,canyoureaditandexplainittome?
+!
+Theaveragetotalfuelingcostforthevehiclesintheimageis$10,000.Thisiscalculatedbyaddingallthetotalfuelingcostsforeachvehicleandthentakingtheaverage.Thecostpergallonforeachvehiclevaries,withFordF-150costing$2.35pergallon,FordF-450costing$2.44pergallon,FordRangercosting$2.48pergallon,andFordC-MaxHybridcosting$2.58pergallon.Whenthesecostsareaddedtogethertogetthetotal,theaveragefuelingcostforallfourvehiclesis$2.50pergallon,whichis$10,000for40,000gallons.Excludingtheregularcab,whatistheaveragetotalfuelingcost?
+!
+Thejokeisfunnyinseveralways.First,itusescontrasttohighlightthedifferenceintheperson'sfeelingsabouttheirappearanceinthepastandthepresent.Thepastselfisunsure,whilethepresentselfseemsmorecertain.Thiscreateshumorasthereadermightrelatetosimilarfeelingsofuncertaintyaboutone'sappearance.Second,themessagealsomakesfunofthestresspeopleoftenfeelwhentakingpregnancytests.Manyindividualsmightexperienceanxietyorworrywhentakingsuchtests,especiallyiftheyarenottryingtogetpregnant.Thejuxtapositionofthesetwoelements,theperson'sappearanceinsecuritiesandthepregnancy-testanxiety,addstothehumoroftheimageandcreatesarelatablescenarioformanyindividuals.Whatisfunnyaboutit?
+!
+Wilkinsisearning$110,000peryear.HowmuchisWilkinsearning?
+!Thepersonwiththehighestsalaryfromisinthesalesdepartment.Whichdepartmentisthepersonwhohasthehighestsalaryfrom?
+!Yes,Icanprovideatablesummarizingtheyearlysalariesforeachemployeebasedonthemonthlysalaryinformationprovided.Thetablecanbearrangedinthefollowingmanner:\n\n|Name|Department|MonthlySalary|YearlySalary|\n|----|----|----------|-----------|\n|Wilkins|Sales|$110,000|$1.32million|\n|Smith|Sales|$90,000|$1.08million|\n|Jones|Sales|$68,000|$836,000|\n|Brown|Sales|$50,000|$600,000|\n|White|Engineering|$75,000|$875,000|\n|Black|Engineering|$85,000|$1.03million|\n|Grey|Engineering|$60,000|$720,000|\n|Green|Engineering|$45,000|$540,000|\n|Blue|Engineering|$60,000|$720,000|\n\nByarrangingthedatainthistable,wecanseeaclearbreakdownoftheyearlysalariesforeachemployeeandtheirrespectivedepartments.Wecanalsoseewhichdepartmentshavethehighestandlowestaverageyearlysalary.\n\nInconclusion,theimageoffouremployeessittingatatabledisplayingtheirmonthlyandyearlysalaries,alongwiththeirdepartment,providesaquickandinformativeoverviewofthesalarydistributioninthecompany.Thistableisreportingmonthlysalary,canyoucalculatetheyearlysalaryforeachemployee,andsummarizeitintoatableandgroupthembydepartment?
+!
+Basedontheinformationprovided,thebonusesforEmily,Max,andGloriaare10%,12%,and15%respectively.Thisbonusiscalculatedas0.10x(100-500)/100=10%,12%x(100-750)/100=12%,and15%x(100-1000)/100=15%oftheirbasesalary.Giventheyearlybonusis10%,12%and15%forAdministration,Finance,Marketing,respectively.PleaseprovidemewiththebonusforEmily,MaxandGloria.
+!Tocalculatethetotalheatlossoftheheater,wefirstneedtodetermineitsthermalconductivity.Thiscanbedonebydividingthethermalconductivityofthematerialoftheheaterbyitsthickness.ThethermalconductivityofthemetaloftheheaterisusuallygiveninunitsofW/m-K.Tocalculatethethermalconductivityoftheheaterusingthisunit,weneedtodividethevaluebythethicknessinmillimeters.Themetaloftheheateristypicallymadeofsteel,anditsthicknessis5mm.Therefore,itsthermalconductivityiscalculatedtobe150W/m-K.Next,weneedtofindtheheatflowfromtheheatertotheenvironment,whichisrepresentedbytheRTD.WeknowthattheRTDhasaresistanceofR=100OhmsandathermalresistanceofRt=0.01Ohm-C.Tocalculatethetotalheatlossoftheheater,wemultiplythepowerinputoftheheater,whichisgivenbyP=1kW,bytheRTDresistanceandthethermalresistance.Theresultis10.0WofheatlossfromtheheatertotheenvironmentthroughRtandtheRTDresistance.Finally,wecanusetheformulaforheatlossthroughthermalconductivitytocalculatethetotalheatlossoftheheater:Totalheatlossoftheheater=0.02W/m-K*5mm^2*1kW=10W.Therefore,thetotalheatlossoftheheateris10W.AnswerquestionI.1.a.Thinkstep-by-step.
+!
+Figure 18: OCR of complex scenes (b).
+21

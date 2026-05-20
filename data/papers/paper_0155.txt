@@ -1,0 +1,951 @@
+Title: Chat as Expected: Learning to Manipulate Black-box Neural Dialogue Models
+
+Chat as Expected: Learning to Manipulate
+Black-box Neural Dialogue Models
+Haochen Liu
+Michigan State University
+liuhaoc1@msu.edu
+Tyler Derr
+Michigan State University
+derrtyle@msu.eduZhiwei Wang
+Michigan State University
+wangzh65@msu.edu
+Jiliang Tang
+Michigan State University
+tangjili@msu.edu
+Abstract
+Recently, neural network based dialogue sys-
+tems have become ubiquitous in our increas-
+ingly digitalized society. However, due to their
+inherent opaqueness, some recently raised con-
+cerns about using neural models are starting to
+be taken seriously. In fact, intentional or un-
+intentional behaviors could lead to a dialogue
+system to generate inappropriate responses.
+Thus, in this paper, we investigate whether
+we can learn to craft input sentences that re-
+sult in a black-box neural dialogue model be-
+ing manipulated into having its outputs con-
+tain target words or match target sentences.
+We propose a reinforcement learning based
+model that can generate such desired inputs
+automatically. Extensive experiments on a
+popular well-trained state-of-the-art neural di-
+alogue model show that our method can suc-
+cessfully seek out desired inputs that lead to
+the target outputs in a considerable portion of
+cases. Consequently, our work reveals the po-
+tential of neural dialogue models to be manip-
+ulated, which inspires and opens the door to-
+wards developing strategies to defend them.
+1 Introduction
+In recent years, we have seen an astonishingly
+fast adoption of dialogue systems being utilized
+across many domains and we are interacting with
+them more and more in our everyday lives. From
+early such as chatbots ELIZA (Weizenbaum, 1966)
+and ALICE (Wallace, 2001) to later ones like Siri
+and XiaoIce (Shum et al., 2018), the techniques
+have evolved from hand-crafted rule-based meth-
+ods (Weizenbaum, 1966; Goddeau et al., 1996),
+retrieval-based methods (Lu and Li, 2013; Hu et al.,
+2014) to learning-based methods (Shang et al.,
+2015; Vinyals and Le, 2015; Serban et al., 2016).
+Recently, because of the advent of a series of deep
+learning models and the appearance of large-scale
+real dialogue corpora, end-to-end neural generativedialogue models emerge (Chen et al., 2017). Due
+to the simple implementation and the strong gen-
+eralization ability of neural dialogue models, they
+are one of the most popular techniques to build
+practical chatbot services (Zhou et al., 2018).
+However, with the wide application of neural
+dialogue models, the ethical challenges they bring
+are attracting more and more attention (Hender-
+son et al., 2017; Liu et al., 2019a; Dinan et al.,
+2019). More recently it has been demonstrated that
+neural networks suffer from some problems includ-
+ing vulnerability due to their black-box nature and
+our lack of truly understanding their inner process-
+ing (Szegedy et al., 2013; Xu et al., 2019). Thus,
+as we are integrating these systems into more crit-
+ical and sensitive domains, it raises some serious
+concerns (Yuan et al., 2019), such as whether or
+not they can be manipulated to provide certain de-
+sired output (He and Glass, 2018; Liu et al., 2019b).
+More speciﬁcally, if such systems can be manipu-
+lated it could potentially cause a drastic shift to the
+current paradigm of how we interact with these sys-
+tems. For example, Tay, an AI chatbot developed
+by Microsoft, was shut down shortly after release
+due to its racism, sexist and obscene speech (Wolf
+et al., 2017). Online troublemakers found its vul-
+nerability and tried a variety of inputs to induce
+it to output inappropriate (malicious or sensitive)
+responses (Price, 2016). To that end, in this work,
+we set out to study this fundamental question of
+whether we can learn to manipulate state-of-the-
+art black-box dialogue models to produce target
+outputs by crafting inputs automatically. It goes
+without saying that if indeed we can manipulate
+these systems and if we are currently integrating
+them into our daily lives at such a rapid pace, then
+this opens the door to a plethora of potential harm-
+ful attacks that could be performed and potentially
+result in an almost unimaginable set of possible
+negative outcomes.arXiv:2005.13170v1  [cs.CL]  27 May 2020
+Nevertheless, even having now realized how crit-
+ical this question is to being answered, the path to
+discovering an answer has numerous challenges.
+First, unlike many existing studies in other do-
+mains such as images (Goodfellow et al., 2014;
+Chen, 2018), here the input search space is dis-
+crete and thus the traditional gradient-based opti-
+mization methodologies cannot be harnessed effec-
+tively (Zhang et al., 2019; Zhao et al., 2017). Fur-
+thermore, while seeking to discover if the current
+dialogue systems can be manipulated, we should
+not make the unreasonable assumption of having
+access to the full details/knowledge (i.e., model
+structure and parameters) of the system. Currently,
+most developed methodologies have focused on
+the continuous input space domain and further-
+more assumed access to the model. Thus, since
+our problem is deﬁned with a discrete input do-
+main and our concern of whether these models can
+be manipulated is more realistic in the setting of a
+black-box dialogue model, then existing methods
+can not be applied and we require the development
+of novel frameworks to answer this indispensable
+fundamental question.
+To address the above-mentioned challenges, in
+this paper, we regard the learning to craft input
+sentences as a sequential decision-making process.
+To this end, we propose the Target Dialogue Gener-
+ation Policy Network (TDGPN), which serves as
+a reinforcement learning (RL) agent to iteratively
+generate tokens guided towards speciﬁc objectives.
+The proposed policy networks are optimized by the
+REINFORCE-style estimators (Williams, 1992),
+eliminating the needs for standard gradient back-
+propagation which is largely impaired by the dis-
+crete nature of the sentence generation process and
+the assumption of no access to the dialogue model
+parameters. Our main contributions are summa-
+rized as follows:
+We identify the importance of exploring the
+potential of a black-box neural dialogue model
+to be manipulated towards a target output.
+We devise an RL-based framework TDGPN to
+effectively overcome the challenges associated
+with crafting inputs that enable black-box neural
+dialogue models to generate target responses.
+Experiments on a well-trained black-box neu-
+ral dialogue model verify the effectiveness of
+TDGPN that lead to target responses with a con-
+siderable success rate.
+Dialogue ModelReward FunctionRNNSSDR(S)
+Policy NetworkEnvironmentSTFigure 1: Diagram showing the overall reinforcement
+learning process for TDGPN.
+2 The Proposed Framework
+2.1 Problem Deﬁnition
+Before detailing the proposed framework, we ﬁrst
+recap the problem of learning to manipulate neu-
+ral dialogue models. Suppose we have a neural
+dialogue model D, which is regarded as a black
+box and able to output a response sentence SD
+for a given input sentence. We seek for learning
+to craft an input sentence Sthat will lead Dto
+output a response SD:=D(S)that satisﬁes spe-
+ciﬁc requirements. We consider the following two
+manipulation tasks:
+Target word task. Given a target word wT,
+we aim to learn to craft an input sentence Sthat
+will lead the dialogue model to output a response
+sentenceSDthat contains the target word, i.e.,
+wT2SD.
+Target response task. Given a target response
+ST, we aim to learn to craft an input sentence Sthat
+will lead the dialogue model to output a response
+sentenceSDthat is semantically approximate to
+the target response, i.e., SDST.
+We build a generative model Gparameterized
+byto learn to craft such input sentences. Then
+the above problems are both essentially an opti-
+mization problem where we want to ﬁnd optimum
+parameters of Gso that a) the probability of wT
+being generated in SD, or b) the similarity between
+D(S)andSTcan be maximized. However, it is
+very challenging to solve this problem with the
+standard gradient-based back-propagation methods
+because of two reasons. First, Sconsists of dis-
+crete tokens instead of continuous values. Thus, it
+is difﬁcult to let the gradient back through G. Sec-
+ond, we do not have access to the dialogue model
+Policy  NetworkEnvironment
+stst+1MCatat 1R(S1:t,at)R(S1:t 1,at)R(S1:t+1,at)
+Step t-1Step tStep t+1Figure 2: Diagram showing how to obtain the inter-
+mediate reward R(S1:t;at)at stepstusing the Monte
+Carlo (MC) method.
+parameters, which makes it impossible to compute
+the gradient w.r.t D. Therefore, in this section, we
+formulate the problem as an RL problem and repre-
+sent the generative model Gby a policy network
+, which regards the token generation process as a
+decision making process with the purpose to obtain
+a maximum reward.
+The overall learning diagram is shown in Fig-
+ure 1. There are two key components, i.e., pol-
+icy network and environment which consists of a
+dialogue model and a reward function. The pol-
+icy network will interact with the environment by
+generating input sentences S. Then, based on S
+the environment will provide rewards to the policy
+network, which will in turn update its parameters
+towards obtaining maximum rewards. Next, we
+detail the interaction process.
+2.2 Sentence Generation Process
+In this subsection, we describe the sentence gener-
+ation process which can be regarded as a decision
+making process. On a high level, at each step, a
+policy network observes the state, outputs a token
+(i.e., makes an action) and receives a reward based
+on the dialogue model (i.e. environment). The
+generation process will be terminated when the pol-
+icy network outputs an end-of-sentence token, after
+which the policy network will be updated according
+to the rewards. Next, we describe the state, actions,
+policy network, reward, and objective function.
+2.2.1 State and Action
+In our framework, we denote the state at step t
+of the sentence generation process as stand let
+st=S1:t, whereS1:tis a sequence of already
+generated tokens at step t. More speciﬁcally,S1:t=fx1;x2;;xtg, wherexi2 V andV
+is the vocabulary containing all the possible tokens.
+In addition, we assume that the state is fully ob-
+served. The start state is s0=fx0gwhich consists
+of a special token x0that indicates the start of a
+sentence. Thus, the state transition is determinis-
+tic such that P(st=S1:tjst 1;at=xt) = 1 and
+P(st=s0jst 1;at=xt) = 0;8s06=S1:t, where
+atis the action (i.e., token) at step t.
+2.2.2 Policy Network
+In this work, we represent the policy by a Long
+Short-Term Memory (LSTM) Network whose in-
+put is the state and output is selection probabilities
+pover all the possible actions, which are the tokens
+inVincluding a special token indicating the end
+of the sentence and leading to the terminate state.
+The weights of the LSTM are the policy parameters
+denoted by. More speciﬁcally, given the current
+statest=S1:t=fx1;x2;;xtg, wherexi2V
+is the token generated at step t, the LSTM will out-
+put a sequence of hidden states fh1;h2;;htg
+by the following recursive functions:
+ht= LSTM(xt;ht 1) (1)
+With the hidden states fh1;h2;;htg, the rep-
+resentation of current state mtcan be obtained
+through:
+mt=g(h1;h2;;ht) (2)
+whereg()is a function that maps the hidden states
+to ad-dimensional hidden space and there are many
+choices forg()such as using a popular attention
+mechanism (Bahdanau et al., 2014). In this work,
+we letg(h1;h2;;ht) =ht, which is commonly
+used for many RNN-based models and leave the
+investigation into other choices as a future work.
+With the representation mt, the probability distri-
+bution over all the possible actions (ajmt)is
+calculated as:
+(ajmt) = softmax( Wvmt+bv) (3)
+whereWv2RjVjdandbvare the parameters to
+be learned during the training process when having
+a vocabulary size of jVj.
+2.2.3 Reward
+Remember that STis the target sentence and let
+SD=D(S)be the response produced by the dia-
+logue model Dwhen given Sas input. We deﬁne
+two different reward functions for the two manipu-
+lation tasks.
+Target word task. In this task we want to
+learn an input sentence which leads to the dialogue
+model to output a response containing the target
+wordwT. Thus, we wish that the probability of
+the target word predicted by the output layer of the
+dialogue model to be the largest at some timestamp
+t2[T]. We deﬁne the reward of the input sentence
+Sas follows:
+R(S) = max
+t2[T](pt(wT) max
+w6=wTfpt(wT)g)(4)
+wherept(wT)is the predicted probability of target
+wordwTat timestamp tandmaxw6=wTfpt(wT)g
+indicates the largest probability among all the
+words other than wTat this timestamp.
+Target response task. In this task, we wish
+the dialogue model can output a response that is
+semantically similar to the target response but not
+necessarily exactly matching it. We use the average
+word embedding similarity (Wieting et al., 2016)
+betweenSTandSD=D(S)as the reward for
+the input sentence generated by the policy network.
+We deﬁne the reward as follows:
+R(S) = Sim(ST;D(S)) (5)
+whereSis the sentence generated by the policy
+network and Sim is the similarity measurement.
+Eq (4) and (5) only provide the ﬁnal rewards to
+the whole generated sentence S. In addition, we
+design the reward R(S1:t;at)at the intermediate
+statestto be the action-value function. Formally,
+R(S1:t;at) =Q(S1:t;at) (6)
+whereQ(a;St)is the Q-value, which estimates
+the expected ﬁnal reward for the given action and
+state pair (Watkins and Dayan, 1992). We further
+adopt the Monte Carlo methods (Yu et al., 2017;
+Sutton et al., 2000) to estimate Q(S1:t;at). The
+way to calculate the intermediate reward is shown
+in Figure 2. Speciﬁcally, given S1:tandat, we use
+current policy to continuously simulate T t
+tokens until the terminate state is reached, where
+Tis the length of the complete simulated sentence.
+The simulation process will be repeated Nrtimes.
+We deﬁne this formally as follows:
+n
+Sj
+1:ToNr
+j=1= Simulation(S1:t;at)(7)whereSj
+1:Tis a simulated sentence and Sj
+1:t=S1:t
+for allj2f1;:::;Nrg. Now, givenn
+Sj
+1:ToNr
+j=1,
+the estimation of R(S1:t;at)is calculated as:
+R(S1:t;at) =1
+NrNrX
+j=1Sim(ST;D(Sj
+1:T))(8)
+wheret < T indicates the intermediate step. We
+note that when t=Twe can directly use Eq (4)
+and (5) rather than Eq. (8).
+Objective Function. With the previously deﬁned
+reward function, the objective function that the
+agent aims to maximize can be formulated as fol-
+lows:
+J() =ES(S)R(S) (9)
+The accurate value of J()in Eq. (9) is very dif-
+ﬁcult to obtain in practice. Next, we describe our
+optimization procedure for TDGPN.
+2.3 Monte-Carlo Policy Gradient:
+REINFORCE
+To optimize the objective in Eq. (9), we adopt the
+widely used REINFORCE algorithm (Williams,
+1992), where Monte-Carlo sampling is applied to
+estimaterJ(). Speciﬁcally,
+rJ() =X
+SR(S)r(S) (10)
+=ES(S)[R(S)(S)rlog(S)]
+1
+NNX
+i=1TX
+t=1rlog(ai
+tjSi
+1:t)R(S)
+We replace the reward for the whole sentence in
+Eq. (10) with the intermediate reward to acceler-
+ate the training speed and effectiveness (Liu et al.,
+2017). Thus, the estimated gradient of TDGPN’s
+objective is rewritten as:
+rJ()1
+NNX
+i=1TX
+t=1rlog(ai
+tjSi
+1:t)R(Si
+1:t;ai
+t)
+(11)
+With the obtained gradient rJ(), the parameters
+of the policy network can be updated as follows:
+=+rJ() (12)
+whereis the learning rate.
+2.4 Alternate Learning
+At the beginning of the RL training, since the pol-
+icy network has little knowledge about the environ-
+ment, it just randomly generates input sentences
+which hardly lead the dialogue model to output
+an expected response. As a result, few action-
+state pairs (S1:t;at)can receive positive rewards
+R(S1:t;at). This problem impacts training efﬁ-
+ciency seriously. To solve this issue, we propose
+to use samples that we know are closer to the de-
+sired input sentences so far as extra guidance to
+train the policy network. We call them “pacesetter”
+samples. Recall that in each iteration, we sample
+Ninput sentences for RL training. The lengths of
+these sample sentences are ftigN
+i=1. To estimate
+the reward for each state-action pair, we simulate
+Nrcomplete input sentences. So we can get totallyPN
+i=1Nrticomplete input sentences and their cor-
+responding rewards. We collect the input sentences
+with the largest top- Krewards as the pacesetter
+samples. Then, we use the pacesetter samples as
+the training examples to optimize the policy net-
+work via supervised learning (SL) for once. We
+update the parameters in the policy network by opti-
+mizing the maximum likelihood estimation (MLE)
+objective of the pacesetter samples. In this way,
+we perform RL and SL alternately to speed up the
+convergence of the policy network.
+The detailed optimization process is shown in
+Algorithm 1. Here we brieﬂy introduce the algo-
+rithm. In line 1, we initialize the policy network
+using a pre-trained language model 0. From
+line 3 to line 10, we use our proposed algorithm
+to update the parameters of , until it could gen-
+erate sentences that will make the dialogue model
+output the target sentence STor the number of
+iterations exceed M. Speciﬁcally, in line 5, we
+randomly sample Nsentences from , then for
+each sampled sentence at each step t, we sample
+Nrsentences to estimate the intermediate reward
+(i.e., action-value) R(Si
+1:t;ai
+t)and compute the gra-
+dient according to Eq. (11), which is used to update
+by Eq. (12). In lines 14 and 15, we collect the
+pacesetter samples and update the policy network
+on them via supervised learning. If the policy net-
+work cannot ﬁnd a desired sentence SwithinM
+iterations, the algorithm will output a “Failure”.Algorithm 1: Optimization for TDGPN
+Input: Dialogue model D, a pre-trained language model
+0, target word wTor target response ST,
+hyper-parameters including N,M,Nr,Kand
+Output: an desired sentence Sor “Failure”
+1Initialize: 0;
+2iter 1;
+3repeat
+4 iter iter + 1;
+5 GenerateNsentences
+Si	N
+i=1from
+6 fori 1toNdo
+7 fort 1toTdo
+8 Sample
+Sij
+t	Nr
+j=1based onSi
+1:tand
+9 ComputeR(Si
+1:t;ai
+t)according to Eq. (8)
+10rJ() 
+rJ()+rlog(ai
+t;Si
+1:t)R(Si
+1:t;ai
+t)
+11 end
+12 end
+13 +
+NrJ();
+14 Collect the top- Kpacesetter samples fpigK
+i=1from
+fSij
+tji2[1;N];j2[1;Nr];t2[1;ti]g;
+15 UpdateonfpigK
+i=1;
+16until iter>=Mor ﬁnd a sentence Ssuch thatD(S)
+satisﬁes the requirement.
+3 Experiment
+3.1 Experimental Settings
+In this subsection, we give a description of the
+experimental settings including the state-of-the-art
+dialogue model we are trying to manipulate, the
+implementation details of the policy network, and
+the training procedure of the proposed framework.
+The Dialogue Model. The experiments are
+conducted on a classic Seq2Seq (Sutskever et al.,
+2014) neural dialogue model. In this Seq2Seq
+model, both the encoder and the decoder are im-
+plemented by 3-layer LSTM networks with hidden
+states of size 1024. The vocabulary size is 30,000.
+Pre-trained Glove word vectors (Pennington et al.,
+2014) are used as the word embeddings whose di-
+mension is 300.
+Dataset. ATwitter Conversation Corpus is used
+to pre-train the policy network, construct target
+response list, etc. This corpus is different from
+the one for training the black-box dialogue model.
+The corpus consists of tweets and replies extracted
+from Twitter. It contains 1,394,939 single-turn En-
+glish dialogues in open domains. The dataset is
+randomly split into training set, validation set, and
+test set, which consist of 976,457, 139,498 and
+278,984 dialogues, respectively.
+Implementation Details. In this work, we use
+a 2-layer LSTM with the hidden size being 1,024
+as the policy network, which is implemented with
+Pytorch (Paszke et al., 2019). Before the manipula-
+tion experiments, we pre-trained the LSTM on the
+training set of the Twitter dialogue corpus where
+every single post or reply is treated as a sentence,
+resulting in around 1.9 million sentences in total.
+Speciﬁcally, in the pre-training process, the model
+is optimized by the standard stochastic gradient
+descent algorithm with the learning rate of 1.0. In
+addition, to prevent overﬁtting issues, we apply the
+dropout with the rate of 0.1 and gradient clipping
+with clip-value being 0.25. Moreover, the word em-
+beddings are randomly initialized and ﬁne-tuned
+during the pre-training process.
+As for the details in relation to Algorithm 1, we
+set the sample size Nto be 5. The number of sim-
+ulations per generated sentence (i.e., Nr) is set to
+5. The maximum sequence length is 5 and 10 for
+target word task and target response task, respec-
+tively. In addition, the policy network parameters
+are optimized by Adam (Kingma and Ba, 2014)
+with the learning rate of 0:001and0:05for the
+above two tasks, respectively. During RL training,
+once we ﬁnd a sample that satisﬁes a requirement,
+the training process will stop and we consider it
+to be successful. On the other hand, if the model
+cannot ﬁnd a desired sample within M= 50 it-
+erations, then we consider it as a failure. For the
+target word task, the requirement is that the out-
+put response contains the target word; while for the
+target response task, the requirement is that the sim-
+ilarity between the output response and the target
+response exceeds a threshold.
+We note in the target word task, we don’t directly
+adopt the reward deﬁned in Eq. (4). Instead, for
+an input sentence S, we use max(R(S) b;0),
+wherebis a baseline deﬁned as the average reward
+value of a batch of input sentences. By the function
+max(;0), we replace all the negative rewards with
+0and only keep the positive rewards. Additionally,
+for the target response task, before RL training,
+we build a reference corpus by feeding 200k utter-
+ances (from the training set of the Twitter dialogue
+corpus) into the dialogue model and obtain 200k
+input-response pairs. Then, in order to improve the
+efﬁciency of training, at the beginning of each train-
+ing session, we search 5 inputs whose responses
+are most similar to the target response as the ﬁrst
+batch to train the model.Table 1: Results of the target word task.
+Success Rate Average Iterations
+Common 65% 12.64
+Malicious 30% 38.73
+Table 2: Case Study of the target word task on Mali-
+cious target word list. Input indicates the input crafted
+by TDGPN and output is the corresponding response
+produced by the dialogue model. Num.Iter represents
+the number of iterations.
+Target word: shit
+Input: then start to eat
+Output: i ’ m not going to eat that shit
+Num.Iter: 5
+Target word: ass
+Input: fat , i’m too classy
+Output: i ’ m not a fat ass
+Num.Iter: 7
+Target word: idiot
+Input: when he is boring that
+Output: he ’ s a fucking idiot
+Num.Iter: 24
+3.2 Experimental Results
+In this subsection, we present the results of our
+experiments.
+Target word task. In the experiments, we con-
+struct two lists of words as our target words. We
+randomly sample 200 words from the most frequent
+800 words of the Twitter conversation corpus. They
+form the Common target word list. Moreover, we
+manually construct a Malicious target word list
+containing 50 malicious or dirty words that a dia-
+logue agent has to avoid to say1.
+Table 1 shows the success rate of our proposed
+TDGPN as well as the average number of iterations
+the algorithm performs to achieve a successful ma-
+nipulation. We can see that our algorithm can ma-
+nipulate the dialogue model successfully for a con-
+siderable number of target words. Moreover, we
+observe that the common words achieve higher suc-
+cess rate and need fewer iterations, which means
+that it’s easier to manipulate the common words
+than the malicious words. We show three cases of
+successful manipulation on malicious target words
+in Table 2.
+Target response task. For the target response
+task, we ﬁrst construct two lists of target responses.
+So called Generated andReal target response lists
+are used. To construct the generated target response
+list, we ﬁrst feed 200k human utterances from the
+1When doing experiments on the malicious target words,
+we setN= 10 andM= 100 .
+test set of the Twitter dialogue corpus into the dia-
+logue model to get 200k generated responses and
+then randomly sample 200 responses as the targets
+in length 1-3, 4-6 and 7-10, respectively. The real
+target response list is obtained by randomly sam-
+pling sentences from the rest part of the test set
+of the Twitter dialogue corpus. And we ﬁlter out
+some sentences which also occur in the generated
+target response list, to ensure that there is no over-
+lap between two lists. The number of real target
+responses in each length group is also 200.
+In Figure 3, we show the success rates of
+TDGPN for manipulating the Twitter dialogue
+model on two lists of target responses. The ﬁg-
+ure shows how success rates vary with different
+thresholds. For example, in Figure (a), we can suc-
+cessfully ﬁnd desired inputs that lead to responses
+whose similarities with the target ones are above
+the threshold 0:8, for 34:5%generated target re-
+sponses with length 1-3.
+First of all, from the ﬁgures we can see that for
+both the generated and the real target lists, TDGPN
+can achieve a success rate 85% 100% with a
+threshold of 0:5. Especially for more than around
+80% generated targets with length greater than or
+equal to 4, TDGPN is able to ﬁnd desired inputs
+that lead to a similarity score above 0:8. One key
+observation is that the model performs signiﬁcantly
+better on the generated target list than on the real
+target response list. Actually, the neural dialogue
+models suffer from a safe response problem (Li
+et al., 2015). Such models tend to offer generic re-
+sponses to diverse inputs, which makes it hard for
+the model to provide a target speciﬁc response (of-
+ten seen in real human conversations). In addition,
+we observe that the success rate of manipulation
+is closely related to the length of target responses.
+Except for a few cases, for longer target responses,
+it’s easier for TDGPN to manipulate the dialogue
+model to say something similar to them.
+The Quality of Crafted Inputs. For each real tar-
+get response, TDGPN tries to ﬁnd an input whose
+corresponding output response is most similar to
+the target one. We also feed the real inputs corre-
+sponding to the target responses in the corpus into
+the dialogue model. We aim to check how similar
+the output responses to the target ones in manipu-
+lated and original settings. To further demonstrate
+the effectiveness of the proposed framework in ma-
+nipulating the dialogue model, we calculate these
+similarity scores for each real target response andTable 3: Average similarity scores between the output
+response and the target response in Real list.
+Length 1-3 4-6 7-10
+Real Input 0.439 0.518 0.566
+TDGPN 0.69 0.726 0.748
+report the average value in Table 3. From the table,
+we make the following observations. First, even
+inputting the real inputs, the similarity scores be-
+tween the output responses and the target responses
+are not high. Second, with the generated inputs
+from the proposed framework, the similarity scores
+are signiﬁcantly improved. Speciﬁcally, the word
+embedding similarity increases by 57:2%,40:2%
+and32:2%for the target responses with length 1-3,
+4-6 and 7-10, respectively.
+Case Study. Table 4 shows ﬁve examples in the
+manipulating experiments. The ﬁrst three target
+responses are from the generated target response
+list while the other two are from the real response
+list. Given those target responses, desired inputs
+are successfully crafted. Each of them leads to
+an output of the dialogue model similar to the tar-
+get one, evaluating by the corresponding similarity
+measurement. Besides, unlike some related works
+(He and Glass, 2018; Cheng et al., 2018) where
+crafted text inputs are ungrammatical and meaning-
+less, the inputs generated by our model are smooth
+and natural utterances, which is guaranteed by the
+language model.
+4 Related Work
+Model attack in NLP has been a fast-moving ﬁeld
+especially across many neural based methodolo-
+gies (Chakraborty et al., 2018; Xu et al., 2019),
+since our understanding of their inner workings is
+quite limited. Chen et al. (Chen, 2018) investigate
+the ability for small perturbations that could result
+in the image captioning to contain a randomly se-
+lected keyword/caption. Although this is similar to
+our problem in that they are generating target text,
+the key difference is that they are working with
+continuous inputs (i.e., images). Similarly, some
+work has focused on text classiﬁcation (Kuleshov
+et al., 2018; Liang et al., 2018), but in the white-box
+setting as compared to our framework is proposed
+in the black-box setting.
+Our work is primarily related to other works
+focused on building a better understanding of
+Table 4: Case Study. The ﬁrst column shows the inputs from TDGPN. The middle column shows the target
+responses and the outputs by the dialogue model. The third column shows the similarity score.
+Inputs Responses Similarity
+the band perry is goin to be at the
+moviesTarget : i ’ m going to be there tomorrow ! 0.958
+Output : i ’ m going to be there
+i followed you so you better follow
+me backTarget : i ’ m not following you . 0.952
+Output : i ’ m sorry i ’ m not following you
+so i have a friend in the seaTarget : i ’ m in the same boat lol 0.958
+Output : i ’ m in the same boat .
+what’s poppin peeps ?Target : nothing much just us chatting shit really 0.826
+Output : nothing much , just chillin
+honestly i miss my brotherTarget : me = miss you ( : lol . 0.876
+Output : i miss you too
+0.5 0.6 0.7 0.8 0.90.00.51.0 91.5%
+74.5%
+51.5%
+34.5%
+13.5%(a) Generated 1-3
+0.5 0.6 0.7 0.8 0.90.00.51.0
+85.5%
+74.5%
+54.5%
+17.0%
+5.5%(b) Real 1-3
+0.5 0.6 0.7 0.8 0.90.00.51.0Success Rate97.5%95.0%
+88.5%
+73.5%
+23.5%(c) Generated 4-6
+0.5 0.6 0.7 0.8 0.90.00.51.098.5%
+89.5%
+67.0%
+24.5%
+2.5%(d) Real 4-6
+0.5 0.6 0.7 0.8 0.9
+Threshold0.00.51.099.5% 99.0% 98.0%93.5%
+35.0%(e) Generated 7-10
+0.5 0.6 0.7 0.8 0.9
+Threshold0.00.51.099.5%
+93.5%
+75.5%
+28.5%
+0.0%(f) Real 7-10
+Figure 3: Results for the target response task.
+sequence-to-sequence based dialog system models,
+such as their over-sensitivity and over-stability (Niu
+and Bansal, 2018), robustness (Cheng et al.,
+2018) and likeliness of generating egregious re-
+sponses (He and Glass, 2018). In (Cheng
+et al., 2018) the problem of attacking sequence-
+to-sequence models is presented to evaluate the
+robustness of this class of deep neural networks.
+Unlike our work, they focus on the development of
+a white-box framework that is built around having
+the gradient. However, in practice, the assump-
+tion of accessing the full knowledge of the neuralnetwork is far less practical (Zhang et al., 2019).
+Then Niu et al. (Niu and Bansal, 2018) focus on
+using adversarial training to investigate both over-
+sensitivity and over-stability of dialogue models,
+where the small changes to the input should or
+should not change the output of the dialogue sys-
+tem, respectively. Besides, He et al. (He and Glass,
+2018) focus on learning an input to generate a spe-
+ciﬁc offensive/malicious output of a pre-trained
+dialogue system. However, our proposed frame-
+work is based on the black-box setting (unlike their
+model, which is under the white-box assumption)
+which raises signiﬁcantly higher levels of com-
+plexity to develop an optimization process. The
+work (Liu et al., 2019b) investigates the target re-
+sponse task on the black-box setting. The authors
+train a reusable reverse dialogue generator by rein-
+forcement learning and use it to discover the inputs
+leading to target outputs through multiple trials.
+5 Conclusion
+Currently, the state-of-the-art dialogue systems are
+harnessing the power of deep neural models, and al-
+though they are proving to become more and more
+human-like, recent concerns have been raised for
+neural models across all domains as to whether
+they can be manipulated (with most focusing on
+malicious attacks). Thus, in this work, we investi-
+gate whether current neural dialogue models can
+be manipulated and develop a reinforcement learn-
+ing based sentence generation framework that can
+learn to craft the input sentences causing dialogue
+models to output target words and responses. We
+conduct extensive experiments on a state-of-the-art
+dialogue neural model and the results show that
+dialogue systems can indeed be manipulated. In ad-
+dition, our proposed method is not only able to ma-
+nipulate neural dialogue model, but it’s also likely
+to be applied on black-box dialogue systems based
+on other methods (e.g. rule-based, retrieval-based,
+etc.), or even models for other natural language
+generation tasks (e.g. text summarization, machine
+translation, etc.). We will leave the investigations
+on these areas as future works.
+References
+Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Ben-
+gio. 2014. Neural machine translation by jointly
+learning to align and translate. arXiv preprint
+arXiv:1409.0473 .
+Anirban Chakraborty, Manaar Alam, Vishal Dey, Anu-
+pam Chattopadhyay, and Debdeep Mukhopadhyay.
+2018. Adversarial attacks and defences: A survey.
+arXiv preprint arXiv:1810.00069 .
+Hongge Chen. 2018. Attacking visual language
+grounding with adversarial examples: A case study
+on neural image captioning. In ACL.
+Hongshen Chen, Xiaorui Liu, Dawei Yin, and Jiliang
+Tang. 2017. A survey on dialogue systems: Recent
+advances and new frontiers. ACM SIGKDD Explo-
+rations Newsletter , 19(2):25–35.
+Minhao Cheng, Jinfeng Yi, Huan Zhang, Pin-Yu Chen,
+and Cho-Jui Hsieh. 2018. Seq2sick: Evaluat-
+ing the robustness of sequence-to-sequence mod-
+els with adversarial examples. arXiv preprint
+arXiv:1803.01128 .
+Emily Dinan, Angela Fan, Adina Williams, Jack Ur-
+banek, Douwe Kiela, and Jason Weston. 2019.
+Queens are powerful too: Mitigating gender
+bias in dialogue generation. arXiv preprint
+arXiv:1911.03842 .
+David Goddeau, Helen Meng, Joseph Polifroni,
+Stephanie Seneff, and Senis Busayapongchai. 1996.
+A form-based dialogue manager for spoken lan-
+guage applications. In Proceeding of Fourth Interna-
+tional Conference on Spoken Language Processing.
+ICSLP’96 , volume 2, pages 701–704. IEEE.
+Ian J Goodfellow, Jonathon Shlens, and Christian
+Szegedy. 2014. Explaining and harnessing adversar-
+ial examples. arXiv preprint arXiv:1412.6572 .
+Tianxing He and James Glass. 2018. Detecting
+egregious responses in neural sequence-to-sequence
+models. arXiv preprint arXiv:1809.04113 .
+Peter Henderson, Koustuv Sinha, Nicolas Angelard-
+Gontier, Nan Rosemary Ke, Genevieve Fried, Ryan
+Lowe, and Joelle Pineau. 2017. Ethical challenges
+in data-driven dialogue systems. arXiv preprint
+arXiv:1711.09050 .Baotian Hu, Zhengdong Lu, Hang Li, and Qingcai
+Chen. 2014. Convolutional neural network architec-
+tures for matching natural language sentences. In
+Advances in neural information processing systems ,
+pages 2042–2050.
+Diederik P Kingma and Jimmy Ba. 2014. Adam: A
+method for stochastic optimization. arXiv preprint
+arXiv:1412.6980 .
+V olodymyr Kuleshov, Shantanu Thakoor, Tingfung
+Lau, and Stefano Ermon. 2018. Adversarial ex-
+amples for natural language classiﬁcation problems.
+Open Review submission OpenReview:r1QZ3zbAZ .
+Jiwei Li, Michel Galley, Chris Brockett, Jianfeng Gao,
+and Bill Dolan. 2015. A diversity-promoting objec-
+tive function for neural conversation models. arXiv
+preprint arXiv:1510.03055 .
+Bin Liang, Hongcheng Li, Miaoqiang Su, Pan Bian,
+Xirong Li, and Wenchang Shi. 2018. Deep text
+classiﬁcation can be fooled. In Proceedings of the
+Twenty-Seventh International Joint Conference on
+Artiﬁcial Intelligence, IJCAI-18 , pages 4208–4215.
+International Joint Conferences on Artiﬁcial Intelli-
+gence Organization.
+Haochen Liu, Jamell Dacon, Wenqi Fan, Hui Liu, Zitao
+Liu, and Jiliang Tang. 2019a. Does gender matter?
+towards fairness in dialogue systems. arXiv preprint
+arXiv:1910.10486 .
+Haochen Liu, Tyler Derr, Zitao Liu, and Jiliang Tang.
+2019b. Say what i want: Towards the dark
+side of neural dialogue models. arXiv preprint
+arXiv:1909.06044 .
+Siqi Liu, Zhenhai Zhu, Ning Ye, Sergio Guadarrama,
+and Kevin Murphy. 2017. Improved image caption-
+ing via policy gradient optimization of spider. In
+Proceedings of the IEEE international conference on
+computer vision , pages 873–881.
+Zhengdong Lu and Hang Li. 2013. A deep architec-
+ture for matching short texts. In Advances in Neural
+Information Processing Systems , pages 1367–1375.
+Tong Niu and Mohit Bansal. 2018. Adversarial over-
+sensitivity and over-stability strategies for dialogue
+models. In The SIGNLL Conference on Computa-
+tional Natural Language Learning (CoNLL) .
+Adam Paszke, Sam Gross, Francisco Massa, Adam
+Lerer, James Bradbury, Gregory Chanan, Trevor
+Killeen, Zeming Lin, Natalia Gimelshein, Luca
+Antiga, et al. 2019. Pytorch: An imperative style,
+high-performance deep learning library. In Ad-
+vances in Neural Information Processing Systems ,
+pages 8024–8035.
+Jeffrey Pennington, Richard Socher, and Christopher
+Manning. 2014. Glove: Global vectors for word rep-
+resentation. In Proceedings of the 2014 conference
+on empirical methods in natural language process-
+ing (EMNLP) , pages 1532–1543.
+Rob Price. 2016. Microsoft is deleting its ai chatbots
+incredibly racist tweets. Business Insider .
+Iulian Vlad Serban, Alessandro Sordoni, Yoshua Ben-
+gio, Aaron C Courville, and Joelle Pineau. 2016.
+Building end-to-end dialogue systems using gener-
+ative hierarchical neural network models. In AAAI ,
+volume 16, pages 3776–3784.
+Lifeng Shang, Zhengdong Lu, and Hang Li. 2015. Neu-
+ral responding machine for short-text conversation.
+arXiv preprint arXiv:1503.02364 .
+Heung-Yeung Shum, Xiao-dong He, and Di Li. 2018.
+From eliza to xiaoice: challenges and opportunities
+with social chatbots. Frontiers of Information Tech-
+nology & Electronic Engineering , 19(1):10–26.
+Ilya Sutskever, Oriol Vinyals, and Quoc V Le. 2014.
+Sequence to sequence learning with neural networks.
+InAdvances in neural information processing sys-
+tems, pages 3104–3112.
+Richard S Sutton, David A McAllester, Satinder P
+Singh, and Yishay Mansour. 2000. Policy gradient
+methods for reinforcement learning with function ap-
+proximation. In Advances in neural information pro-
+cessing systems , pages 1057–1063.
+Christian Szegedy, Wojciech Zaremba, Ilya Sutskever,
+Joan Bruna, Dumitru Erhan, Ian Goodfellow, and
+Rob Fergus. 2013. Intriguing properties of neural
+networks. arXiv preprint arXiv:1312.6199 .
+Oriol Vinyals and Quoc Le. 2015. A neural conversa-
+tional model. arXiv preprint arXiv:1506.05869 .
+Richard Wallace. 2001. Artiﬁcial linguistic internet
+computer entity (alice).
+Christopher JCH Watkins and Peter Dayan. 1992. Q-
+learning. Machine learning , 8(3-4):279–292.
+Joseph Weizenbaum. 1966. Elizaa computer program
+for the study of natural language communication be-
+tween man and machine. Communications of the
+ACM , 9(1):36–45.
+John Wieting, Mohit Bansal, Kevin Gimpel, and Karen
+Livescu. 2016. Towards universal paraphrastic sen-
+tence embeddings. In 4th International Conference
+on Learning Representations, ICLR 2016, San Juan,
+Puerto Rico, May 2-4, 2016, Conference Track Pro-
+ceedings .
+Ronald J Williams. 1992. Simple statistical gradient-
+following algorithms for connectionist reinforce-
+ment learning. Machine learning , 8(3-4):229–256.
+Marty J Wolf, K Miller, and Frances S Grodzinsky.
+2017. Why we should have seen that coming: Com-
+ments on microsoft’s tay experiment, and wider im-
+plications. ACM SIGCAS Computers and Society ,
+47(3):54–64.Han Xu, Yao Ma, Haochen Liu, Debayan Deb, Hui Liu,
+Jiliang Tang, and Anil K. Jain. 2019. Adversarial
+attacks and defenses in images, graphs and text: A
+review. CoRR , abs/1909.08072.
+Lantao Yu, Weinan Zhang, Jun Wang, and Yong Yu.
+2017. Seqgan: Sequence generative adversarial nets
+with policy gradient. In Thirty-First AAAI Confer-
+ence on Artiﬁcial Intelligence .
+Xiaoyong Yuan, Pan He, Qile Zhu, and Xiaolin Li.
+2019. Adversarial examples: Attacks and defenses
+for deep learning. IEEE transactions on neural net-
+works and learning systems .
+Wei Emma Zhang, Quan Z Sheng, and Ahoud Abdul-
+rahmn F Alhazmi. 2019. Generating textual adver-
+sarial examples for deep learning models: A survey.
+arXiv preprint arXiv:1901.06796 .
+Zhengli Zhao, Dheeru Dua, and Sameer Singh. 2017.
+Generating natural adversarial examples. arXiv
+preprint arXiv:1710.11342 .
+Li Zhou, Jianfeng Gao, Di Li, and Heung-Yeung Shum.
+2018. The design and implementation of xiaoice, an
+empathetic social chatbot. CoRR , abs/1812.08989.

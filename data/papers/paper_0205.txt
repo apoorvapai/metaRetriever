@@ -1,0 +1,600 @@
+Title: KERMIT: Generative Insertion-Based Modeling for Sequences
+
+arXiv:1906.01604v1  [cs.CL]  4 Jun 2019KERMIT:
+Generative Insertion-Based Modeling for Sequences
+William Chan∗1, Nikita Kitaev∗1,3, Kelvin Guu∗2, Mitchell Stern∗1,3, Jakob Uszkoreit1
+1Google Research, Brain Team
+2Google Research, AI Language Team
+3University of California, Berkeley
+{williamchan,kguu,usz}@google.com
+{kitaev,mitchell}@berkeley.edu
+Abstract
+We present KERMIT, a simple insertion-based approach to gen erative modeling
+for sequences and sequence pairs. KERMIT models the joint di stribution and its
+decompositions (i.e., marginals and conditionals) using a single neural network
+and, unlike much prior work, does not rely on a prespeciﬁed fa ctorization of the
+data distribution. During training, one can feed KERMIT pai red data(x,y)to
+learn the joint distribution p(x,y), and optionally mix in unpaired data xoryto
+reﬁne the marginals p(x)orp(y). During inference, we have access to the condi-
+tionalsp(x|y)andp(y|x)in both directions. We can also sample from the joint
+distribution or the marginals. The model supports both seri al fully autoregressive
+decoding and parallel partially autoregressive decoding, with the latter exhibiting
+an empirically logarithmic runtime. We demonstrate throug h experiments in ma-
+chine translation, representation learning, and zero-sho t cloze question answering
+that our uniﬁed approach is capable of matching or exceeding the performance of
+dedicated state-of-the-art systems across a wide range of t asks without the need
+for problem-speciﬁc architectural adaptation.
+1 Introduction
+Neural sequence models ( Sutskever et al. ,2014 ;Cho et al. ,2014 ) have been successfully applied
+to many conditional generation applications, including ma chine translation ( Bahdanau et al. ,2015 ;
+Luong et al. ,2015 ), speech recognition ( Chan et al. ,2016 ;Bahdanau et al. ,2016 ), speech synthesis
+(Oord et al. ,2016 ;Wang et al. ,2017 ) and image captioning ( Vinyals et al. ,2015 ;Xu et al. ,2015 ).
+Much of the prior work in this area follows the seq2seq encode r-decoder paradigm, where an en-
+coder builds a representation of an observed sequence x, and a decoder gives the conditional output
+distribution p(y|x)according to a predetermined factorization, usually left- to-right.
+While effective for straightforward conditional generati on, such an approach is inﬂexible and cannot
+readily be applied to other inference tasks such as non-left -to-right generation or inﬁlling. In this
+work, we present a more general approach called Kontextuell Encoder Representations Made by
+Insertion Transformations, or KERMIT for short. KERMIT is a simple architecture that directly
+models the joint distribution p(x,y)and its decompositions (such as the marginals p(x)andp(y)
+∗Equal contribution. WC initiated the KERMIT project for mac hine translation, implemented the corre-
+sponding code and experiments (Section 4.1) and advised the project. NK proposed using the same model
+for text generation, implemented and evaluated different m onolingual pre-training approaches, and conducted
+all representation learning experiments (Section 4.2). KG proposed using KERMIT as a zero-shot QA model
+and conducted all associated experiments (Section 4.3); he also co-developed KERMIT’s training and infer-
+ence infrastructure. MS developed the mathematical formal ism for the model (Section 3) and assisted in the
+implementation of KERMIT for translation. JU helped concei ve the initial idea and advised the project.
+Preprint. Under review.
+courses proved popular [SEP] Die sehr beliebt [SEP]The quite {Kurse, waren}
+Figure 1: An example of the KERMIT insertion objective for th e English ↔German translation
+pair “The courses proved quite popular” ↔“Die Kurse waren sehr beliebt”. The model is trained
+to predict the set of words that need to be inserted at each loc ation. By incurring a loss on both
+sides, our system learns a fully generative model of the join t distribution over (x,y)pairs, and can
+accommodate arbitrary generation orders.
+Machine Translation Representation Learning Cloze Questi on Answering
+En→De (BLEU) GLUE Zero-shot SQuAD (F1)
+Autoregressive (Transformer, GPT, GPT-2) 27.3a72.8b16.6
+Masking (BERT) N/A 80.5c18.9
+Insertion (KERMIT – Our Work) 27.8 79.8 30.3
+Table 1: The KERMIT architecture works well for three catego ries of tasks: machine translation, rep-
+resentation learning, and zero-shot cloze question answer ing.aVaswani et al. (2017 )bRadford et al.
+(2018 )cDevlin et al. (2019 )
+and the conditionals p(y|x)andp(x|y)) in a uniﬁed manner. In contrast with traditional seq2seq
+models, KERMIT does not rely on a prespeciﬁed factorization , but is instead able to condition on
+whatever information is available and infer what remains.
+During training, we present KERMIT with paired data (x,y)to learn the joint, and can optionally
+mix in unpaired data xoryto reﬁne the marginals in a semi-supervised setting. At test time, a single
+KERMIT model can be used for conditional inference in either direction by restricting the output
+distribution to p(x|y)orp(y|x)as required. We can also generate paired samples from the joi nt
+distribution (x,y)∼p(x,y), or unpaired samples from the marginals x∼p(x)ory∼p(y).
+KERMIT uses a simple architecture and is easy to implement. I t does not have a separate encoder
+and decoder, nor does it require causality masks. In our impl ementation, KERMIT consists of a
+single Transformer decoder stack ( Vaswani et al. ,2017 ). The model is trained to insert the missing
+tokens into any partially-complete sequence, as shown in Fi gure 1. We describe the implementation
+in more detail in Section 3.
+We apply KERMIT to a diverse set of tasks, ﬁnding that our uniﬁ ed approach is capable of matching
+or exceeding the performance of dedicated state-of-the-ar t systems without the need for problem-
+speciﬁc components. We ﬁrst apply KERMIT to machine transla tion, where the inputs and outputs
+are parallel sentence pairs. Then, like its friends ELMo ( Peters et al. ,2018 ), BERT ( Devlin et al. ,
+2019 ), and ERNIE ( Sun et al. ,2019 ), we can also use KERMIT for self-supervised representatio n
+learning for use in downstream NLP tasks. Finally, we apply K ERMIT to a zero-shot cloze question-
+answering task demonstrating the inﬁlling capabilities of the model. Table 1summarizes our results
+on all three tasks compared to other highly tuned models: Tra nsformer, BERT, GPT and GPT-2.
+2 Background
+In this section, we deﬁne some notation and give a brief revie w of existing sequence models, in-
+cluding autoregressive left-to-right models ( Sutskever et al. ,2014 ;Cho et al. ,2014 ) and masked
+language models ( Devlin et al. ,2019 ).
+2.1 Autoregressive Left-to-Right Models
+LetXandYbe the set of all input and output sequences, respectively. I n a standard sequence-to-
+sequence task, we are presented with training data consisti ng of sequence pairs (x,y)∈ X ×Y , e.g.
+parallel translations, and we aim to learn the conditional d istribution p(y|x). Traditional autoregres-
+sive models ( Sutskever et al. ,2014 ;Cho et al. ,2014 ) use a left-to-right factorization, decomposing
+the distribution as a chain of predictions conditioning on t he inputxand preﬁxes y<t:
+p(y|x) =/productdisplay
+tp(yt|x,y<t). (1)
+2
+This structure is also used for unconditional sequence task s such as language modeling where the
+goal is to learn an unconditional output distribution on its own. A left-to-right factorization is conve-
+nient because it allows for exact log-likelihood computati on, thereby permitting efﬁcient maximum
+likelihood estimation. It also leads to simple approximate inference algorithms such as greedy de-
+coding
+ˆyt= argmax
+yp(y|x,ˆy<t) (2)
+or beam search over sets of multiple hypotheses.
+However, there are some drawbacks to the autoregressive app roach. First, in the case of conditional
+generation, it cannot handle situations where the input xis only partially observed. Second, since
+it utilizes a ﬁxed left-to-right factorization, it cannot b e used for other inference tasks like inﬁlling
+where generation is not monotonic. Moreover, standard infe rence algorithms require ngeneration
+steps to generate ntokens, which could be a bottleneck in end-use applications .
+2.2 Masked Language Models
+Masked Language Models (MLMs) ( Devlin et al. ,2019 ) comprise another class of models targeting
+the unconditional setting. For MLMs, a partial canvas xs⊆xis observed where some of the tokens
+inxhave been masked out, and the objective is to recover xfromxs. For example, for a ground
+truth canvas x∗= (A,B,C,D,E )and a partial canvas x∗
+s= (A,_,C,D, _), the model should learn
+to replace the second blank with Band the last blank with E. The model outputs an independent
+prediction at each position, and its objective is to maximiz ep(x|xs).
+Because the exact locations of the slots are known in xs, the model does not need to predict where the
+missing items are located, but only what they should be. Cons equently, the model is not immediately
+suitable for generation, as the canvas size needs to be ﬁxed d uring inference and cannot change over
+time (i.e., |xs|=|x|). MLMs have been successfully applied in self-supervised r epresentation
+learning settings, leading to strong results on downstream language tasks ( Devlin et al. ,2019 ).
+3 KERMIT
+In this section we propose KERMIT, a novel insertion-based g enerative model. Unlike the prior
+work mentioned in Section 2, KERMIT does not have the rigid construction of modeling the target
+sequence given some fully observed source sequence, nor doe s it assume a left-to-right factorization
+(and generation order) of the output sequence. To motivate a nd arrive at our model, we formal-
+ize then extend a recent insertion-based conditional model ing framework proposed by Stern et al.
+(2019 ).
+We begin with the unconditional setting. In order to model se quences without requiring a ﬁxed
+factorization or imposing constraints on the order of gener ation, we make use of a framework in
+which sequences are constructed via insertion operations. Given a sequence x= (x1,...,x n)
+and a generation order zrepresented as a permutation of the indices {1,...,n}, we deﬁne the
+corresponding sequence ((cz
+1,lz
+1),...,(cz
+n,lz
+n))of insertion operations which produces xaccording
+to orderz. Here,cz
+i∈ C is an element of the vocabulary and 1≤lz
+i≤iis an insertion location
+relative to the current hypothesis. For example, if constru cting the sequence (A,B,C)as()→
+(C)→(A,C)→(A,B,C), we would have z= (3,1,2)with(cz
+1,lz
+1) = (C,1),(cz
+2,lz
+2) =
+(A,1),(cz
+3,lz
+3) = (B,2).
+Next let(xz,i
+1,...,xz,i
+i)denote the subsequence of xcorresponding to the (ordered) extraction of
+the elements at indices {z1,...,z i}. This is the partial output at iteration i. Note that this will be
+the same for all permutations zwith the same unordered set of indices in the ﬁrst ipositions. For
+the example above for instance, we have (xz,2
+1,xz,2
+2) = (A,C).
+Armed with these deﬁnitions, we can now write out p(x)as a marginalization over all possible orders
+z∈Snfor sequence length n, whereSndenotes the set of all permutations on nelements:
+p(x) =/summationdisplay
+z∈Snp(x,z) (3)
+=/summationdisplay
+z∈Snp(z)p(x|z) (4)
+3
+=/summationdisplay
+z∈Snp(z)n/productdisplay
+i=1p((cz
+i,lz
+i)|(cz
+1,lz
+1),...,(cz
+i−1,lz
+i−1)) (5)
+=/summationdisplay
+z∈Snp(z)n/productdisplay
+i=1p((cz
+i,lz
+i)|xz,i−1
+1:i−1), (6)
+where the last line encodes the Markov assumption that the or der of insertions leading to a given
+canvas is not important, just the result. Typically we will u se a uniform prior over permutations
+forp(z), though other options are available, such as the balanced bi nary tree prior described by
+Stern et al. (2019 ).
+3.1 Learning
+Although exact computation of the log-likelihood is intrac table due to the marginalization over the
+generation order z, we can lower bound the log-likelihood using Jensen’s inequ ality via
+logp(x) = log/summationdisplay
+z∈Snp(z)p(x|z) (7)
+≥/summationdisplay
+z∈Snp(z)logp(x|z) =:L(x). (8)
+Substituting in our expression for p(x|z)from above, we have
+L(x) =/summationdisplay
+z∈Snp(z)logn/productdisplay
+i=1p((cz
+i,lz
+i)|xz,i−1
+1:i−1) (9)
+=/summationdisplay
+z∈Snp(z)n/summationdisplay
+i=1logp((cz
+i,lz
+i)|xz,i−1
+1:i−1). (10)
+Next we interchange the summations and break the permutatio nzdown into (z1,...,z i−1)corre-
+sponding to previous insertions, zicorresponding to the next insertion, and (zi+1,...,z n)corre-
+sponding to future insertions, giving
+L(x) =n/summationdisplay
+i=1/summationdisplay
+z∈Snp(z)logp((cz
+i,lz
+i)|xz,i−1
+1:i−1) (11)
+=n/summationdisplay
+i=1/summationdisplay
+z1:i−1/summationdisplay
+zi/summationdisplay
+zi+1:np(z)logp((cz
+i,lz
+i)|xz,i−1
+1:i−1) (12)
+=n/summationdisplay
+i=1/summationdisplay
+z1:i−1p(z1:i−1)/summationdisplay
+zip(zi|z1:i−1)logp((cz
+i,lz
+i)|xz,i−1
+1:i−1)/summationdisplay
+zi+1:np(zi+1:n|z1:i)
+(13)
+=n/summationdisplay
+i=1/summationdisplay
+z1:i−1p(z1:i−1)/summationdisplay
+zip(zi|z1:i−1)logp((cz
+i,lz
+i)|xz,i−1
+1:i−1), (14)
+where the simpliﬁcation in the last line follows from the fac t that/summationtext
+zi+1:np(zi+1:n|z1:i) = 1 .
+From here, we can multiply and divide the outer sum by nto turn it into a mean, then arrive at the
+following simple sampling procedure to compute an unbiased estimate of our lower bound L(x)on
+the log-likelihood for a single example:
+1. Sample a generation step i∼Uniform([1 ,n]).
+2. Sample a partial permutation z1:i−1∼p(z1:i−1)for the ﬁrst i−1insertions.
+3. Compute a weighted sum over the next-step losses logp((cz
+i,lz
+i)|xz,i−1
+1:i−1)scaled by the
+weighting distribution p(zi|z1:i−1)and the sequence length n.
+4
+Softmax
+Casual Self-Attention
++ Cross-Attention
+Embedding EmbeddingSelf-Attention
+/an}bracketle{ts′/an}bracketri}htA′B′C′D′A B C D E F G /an}bracketle{ts/an}bracketri}htE′
+(a) TransformerSoftmax
+Self-Attention
+Embedding
+A B C_ _F/an}bracketle{ts/an}bracketri}ht_B′C′D′_ _/an}bracketle{ts/an}bracketri}ht′D E A′E′F′
+(b) BERT
+Softmax
+Self-Attention
++ Cross-Attention
+Embedding EmbeddingSelf-Attention
+A B C D E F G /an}bracketle{ts/an}bracketri}ht B′C′D′/an}bracketle{ts/an}bracketri}ht′A′{E′,F′}
+(c) Insertion TransformerSoftmax
+Self-Attention
+Embedding
+A B C F /an}bracketle{ts/an}bracketri}htB′C′D′/an}bracketle{ts/an}bracketri}ht′A′{E′,F′} {D,E}
+(d) KERMIT
+Figure 2: Diagram of various models. The Transformer ( a) model predicts the next right token given
+the left context. The BERT ( b) model predicts what is missing in the blank slots given the c ontext.
+The Insertion Transformer ( c) model predicts where and what is missing given the context. The
+KERMIT ( d) model is an generalization of ( c) where the context is over multiple sequences.
+3.2 Inference
+Using this model, inference can be autoregressive via greed y decoding
+(ˆc,ˆl) = argmax
+c,lp(c,l|ˆxt) (15)
+or partially autoregressive via parallel decoding
+ˆcl= argmax
+cp(c|l,ˆxt). (16)
+In the case of parallel decoding, we perform simultaneous in sertions at all non-ﬁnished slots. If
+we use a balanced binary tree prior for p(z)(Stern et al. ,2019 ), we can even achieve an empirical
+runtime of ≈log2niterations to generate ntokens. One key advantage of insertion-based models
+over MLMs is that the output canvas can dynamically grow in si ze, meaning the length does not
+need to be chosen before the start of generation.
+3.3 Pairs of Sequences
+Thus far, we have discussed KERMIT for single sequences. We c an easily extend KERMIT to
+pairs of sequences by directly modeling (x,y)as a concatenation of two sequences, (x,y) =
+(x1,...,x n,y1,...,y m). For example, let our ﬁrst sequence be x= (A,B,C,/an}bracketle{tEOS/an}bracketri}ht)and our
+second sequence be y= (A′,B′,C′,D′,E′,/an}bracketle{tEOS/an}bracketri}ht). The concatenated sequence would then be
+(x,y) = (A,B,C,/an}bracketle{tEOS/an}bracketri}ht,A′,B′,C′,D′,E′,/an}bracketle{tEOS/an}bracketri}ht). With this approach, we can model pairs of
+sequences as if they were single sequences. Moreover, unlik e seq2seq, our model is symmetric
+with regards to its treatment of the source and target, makin g it a strong candidate for extensions to
+multimodal data settings in future work.
+By keeping our architecture order-agnostic and marginaliz ing over all possible orders in our training
+objective, KERMIT is able to learn the joint distribution an d all its decompositions, including the
+marginals p(x)andp(y)and conditionals p(y|x)andp(x|y). We can also perform targeted
+training. More explicitly, if the model is provided with a ca nvas that fully contains xory, then it
+will learn a conditional distribution. If the model is provi ded with an example where xoryis empty,
+then it will learn the opposing marginal distribution.
+3.4 Model
+We implement KERMIT as a single Transformer decoder stack ( Vaswani et al. ,2017 ), without any
+form of causal masking. The full self-attention mechanism a llows the model to capture any rela-
+5
+Model ↔ En→De De →En Iterations
+Autoregressive
+Transformer ( Vaswani et al. ,2017 ) ✗ 27.3 n
+Transformer (Our Implementation) ✗ 27.8 31.2 n
+Non-Autoregressive
+NAT ( Gu et al. ,2018 ) ✗ 17.7 21.5 1
+Iterative Reﬁnement ( Lee et al. ,2018 ) ✗ 21.6 25.5 10
+Blockwise Parallel ( Stern et al. ,2018 ) ✗ 27.4 ≈n/5
+Insertion Transformer ( Stern et al. ,2019 )✗ 27.4 ≈log2n≪10
+KERMIT
+Unidirectional ( p(y|x)orp(x|y)) ✗ 27.8 30.7 ≈log2n≪10
+Bidirectional ( p(y|x)andp(x|y)) ✓ 27.2 27.6 ≈log2n≪10
+Joint (p(x,y)) ✓ 25.6 27.4 ≈log2n≪10
++ Marginal Reﬁning ( p(x)andp(y)) ✓ 25.8 28.6 ≈log2n≪10
+֒→Unidirectional Finetuning ✗ 28.7 31.4 ≈log2n≪10
+֒→Bidirectional Finetuning ✓ 28.1 28.6 ≈log2n≪10
+Table 2: WMT English ↔German newstest2014 BLEU. Models capable of translating in both
+directions are marked with ↔.
+tionships between the input canvas and the predicted insert ion operations with a constant number
+of operations. We follow Stern et al. (2019 ) and model the (content, location) distribution p(c,l)as
+a factorized distribution p(c,l) =p(c|l)p(l), wherep(c|l)is the standard Transformer softmax
+over the vocabulary, and a p(l)is a softmax over the locations. Figure 2visualizes the differences
+between a standard Transformer ( Vaswani et al. ,2017 ), BERT ( Devlin et al. ,2019 ), Insertion Trans-
+former ( Stern et al. ,2019 ) and KERMIT.
+4 Experiments
+We perform experiments with KERMIT on the tasks of machine tr anslation, self-supervised repre-
+sentation learning, and zero-shot cloze question answerin g.
+4.1 Machine Translation
+We ﬁrst apply KERMIT on the competitive WMT 2014 English ↔German translation task. We
+follow the hyperparameter settings of the base Transformer (Vaswani et al. ,2018 ). However, since
+KERMIT does not have an encoder, we simply double the decoder width. We perform no addi-
+tional hyperparameter tuning. We also follow prior work ( Gu et al. ,2018 ;Stern et al. ,2018 ,2019 ;
+Lee et al. ,2018 ) in using distillation ( Hinton et al. ,2015 ;Kim and Rush ,2016 ) to train our models.
+We follow Stern et al. (2019 ) in using a balanced binary tree loss, and we similarly obser ve an em-
+pirically logarithmic number of generation steps in sequen ce length when using parallel decoding.
+However, unlike Stern et al. (2019 ) we did not need to tune an EOS penalty, but simply set it to zer o
+for all experiments.
+We train several different KERMIT models for translation. F irst we train two unidirectional models,
+where the model observes a full source sentence (i.e., Engli sh or German) and is asked to generate
+the corresponding target sentence (i.e., German or English ). These separately learn the conditional
+distributions p(y|x)andp(x|y), mimicking the traditional conditional generation setup. On the
+WMT 2014 test set, we achieve 27.8/30.7 BLEU with this approa ch, roughly matching our base
+Transformer baseline of 27.8/31.2 BLEU. We also train a bidi rectional model on the union of the
+two unidirectional training sets, yielding a single model t hat captures both conditional distributions
+p(y|x)andp(x|y). We do not change any hyperparameters when training this mod el (i.e., we
+do not increase model capacity). The combined approach obta ins 27.2/27.6 BLEU, nearly matching
+the baseline for English →German but falling slightly behind in the reverse direction .
+We also train a full joint model that captures the full joint d istribution p(x,y)and factorizations
+thereof. Like the bidirectional model, the joint model can t ranslate in either direction, but it can
+6
+Input: In order to develop such a concept, the town is reliant on the c ooperation of its citizens.
+Predicted: Um ein solches Konzept zu entwickeln, ist die Stadt auf die Zu sammenarbeit ihrer Bürger
+angewiesen.
+Parallel decode:
+Um_ ein_ solches_ Konzept_ zu_ entwickeln_ , _ ist_ die_ Stadt_ auf_ die_ Zusammenarbeit_ ihrer_ Bürger_ angewiese n_ ._
+Um_ ein_ solches_ Konzept_ zu_ entwickeln_ , _ ist_ die_ Stadt_ auf_ die_ Zusammenarbeit_ ihrer_ Bürger_ angewiesen_ ._
+Um_ ein_ solches_ Konzept_ zu_ entwickeln_ ,_ist_die_ Stadt_ auf_ die_ Zusammenarbeit_ ihrer_ Bürger_ angewiesen_ ._
+Um_ ein_ solches_ Konzept_ zu_entwickeln_ , _ist_die_ Stadt_ auf_ die_ Zusammenarbeit_ ihrer_ Bürger_ angewiesen_ ._
+Um_ ein_ solches_ Konzept_ zu_entwickeln_ , _ ist_ die_ Stadt_ auf_ die_ Zusammenarbeit_ i hrer_ Bürger_ angewiesen_ ._
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+Input: Frühere Gespräche zwischen den Parteien haben nur wenig zur Beilegung der Spannungen
+beigetragen, die durch eine Reihe von Zusammenstößen in die sem Jahr befeuert wurden.
+Predicted: Previous talks between the parties have done little to resol ve the tensions fueled by a series of
+clashes this year.
+Parallel decode:
+Prev ious_ talks_ between_ the_ parties_ have_ done_ little _ to_ resolve_ the_ tensions_ fueled_ by_ a_ series_ of_ cla she s_ this_ year_ ._
+Prev ious_ talks_ between_ the_ parties_ have_ done_ little_ to_ resolve_ the_ tensions_ fueled_ by_ a_ series_ of_ clashe s_ this_ year_ ._
+Prev ious_ talks_ between_ the_ parties_ have_ done_ little_ to_resolve_ the_ tensions_ fueled_ by_ a_series_ of_ clashe s_ this_ year_ ._
+Prev ious_ talks_ between_ the_ parties_ have_ done_ little_ to_resolve_ the_ tensions_ fueled_ by_a_series_ of_clashes_this_ year_ ._
+Prev ious_ talks_ between_ the_ parties_ have_ done_ little_ to_ resolve_ the_ tensions_ fueled_ by_a_ series_ of_clashes_ this_ year_ ._
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+Figure 3: Example parallel decodes using KERMIT for English →German and German →English
+translation. In each row, the blue underlined tokens are tho se being inserted, and the gray tokens are
+those from the ﬁnal output that have not yet been generated. E mpirically, KERMIT requires only
+≈log2nsteps to generate a sequence of length nwhen trained with a balanced binary tree prior.
+additionally be used for sampling or completing partial inp uts. We use the same hyperparameter
+set as before. Since the model is now faced with a much more cha llenging task, it does slightly
+worse when limited to the same model size, but still reaches a respectable 25.6/27.4 BLEU. Unlike
+the previous models, however, we can incorporate monolingu al data into the joint model’s training
+setup to supplement its knowledge of the marginals p(x)andp(y). We accordingly train a joint
+model with all our paired data and 1M additional samples of En glish and German monolingual data
+randomly selected from the WMT 2014 monolingual corpus. Wit hout altering model capacity, we
+ﬁnd that reﬁning the marginals gives us a 1.2 BLEU improvemen t on German →English. Finally,
+we take the model which was trained on the full joint distribu tion with marginal reﬁnement, and
+further ﬁnetune it on both the unidirectional and bidirecti onal settings. We ﬁnd a small improvement
+in BLEU over the original models in both settings.
+Table 2summarizes our results. We emphasize that virtually all of o ur models outperform prior
+non-fully-autoregressive approaches in terms of BLEU. We a lso note that the observed number of
+iterations required to generate ntokens is roughly log2ndue to the use of a balanced binary tree
+loss and parallel decoding, which is substantially lower th an autoregressive models which require n
+steps. Some examples of parallel decodes are shown in Figure 3. Our models require an average of
+5.5-6.5 decoding iterations for the sentences in the test se t, outperforming the constant-time models
+ofLee et al. (2018 ) which require 10 iterations in both BLEU and empirical deco ding complexity.
+We also draw samples from the model to highlight its inﬁlling and generation capabilities. Figure 4
+captures some examples. We ﬁrst show unconditional samplin g of an (English, German) sentence
+pair. We also take a translation example from the newstest20 13 dev set and split it in half, sampling
+completions after seeding the English side with the ﬁrst hal f and the German side with the second
+half. We ﬁnd the model is capable of generating a very diverse set of coherent samples.
+4.2 Representation Learning
+Like its close friend BERT ( Devlin et al. ,2019 ), KERMIT can also be used for self-supervised
+representation learning and applied to various language un derstanding tasks. We follow the same
+training procedure and hyperparameter setup as BERT LARGE . However, instead of masking 15% of
+the tokens and replacing them with blank tokens like in BERT ( Devlin et al. ,2019 ), KERMIT simply
+drops them out completely from the sequence.
+7
+No seeding (unconditional):
+English: Nonetheless, we feel, with fury, at the fact that the 500 mill ion have no contradiction on a common
+approach to productivity.
+German: Dennoch sind wir mit Wut der Ansicht, dass die 500 Millionen k einen Widerspruch in einem
+gemeinsamen Produktivitätsansatz aufweisen.
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+English Groundtruth: - Please tell us, in simple terms, about the work your researc h group does.
+German Groundtruth: - Beschreiben Sie bitte kurz, welche Forschungen Ihre Grupp e betreibt.
+English Seed: - Please tell us, in simple terms
+German Seed: welche Forschungen Ihre Gruppe betreibt.
+English: - Please tell us what sort of research your group is conducting , in simple terms .
+German: - Bitte teilen Sie uns einfach mit, welche Forschungen Ihre Gruppe betreibt.
+English: - Please tell us, in quite simple terms , what kind of research your group operates.
+German: - Bitte teilen Sie uns in ganz einfach mit, welche Forschungen Ihre Gruppe betreibt.
+English: - Please tell us what research , in simple terms , what your group actually runs.
+German: - Bitte sagen Sie uns ganz einfach, welche Forschungen Ihre Gruppe eigentlich betreibt.
+English: - Please ,tell us what research your group is doing , inmore simple terms .
+German: - Bitte sagen Sie uns, welche Forschungen Ihre Gruppe einfacher betreibt.
+English: - Please tell us what your group will be conducting public research on , in simple terms .
+German: - Bitte teilen Sie uns einfach mit, welche Forschungen Ihre Gruppe betreibt.
+English: - Please tell us, what sort of research your group is undertaking in simple terms .
+German: - Bitte sagen Sie uns, welche Forschungen Ihre Gruppe betreibt.
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+Figure 4: Paired translation samples drawn from KERMIT, wit h and without seeding the initial
+canvas with text. In the bottom portion of the ﬁgure, the seed text is shown in gray, and different
+continuations sampled from the model are shown in black. We e mphasize the diversity of generation.
+Model Generative? CoLA SST-2 MRPC STS-B QQP MNLI-(m/mm) QNL I RTE WNLI AX Score
+GPT ( Radford et al. ,2018 ) ✓ 45.4 91.3 82.3/75.7 82.0/80.0 70.3/88.5 82.1/81.4 87.4 56. 0 53.4 29.8 72.8
+BERT ( Devlin et al. ,2019 ) ✗ 60.5 94.9 89.3/85.4 87.6/86.5 72.1/89.3 86.7/85.9 92.7 70. 1 65.1 39.6 80.5
+KERMIT ✓ 60.0 94.2 88.6/84.3 86.6/85.6 71.7/89.0 85.6/85.2 92.0 68. 4 65.1 37.6 79.8
+Table 3: GLUE benchmark scores (as computed by the GLUE evalu ation server). Of these models,
+only GPT and KERMIT admit a straightforward generation proc ess.
+Prior to BERT, the best representation learning approach wa s to use a language model such as GPT
+(Radford et al. ,2018 ). BERT outperforms GPT in large part because of its deeply bi-directional
+architecture, but in the process BERT sacriﬁces the ability to perform straightforward generation.
+While we ﬁnd KERMIT to perform slightly behind BERT, KERMIT m aintains the ability to generate
+text while obtaining results that are much closer to BERT rat her than GPT. The GLUE benchmark
+(Wang et al. ,2019 ) results are summarized in Table 3.
+4.3 Zero-Shot Cloze Question Answering
+Finally, we also investigate the inﬁlling abilities of KERM IT and related approaches by evaluating
+their performance on zero-shot cloze question answering. I n particular, we aim to understand how
+effective these models are for ﬁll-in-the-blank-style que stion answering after being trained only on
+language modeling data without any task-speciﬁc ﬁne-tunin g.
+For this experiment, we use the human-annotated QA2D datase t assembled by Demszky et al.
+(2018 ), which consists of examples from the SQuAD dataset ( Rajpurkar et al. ,2016 ) in which the
+answer has been extended from a single phrase into a full decl arative sentence. These can be trans-
+formed into cloze instances by removing the answer phrase fr om the declarative output. For example,
+given the question “When was Madonna born?” and the answer “A ugust 16, 1958”, the full declar-
+ative answer would be “Madonna was born on August 16, 1958.”, and the associated cloze instance
+would be “Madonna was born on .”
+8
+Plymouth has a post-war shopping area in the city centre with
+substantial pedestrianisation. At the west end of the zone i nside a
+grade II listed building is the Pannier Market that was compl eted in
+1959 – pannier meaning "basket" from French, so it translate s as
+"basket market". In terms of retail ﬂoorspace, Plymouth is r anked in
+the top ﬁve in the South West, and 29th nationally. Plymouth w as one
+of the ﬁrst ten British cities to trial the new Business Impro vement
+District initiative. The Tinside Pool is situated at the foo t of the Hoe
+and became a grade II listed building in 1998 before being res tored to
+its 1930s look for £3.4 million. What notable location was named a
+grade II listed building in 1998? ___ was named a grade II list ed
+building in 1998 .Model Answer
+GPT-2 →“Plymouth”
++ Oracle Length →“A listed building”
+BERT →“plymouth”
++ Oracle Length →“: the pool”
+KERMIT →“the tinside pool”
+Correct →“Tinside Pool”
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+Figure 5: Example of KERMIT, BERT and GPT-2 performing zero- shot cloze question answering
+on SQuAD. The question and cloze question are bolded. Note th at BERT and GPT-2 prefer a shorter,
+incorrect answer, unless given the oracle answer length.
+We take the KERMIT model trained from Section 4.2and two powerful language models (BERT
+(Devlin et al. ,2019 ) and the largest public version of GPT-22(Radford et al. ,2019 )), and evaluate
+their ability to ﬁll in the blank of each cloze instance, each without speciﬁcally being trained on data
+of this form. We employ different decoding strategies as req uired for each model, detailed below.
+KERMIT We split the passage in half and present KERMIT with examples of the form
+[CLS] passage(1/2) [SEP] passage(2/2) question cloze(lef t) cloze(right) [SEP]
+wherecloze(left) andcloze(right) are the portions of the declarative answer before and after
+the gap. Since KERMIT can natively perform insertions, we si mply perform a parallel decode
+constrained to take place within the gap and extract the outp ut as our answer.
+BERT We split the passage in half and present BERT with examples of the form
+[CLS] passage(1/2) [SEP] passage(2/2) question cloze(lef t) [MASK]*n cloze(right) [SEP]
+Here we include explicit [MASK] tokens, running separate decodes with n= 1,2,... up to4or the
+oracle answer length, whichever is greater. We then choose t he one with the highest score under
+the model and extract the outputs at the masked positions as t he answer. Each decode consists of
+a beam search in which one [MASK] is ﬁlled at a time. For each element on the beam, we choose
+the remaining [MASK] position with the highest conﬁdence (lowest entropy) as the next position to
+ﬁll. We found that this beam-search did substantially bette r than left-to-right decoding or parallel
+decoding.
+GPT-2 For GPT-2, a left-to-right language model, we cannot direct ly condition on both the left
+and right context. Instead, we ﬁrst present the model with th e preﬁx
+passage question cloze(left)
+and sample continuations of varying lengths. For each conti nuation, we then append cloze(right)
+and compute the score of the full sequence under the model. We select the best-scoring sequence and
+extract the portion in the gap as the answer. To efﬁciently ob tain continuations of varying lengths,
+we generate 20 extended continuations from the model, then t reat all preﬁxes of those continuations
+as candidate values to go in the gap.
+Model Exact Match F1
+GPT-2 10.9 16.6
++ Oracle Length 12.2 18.2
+BERT 12.3 18.9
++ Oracle Length 16.2 23.1
+KERMIT 20.9 30.3
+Table 4: SQuAD zero-shot cloze ques-
+tion answering.We evaluate on 50,000 cloze-formulated questions from
+SQuAD, using the standard SQuAD evaluation script to
+compute accuracy in terms of exact match and token-level
+F1. Results are presented in Table 4. KERMIT performs
+signiﬁcantly better on this zero-shot cloze task than the
+other two approaches thanks to its inﬁlling capabilities
+learned through its insertion-oriented objective, achiev ing
+30.3 F1 and 20.9% exact match. BERT’s performance
+falls short of KERMIT, as it often prefers shorter comple-
+tions since it is not required to handle length modeling
+2The 345M parameter “medium size” model.
+9
+during training. GPT-2 lags further behind the others due to its inability to condition on the context
+on both sides of the gap during inference. Even when the oracl e length (i.e., the ground-truth length
+of the answer) is provided to BERT and GPT-2, KERMIT still sub stantially outperforms all other
+models.
+5 Conclusion
+In this paper, we present KERMIT, an insertion-based framew ork for sequences that can model the
+joint data distribution and its decompositions (i.e., marg inals and conditionals). KERMIT can gen-
+erate text in an arbitrary order – including bidirectional m achine translation and cloze-style inﬁlling
+– and empirically can generate sequences in logarithmic tim e. It uses a simple neural architecture
+that can additionally produce contextualized vector repre sentations of words and sentences. We ﬁnd
+KERMIT is capable of matching or exceeding state-of-the-ar t performance on three diverse tasks:
+machine translation, representation learning, and zero sh ot cloze question answering.
+Acknowledgments
+We give thanks to Samy Bengio, Zhifeng Chen, Jamie Kiros, Luh eng He, Geoffrey Hinton, Quoc
+Le, Lala Li, Mohammad Norouzi, Yu Zhang, and the Google Brain team for useful discussions and
+technical assistance. Special thanks to Jamie Kiros for bra instorming the name KERMIT.
+References
+Bahdanau, D., Cho, K., and Bengio, Y . (2015). Neural Machine Translation by Jointly Learning to
+Align and Translate. In ICLR .
+Bahdanau, D., Chorowski, J., Serdyuk, D., Brakel, P., and Be ngio, Y . (2016). End-to-End Attention-
+based Large V ocabulary Speech Recognition. In ICASSP .
+Chan, W., Jaitly, N., Le, Q., and Vinyals, O. (2016). Listen, Attend and Spell: A Neural Network
+for Large V ocabulary Conversational Speech Recognition. I nICASSP .
+Cho, K., van Merrienboer, B., Gulcehre, C., Bahdanau, D., Bo ugares, F., Schwenk, H., and Bengio,
+Y . (2014). Learning Phrase Representations using RNN Encod er-Decoder for Statistical Machine
+Translation. In EMNLP .
+Demszky, D., Guu, K., and Liang, P. (2018). Transforming Que stion Answering Datasets Into
+Natural Language Inference Datasets. In arXiv .
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. (2019). BERT: Pre-training of Deep Bidirec-
+tional Transformers for Language Understanding. In NAACL .
+Gu, J., Bradbury, J., Xiong, C., Li, V . O., and Socher, R. (201 8). Non-Autoregressive Neural Ma-
+chine Translation. In ICLR .
+Hinton, G., Vinyals, O., and Dean, J. (2015). Distilling the Knowledge in a Neural Network. In
+NIPS Deep Learning and Representation Learning Workshop .
+Kim, Y . and Rush, A. M. (2016). Sequence-Level Knowledge Dis tillation. In EMNLP .
+Lee, J., Mansimov, E., and Cho, K. (2018). Deterministic Non -Autoregressive Neural Sequence
+Modeling by Iterative Reﬁnement. In EMNLP .
+Luong, M.-T., Pham, H., and Manning, C. D. (2015). Effective Approaches to Attention-based
+Neural Machine Translation. In EMNLP .
+Oord, A., Dieleman, S., Zen, H., Simonyan, K., Vinyals, O., G raves, A., Kalchbrenner, N., Senior,
+A., and Kavukcuoglu, K. (2016). WaveNet: A Generative Model for Raw Audio. In arXiv .
+Peters, M. E., Neumann, M., Iyyer, M., Gardner, M., Clark, C. , Lee, K., and Zettlemoyer, L. (2018).
+Deep contextualized word representations. In NAACL .
+10
+Radford, A., Narasimhan, K., Salimans, T., and Sutskever, I . (2018). Improving Language Under-
+standing by Generative Pre-Training.
+Radford, A., Wu, J., Child, R., Luan, D., Amodei, D., and Suts kever, I. (2019). Language Models
+are Unsupervised Multitask Learners.
+Rajpurkar, P., Zhang, J., Lopyrev, K., and Liang, P. (2016). SQuAD: 100,000+ Questions for Ma-
+chine Comprehension of Text. In EMNLP .
+Stern, M., Chan, W., Kiros, J., and Uszkoreit, J. (2019). Ins ertion Transformer: Flexible Sequence
+Generation via Insertion Operations. In ICML .
+Stern, M., Shazeer, N., and Uszkoreit, J. (2018). Blockwise Parallel Decoding for Deep Autoregres-
+sive Models. In NeurIPS .
+Sun, Y ., Wang, S., Li, Y ., Feng, S., Chen, X., Zhang, H., Tian, X., Zhu, D., Tian, H., and Wu, H.
+(2019). ERNIE: Enhanced Representation through Knowledge Integration. In arXiv .
+Sutskever, I., Vinyals, O., and Le, Q. (2014). Sequence to Se quence Learning with Neural Networks.
+InNIPS .
+Vaswani, A., Bengio, S., Brevdo, E., Chollet, F., Gomez, A. N ., Gouws, S., Jones, L., Kaiser, L.,
+Kalchbrenner, N., Parmar, N., Sepassi, R., Shazeer, N., and Uszkoreit, J. (2018). Tensor2Tensor
+for Neural Machine Translation. In AMTA .
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., and Polo-
+sukhin, I. (2017). Attention Is All You Need. In NIPS .
+Vinyals, O., Toshev, A., Bengio, S., and Erhan, D. (2015). Sh ow and Tell: A Neural Image Caption
+Generator. In CVPR .
+Wang, A., Singh, A., Michael, J., Hill, F., Levy, O., and Bowm an, S. R. (2019). GLUE: A multi-task
+benchmark and analysis platform for natural language under standing. In ICLR .
+Wang, Y ., Skerry-Ryan, R., Stanton, D., Wu, Y ., Weiss, R. J., Jaitly, N., Yang, Z., Xiao, Y ., Chen,
+Z., Bengio, S., Le, Q., Agiomyrgiannakis, Y ., Clark, R., and Saurous, R. A. (2017). Tacotron:
+Towards End-to-End Speech Synthesis. In INTERSPEECH .
+Xu, K., Ba, J., Kiros, R., Cho, K., Courville, A., Salakhutdi nov, R., Zemel, R., and Bengio, Y . (2015).
+Show, Attend and Tell: Neural Image Caption Generation with Visual Attention. In ICML .
+11

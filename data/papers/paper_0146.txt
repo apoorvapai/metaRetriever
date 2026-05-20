@@ -1,0 +1,355 @@
+Title: A Downsampled Variant of ImageNet as an Alternative to the CIFAR datasets
+
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+A D OWNSAMPLED VARIANT OF IMAGE NET AS AN AL-
+TERNATIVE TO THE CIFAR DATASETS
+Patryk Chrabaszcz, Ilya Loshchilov & Frank Hutter
+University of Freiburg
+Freiburg, Germany,
+fchrabasp,ilya,fhg@cs.uni-freiburg.de
+ABSTRACT
+The original ImageNet dataset is a popular large-scale benchmark for training
+Deep Neural Networks. Since the cost of performing experiments (e.g, algo-
+rithm design, architecture search, and hyperparameter tuning) on the original
+dataset might be prohibitive, we propose to consider a downsampled version of
+ImageNet. In contrast to the CIFAR datasets and earlier downsampled versions
+of ImageNet, our proposed ImageNet32x32 (and its variants ImageNet64x64
+and ImageNet16x16) contains exactly the same number of classes and images
+as ImageNet, with the only difference that the images are downsampled to
+3232 pixels per image (64 64 and 1616 pixels for the variants, respec-
+tively). Experiments on these downsampled variants are dramatically faster
+than on the original ImageNet and the characteristics of the downsampled
+datasets with respect to optimal hyperparameters appear to remain similar.
+The proposed datasets and scripts to reproduce our results are available at
+http://image-net.org/download-images and
+https://github.com/PatrykChrabaszcz/Imagenet32_Scripts
+1 I NTRODUCTION
+Deep learning research has been substantially facilitated by the availability of realistic and acces-
+sible benchmark datasets, such as CIFAR-10 and CIFAR-100 (Krizhevsky and Hinton, 2009) (and
+MNIST (LeCun et al., 1998) in the 1990s). With the progress of machine learning, simple datasets
+lose some of their relevance, and more complex datasets/tasks become more important. While good
+results can be achieved on more complex datasets, such as ImageNet (Krizhevsky et al., 2012; Rus-
+sakovsky et al., 2015), this incurs a large computational burden, making it intractable to achieve
+state-of-the-art performance without massive compute resources (training a strong ImageNet model
+typically requires several GPU months).
+Due to this computational expense of running experiments on the original ImageNet dataset we
+propose to explore cheaper alternatives that preserve the dataset’s complexity. In order to check
+the scalability of new methods, neural architectures and hyperparameters associated with them, one
+might be interested in a downscaled version of ImageNet which allows for cheaper experimentation.
+Moreover, a lower resolution of the images would make the classiﬁcation task much more difﬁcult
+and would thus postpone the saturation of benchmarking results currently observed on CIFAR-10,
+e.g., 3% error obtained by Gastaldi (2017) compared to roughly 6% obtained by a trained human
+(Karpathy, 2011).
+To address this issue, we provide downsampled variants of the original ImageNet dataset and analyze
+results on them w.r.t. different hyperparameter settings and network sizes. We obtain surprisingly
+strong classiﬁcation results on our downsampled variants and ﬁnd qualitative results to be very
+similar across downsampling sizes. This suggests that these downsampled datasets are useful for
+facilitating cheap experimentation.
+The basic contributions of this report are as follows:
+1arXiv:1707.08819v3  [cs.CV]  23 Aug 2017
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+We make available downsampled versions of ImageNet ( 6464,3232, and 1616pixels)
+to facilitate fast experimentation with different network architectures, training algorithms,
+and hyperparameters.
+We show that different downsampling techniques yield similar results, except for a nearest
+neighbor approach, which performed worse in all our experiments.
+Using Wide ResNets (Zagoruyko and Komodakis, 2016), we obtain surprisingly good
+performance, matching the baseline by the pioneering AlexNet (Krizhevsky et al., 2012)
+(18.2% top-5 error) while using ImageNet32x32 (whose images have roughly 50 less
+pixels per image than the original ones).
+We show that the range of optimal learning rates does not change much across Ima-
+geNet16x16, ImageNet32x32, and ImageNet64x64, as well as across different network
+widths. This could be exploited by multi-ﬁdelity methods for architecture and hyperpa-
+rameter search (Li et al., 2016; Klein et al., 2016).
+2 D OWNSAMPLING IMAGE NET
+The original ImageNet dataset consists of images released as a part of the ILSVRC-2012 classiﬁca-
+tion dataset (Krizhevsky et al., 2012; Russakovsky et al., 2015). Each image belongs to one of 1000
+object classes, with the number of training images per class varying from 732 to 1300; there are 50
+validation images per class. The size of the original images varies; therefore, a preprocessing step is
+usually applied to scale and crop images to the size of 224 224 pixels.
+We are aware of two datasets that contain low resolution images derived from the ImageNet dataset:
+Downsampled ImageNet (Oord et al., 2016), like our datasets, contains all images in
+ImageNet, but since it was constructed for unsupervised learning, it does not provide the
+actual image labels and can therefore not be used for supervised learning.
+TinyImageNet (available at https://tiny-imagenet.herokuapp.com/ ) con-
+tains a subset of 200 classes with 500 images per class.
+Mishkin et al. (2016) suggested to use 128x128 pixels ImageNet images to evaluate various deep
+learning techniques, but their dataset is not available.
+We downsample / resize the original images to smaller images of 32x32 pixels to form Ima-
+geNet32x32, to images of 64x64 pixels to form ImageNet64x64 and to images of 16x16 pixels
+to form ImageNet16x16. In contrast to TinyImageNet, we do not reduce the number of classes and
+number of images. All images are shufﬂed and then divided into 10 different ﬁles so that each ﬁle
+is expected to have images from all classes. The validation data is stored in a separate ﬁle, both the
+training and validation data points are labeled (e.g., indexed starting from 1) according to the map-
+ping ﬁle of the ImageNet devkit. Each ﬁle contains images, labels and the mean image computed
+over the whole training set. We keep the same format of ﬁles as the one that is commonly used for
+the CIFAR datasets. ImageNet16x16, ImageNet32x32 and ImageNet64x64 take 1 GB, 4 GB and 16
+GB of disk space, respectively.
+We consider 6 different downsampling techniques available in the Pillow library1: lanczos, nearest,
+bilinear, bicubic, hamming, box (see Figure 1). In order to check the quality of the downsampled im-
+ages we use them to train Wide Residual Networks (WRNs) by Zagoruyko and Komodakis (2016),
+expecting that better validation errors will tend to be achieved with downsampling techniques that
+lose less information.
+3 E XPERIMENTAL SETUP
+We train Wide Residual Networks WRN-N-k by Zagoruyko and Komodakis (2016), where Nis the
+number of layers and kis a multiplicative factor for the number of ﬁlters, with k= 1corresponding
+to 16 ﬁlters in the ﬁrst residual block; increasing kmakes the network wider. We use Stochastic
+Gradient Descent with momentum factor 0.9, drop the learning rate by a factor of 5.0 every 10
+1Pillow version 4.1 available at https://python-pillow.org
+2
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+epochs, and train up to a total budget of 40 epochs. Throughout, we show validation error rates
+obtained after training for 31 epochs (right after the last drop of the learning rate).
+Our experiments on ImageNet32x32 employ the original WRNs designed for the CIFAR datasets
+with 3232 pixels per image. To adapt WRNs for images with 64 64 pixels per image as used
+in ImageNet64x64, we add an additional stack of residual blocks to reduce the spatial resolution of
+the last feature map from 16 16 to 88 and thus double the number of features. Analogously, for
+ImageNet16x16, we remove the last stack of residual blocks. For data augmentation, we ﬂip images
+horizontally and concatenate them to the original images, effectively doubling the number of images
+per epoch. We also use random image shifts (up to 4 pixels horizontally and vertically).
+4 R ESULTS
+Does the downsampling technique matter? We evaluated the six downsampling techniques de-
+scribed in Section 2 using a small WRN-28-2 network and various initial learning rates LR2
+f0:001;0:0025;0:005;0:01;0:025;0:05g. The results in Figure 2 show that all downsampling tech-
+niques performed very similarly, except for the nearest neighbour technique which yielded the worst
+results for all learning rates. This observation is in line with Figure 1 and also holds for Ima-
+geNet16x16 and ImageNet64x64 (results not shown for brevity). For all remaining experiments in
+this paper, we used the box method.
+Do conclusions drawn for cheap evaluations carry over to expensive ones? Next, we studied to
+which extent conclusions drawn for small networks and downsampled images carry over to larger
+networks and higher resolution images. This in turn determines the usefulness of these techniques
+for speeding up the experimental loop of architecture design and hyperparameter optimization. For
+this, we performed three experiments:
+We studied how the results scale with the network size, more speciﬁcally, network width,
+deﬁned by k. Table 1 shows that larger kyielded better results independently of the
+downsampling size. Performance on our downsampled datasets was surprisingly strong;
+for example, on ImageNet32x32, using k= 10 achieved 40.96% Top-1 validation er-
+ror and 18.87% Top-5 validation error. Interestingly, this matches the original results by
+AlexNets (Krizhevsky et al., 2012) (40.7% and 18.2%, respectively) on full-sized ImageNet
+(which has roughly 50 times more pixels per image). Clearly, greater image resolution
+yielded better results (e.g., 12.64% top-5 performance for ImageNet64x64).
+We studied how optimal learning rates changed across different combinations of downsam-
+pling sizes and network widths. Figure 3 shows that the region of optimal learning rates
+remained similar across all our experimental setups, including networks whose space and
+time complexity differed by up to a factor of 100. Additionally, Figure 4 compares perfor-
+mance as a function of both learning rate and width multiplier kfor downsampling sizes
+of 32x32 and 16x16, showing qualitatively very similar results in both cases, including the
+interaction effect that larger values of kfavor somewhat larger learning rates than smaller
+Figure 1: The original images (ﬁrst column) and images obtained by 6 downsampling techniques
+(left to right): bicubic, bilinear, box, hamming, lanczos, nearest. Our resizing procedure changes the
+aspect ratio of images.
+3
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+5 10 15 20 25 30 35 40
+Epochs2030405060708090Top-5 Error (%)
+LR=0.05, k=2
+bicubic 
+bilinear 
+box 
+hamming 
+lanczos 
+nearest 
+5 10 15 20 25 30 35 40
+Epochs2030405060708090Top-5 Error (%)
+LR=0.025, k=2
+bicubic 
+bilinear 
+box 
+hamming 
+lanczos 
+nearest 
+5 10 15 20 25 30 35 40
+Epochs2030405060708090Top-5 Error (%)
+LR=0.01, k=2
+bicubic 
+bilinear 
+box 
+hamming 
+lanczos 
+nearest 
+5 10 15 20 25 30 35 40
+Epochs2030405060708090Top-5 Error (%)
+LR=0.005, k=2
+bicubic 
+bilinear 
+box 
+hamming 
+lanczos 
+nearest 
+5 10 15 20 25 30 35 40
+Epochs2030405060708090Top-5 Error (%)
+LR=0.0025, k=2
+bicubic 
+bilinear 
+box 
+hamming 
+lanczos 
+nearest 
+5 10 15 20 25 30 35 40
+Epochs2030405060708090Top-5 Error (%)
+LR=0.001, k=2
+bicubic 
+bilinear 
+box 
+hamming 
+lanczos 
+nearest 
+Figure 2: The mean Top-5 errors obtained in 3 runs by WRN-28-2 on ImageNet32x32 for different
+learning rates (indicated at the top of each subﬁgure as LR) and downsampling algorithms.
+k. This suggests that small networks and downsampled images may indeed facilitate faster
+experimentation.
+We also investigated the tradeoffs of performance vs. training time resulting from dif-
+ferent downsampling and network sizes. Figure 5 and Table 1 show that both mecha-
+nisms for reducing the computational cost should be considered simultaneously to achieve
+optimal anytime performance. An additional mechanism could be to perform warm
+restarts (Loshchilov and Hutter, 2017), which was shown to substantially improve any-
+time performance over reductions of the learning rate at regular intervals. Since the relative
+ranking of learning rates was consistent across different downsampling and network sizes,
+we also envision that architecture and hyperparameter search methods could exploit cheap
+proxies of computationally more expensive setups based on varying these degrees of free-
+dom. Possible methods for exploiting these include Li et al. (2016); Klein et al. (2016).
+4
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+width k# params Top-1 error Top-5 error Time [days]
+WRN-20-k on ImageNet16x16 1 0.12M 85,18% 66,12% 0.2
+WRN-20-k on ImageNet16x16 2 0.42M 77,00% 54,22% 0.4
+WRN-20-k on ImageNet16x16 5 2.3M 66,60% 41,59% 1.0
+WRN-20-k on ImageNet16x16 10 8.9M 59.94% 35.10% 2.7
+WRN-28-k on ImageNet32x32 0.5 0.13M 79,83% 57,64% 0.5
+WRN-28-k on ImageNet32x32 1 0.44M 67,97% 42,49% 0.8
+WRN-28-k on ImageNet32x32 2 1.6M 56,92% 30,92% 1.5
+WRN-28-k on ImageNet32x32 5 9.5M 45,36% 21,36% 4.9
+WRN-28-k on ImageNet32x32 10 37.1M 40,96% 18,87% 13.8
+WRN-36-k on ImageNet64x64 0.5 0.44M 62,35% 36,06% 2.1
+WRN-36-k on ImageNet64x64 1 1.6M 49,79% 24,17% 3.4
+WRN-36-k on ImageNet64x64 2 6.2M 39,55% 16,57% 6.4
+WRN-36-k on ImageNet64x64 5 37.6M 32,34% 12,64% 22
+Table 1: The mean Top-1 and Top-5 test error rates obtained in 3 runs by WRNs measured right
+after the last drop of the learning rate, i.e., after epoch 31 (for bigger models training for more than
+one epoch after the last drop can lead to overﬁtting). All results are based on a learning rate of 0.01.
+The timing results are reported for training on a single Titan X GPU.
+0.05 0.025 0.01 0.005 0.0025 0.001
+Learning Rate102030405060708090Top-1 Error (%)
+k=0.5
+k=1k=2
+k=5k=10
+16x1632x32
+64x64
+0.05 0.025 0.01 0.005 0.0025 0.001
+Learning Rate102030405060708090Top-5 Error (%)
+k=0.5
+k=1k=2
+k=5k=10
+16x1632x32
+64x64
+Figure 3: The mean Top-1 (Left) and Top-5 (Right) errors obtained in 3 runs by WRN-N- kafter
+31 epochs with different settings of the initial learning rates and different sizes of the downsampled
+images (ImageNet16x16, ImageNet32x32 and ImageNet64x64). The results for ImageNet64x64 are
+shown for different kbut a single value of the initial learning rate LR=0.01 which seems reasonably
+good across different settings.
+Figure 4: The mean Top-5 errors for 32x32 images (left) and 16x16 images (right), as a function of
+network width kand learning rate.
+5
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+101
+102
+103
+Training time (hours)01020304050607080Top 5 Error (%)126k
+435k
+1.6M
+9.5M37.1M438k
+1.6M
+6.2M
+37.6M123k
+416k2.3M
+8.9M16x16 Images
+32x32 Images
+64x64 Images
+101
+102
+103
+Training time (hours)01020304050607080Top 5 Error (%)126k
+435k
+1.6M
+9.5M37.1M438k
+1.6M
+6.2M
+37.6M123k
+416k2.3M
+8.9M16x16 Images
+32x32 Images
+64x64 Images
+Figure 5: The mean Top-5 test error rates according to Table 1 for different models (with different
+number of parameters) vs. training time on a single Titan X GPU. The bottom ﬁgure replicates the
+top one, but also shows semi-transparent curves in the background to represent convergence curves.
+6
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+0 200 400 600 800 1000
+Class020406080100Top-1 Validation accuracy (%)
+0 200 400 600 800 1000
+Class020406080100Top-5 Validation accuracy (%)
+Figure 6: Percentage of correct Top-1 (Left) and Top-5 (Right) predictions for different classes ob-
+tained by WRN-28-5 on ImageNet32x32. Classes are ordered by this value for better visualization.
+5 D ISCUSSION AND CONCLUSION
+Our proposed downsampled versions of the original ImageNet dataset might represent a viable alter-
+native to the CIFAR datasets while dealing with more complex data and classes. Quite surprisingly,
+even by greatly reducing the resolution of images to 32 32 pixels, one can predict image labels
+quite well (see also Figure 6 and Figure 7).
+Classiﬁcation of low resolution images might also be of interest when (i) data storage is important
+(the original ImageNet dataset is 145GB), (ii) the input images are corrupted by noise, or (iii) a
+small subpart of a high resolution image must be classiﬁed.
+We hope that the provided datasets will ﬁll the gap between the CIFAR datasets and the full Im-
+ageNet dataset, representing a good benchmark for experimental studies, such as algorithm de-
+sign, neural network architecture search and hyperparameter optimization. Our preliminary experi-
+ments support the hypothesis that ﬁndings obtained on smaller networks for lower resolution images
+may transfer to larger networks for higher resolution images, while being up to 100 times cheaper
+to obtain. This could be exploited by multi-ﬁdelity methods for architecture and hyperparameter
+search (Li et al., 2016; Klein et al., 2016).
+6 A CKNOWLEDGEMENT
+This work has partly been supported by the European Research Council (ERC) under the Euro-
+pean Unions Horizon 2020 research and innovation programme under grant no. 716721 and by
+the German Research Foundation (DFG), under the BrainLinksBrainTools Cluster of Excellence
+(grant number EXC 1086). The authors acknowledge support by the High Performance and Cloud
+Computing Group at the Zentrum f ¨ur Datenverarbeitung of the University of T ¨ubingen, the state of
+Baden-W ¨urttemberg through bwHPC and the German Research Foundation (DFG) through grant
+no INST 37/935-1 FUGG.
+BIBLIOGRAPHY
+Xavier Gastaldi. Shake-shake regularization of 3-branch residual networks. In 5th International
+Conference on Learning Representations (ICLR 2017) , 2017.
+Andrej Karpathy. Lessons learned from manually classifying CIFAR-10, 2011. URL http:
+//karpathy.github.io/2011/04/27/manually-classifying-cifar10/ . Ac-
+cessed: 2017-05-19.
+Aaron Klein, Stefan Falkner, Simon Bartels, Philipp Hennig, and Frank Hutter. Fast
+bayesian optimization of machine learning hyperparameters on large datasets. arXiv preprint
+arXiv:1605.07079 , 2016.
+7
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+Alex Krizhevsky and Geoffrey Hinton. Learning multiple layers of features from tiny images. 2009.
+Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. Imagenet classiﬁcation with deep convolu-
+tional neural networks. In Advances in neural information processing systems , pages 1097–1105,
+2012.
+Yann LeCun, L ´eon Bottou, Yoshua Bengio, and Patrick Haffner. Gradient-based learning applied to
+document recognition. Proceedings of the IEEE , 86(11):2278–2324, 1998.
+Lisha Li, Kevin Jamieson, Giulia DeSalvo, Afshin Rostamizadeh, and Ameet Talwalkar. Hy-
+perband: A novel bandit-based approach to hyperparameter optimization. arXiv preprint
+arXiv:1603.06560 , 2016.
+Ilya Loshchilov and Frank Hutter. SGDR: Stochastic Gradient Descent with Restarts. In Interna-
+tional Conference on Learning Representations (ICLR 2017) , 2017.
+Dmytro Mishkin, Nikolay Sergievskiy, and Jiri Matas. Systematic evaluation of CNN advances on
+the ImageNet. arXiv preprint arXiv:1606.02228 , 2016.
+Aaron van den Oord, Nal Kalchbrenner, and Koray Kavukcuoglu. Pixel recurrent neural networks.
+arXiv preprint arXiv:1601.06759 , 2016.
+Olga Russakovsky, Jia Deng, Hao Su, Jonathan Krause, Sanjeev Satheesh, Sean Ma, Zhiheng
+Huang, Andrej Karpathy, Aditya Khosla, Michael Bernstein, Alexander C. Berg, and Li Fei-Fei.
+ImageNet Large Scale Visual Recognition Challenge. International Journal of Computer Vision
+(IJCV) , 115(3):211–252, 2015. doi: 10.1007/s11263-015-0816-y.
+Sergey Zagoruyko and Nikos Komodakis. Wide residual networks. arXiv preprint
+arXiv:1605.07146 , 2016.
+8
+ImageNet32x32, ImageNet16x16 and ImageNet64x64
+Figure 7: Subset of Imagenet32x32 validation images from classes with 1th (trolleybus, 100% ac-
+curacy), 250th (sloth bear, 88% accuracy), 500th (bulbul, 80% accuracy), 750th (projectile, 70%
+accuracy) and 1000th (plastic bag, 26% accuracy) best Top-5 accuracy as given in Figure 6. Green
+image borders indicate correct Top-5 predictions. The results were obtained by WRN-28-5 on Ima-
+geNet32x32.
+9

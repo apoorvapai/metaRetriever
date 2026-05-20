@@ -1,0 +1,432 @@
+Title: X-SQL: reinforce schema representation with context
+
+X-SQL: reinforce schema representation with context
+Pengcheng He, Yi Mao, Kaushik Chakrabarti, Weizhu Chen
+Microsoft Dynamics 365 AI
+fpenhe,maoyi,kaushik,wzchen g@microsoft.com
+Abstract
+In this work, we present X-SQL, a new net-
+work architecture for the problem of parsing
+natural language to SQL query. X-SQL pro-
+poses to enhance the structural schema rep-
+resentation with the contextual output from
+BERT-style pre-training model, and together
+with type information to learn a new schema
+representation for down-stream tasks. We
+evaluated X-SQL on the WikiSQL dataset and
+show its new state-of-the-art performance.
+1 Introduction
+Question Answering (QA) is among the most ac-
+tive research areas in natural language processing
+recently. In this paper, we are interested in QA
+over structured databases. This is usually done by
+mapping natural language question to a SQL query
+representing its meaning, a problem known as se-
+mantic parsing, followed by executing the SQL
+query against databases to obtain the answer.
+The largest annotated dataset for this problem is
+WikiSQL (Zhong et al., 2017). Early work adopts
+a neural sequence-to-sequence approach with at-
+tention and copy mechanism, while recent focus
+has been on incorporating the SQL syntax into
+neural models. Xu et al. (2017) and Yu et al.
+(2018a) capture the syntax via dependency be-
+tween different prediction modules. Dong and La-
+pata (2018) and Finegan-Dollak et al. (2018) use a
+slot ﬁlling approach where syntactic correctness is
+ensured by predeﬁned sketches.
+Recent advances in language representation
+modeling (Radford et al., 2018; Devlin et al.,
+2018) demonstrate the value of transfer learning
+from large external data source. For WikiSQL, the
+work of Hwang et al. (2019) has shown signiﬁcant
+improvement with such pre-training techniques.
+In view of this trend, we propose X-SQL, an im-
+proved pre-training based neural model with con-
+tributions from the following three perspectives.There are two types of textual information to
+be considered for this problem: one is the un-
+structured natural language query, and the other
+is the structured data schema. Previous work ei-
+ther models them independently or builds cross-
+attention between them (Xu et al., 2017; Shi et al.,
+2018). While the structured information such as
+table column is relatively stable, natural language
+queries are highly variable. We leverage an exist-
+ing pre-trained model named MT-DNN (Liu et al.,
+2019) to capture this variation and summarize the
+unstructured query into a global context represen-
+tation, which is then being used to enhance the
+structured schema representation for downstream
+tasks. To the best of our knowledge, this is the ﬁrst
+attempt to incorporate BERT-style contextual in-
+formation into a problem-dependent structure, and
+build a new representation to better characterize
+the structure information.
+Second, part of SQL syntax is bounded to the
+type of structured data schema. For example, ag-
+gregator MIN only appears with numerical col-
+umn, and operator >doesn’t pair with string typed
+column. We incorporate schema type information
+in two places. Section 2.1 describes type embed-
+ding with a modiﬁcation of pretrained language
+representation, and Section 2.3 shows how to fur-
+ther improve certain sub-tasks with a separately
+learned type embedding.
+Lastly, we observe previous approach using
+multiple binary classiﬁers for where clause pre-
+diction cannot effectively model the relationship
+between columns, since each classiﬁer is opti-
+mized independently, and their outputs are not di-
+rectly comparable. To tackle this issue, X-SQL
+takes a list-wise global ranking approach by using
+the Kullback-Leibler divergence as its objective to
+bring all columns into a comparable space (Sec-
+tion 2.4).arXiv:1908.08113v1  [cs.CL]  21 Aug 2019
+2 Neural Architecture
+The overall architecture consists of three layers:
+sequence encoder, context enhancing schema en-
+coder and output layer.
+2.1 Sequence Encoder
+For the sequence encoder, we use a model similar
+to BERT (Devlin et al., 2018) with the following
+changes:
+A special empty column [EMPTY] is ap-
+pended to every table schema. Its usage will
+become clear in Section 2.4.
+Segment embeddings are replaced by type
+embeddings, where we learn embeddings
+for four different types: question, categorial
+column, numerical column and the special
+empty column.
+Instead of initializing with BERT-Large, we
+initialize our encoder with MT-DNN (Liu
+et al., 2019), which has the same architec-
+ture as BERT, but trained on multiple GLUE
+tasks (Wang et al., 2018a). MT-DNN has
+been shown to be a better representation for
+down-stream NLP tasks.
+Note, we rename [CLS] output of BERT to
+[CTX] in the following sections and Figure 1.
+This is to emphasize that context information is
+being captured there, rather than a representation
+for down-stream tasks.
+In addition to these changes, our encoder dif-
+fers from SQLova with NL2SQL layer (Hwang
+et al., 2019) in the following important way: while
+SQLova still runs bi-LSTM/column attention on
+top of the encoder, our architecture enjoys a much
+simpler yet powerful design for consequent layers,
+which we believe is largely attributed to a better
+alignment of BERT with the problem.
+2.2 Context Enhanced Schema Encoder
+Leth[CTX];hq1;;hqn;h[SEP];hC11;;h[SEP];
+hC21;h[SEP];;h[EMPTY];h[SEP] denote
+the output from the encoder, each of dimension d.
+Each question token is encoded as hqi, followed
+byhCijwhich encodes the j-th token from
+columnisince each column name may contain
+multiple tokens. Our context enhanced schema
+encoder (Figure 1(a)) tries to learn a new repre-
+sentationhCifor each column iby strengtheningthe original encoder output with the global context
+information captured in h[CTX] .
+Denoting the number of tokens in column ias
+ni, the schema encoder summarizes each column
+by computing
+hCi=niX
+t=1ithCit (1)
+whereit:= SOFTMAX (sit). The alignment
+modelsittells how well t-th token of column i
+matches the global context, and is deﬁned as
+sit=f
+Uh[CTX]=p
+d;Vh Cit=p
+d
+:
+BothU;V2Rmd, and we use simple dot prod-
+uct forf.
+While there is already some degree of context
+being captured in the output from sequence en-
+coder, such inﬂuence is limited as self-attention
+tends to focus on only certain regions. On the
+other hand, the global contextual information cap-
+tured in [CTX] is diverse enough, thus is used
+to complement the schema representation from se-
+quence encoder.
+Although context enhanced schema encoder
+and column attention introduced in Xu et al.
+(2017) share a similar goal of better aligning natu-
+ral language question and table schema, they differ
+signiﬁcantly in both technical solution and the role
+played in the overall architecture. Column atten-
+tion changes hqiby signifying which query words
+are most relevant to each column. It does so for ev-
+ery column in the table, and columns are processed
+independent of each other. Context enhanced
+schema encoder, on the other hand, believes BERT
+style sequence encoder already performs well on
+the natural language side, and tries to come up
+with a better representation for schema. It uses
+only contextual information captured in [CTX] to
+update the schema part. Since [CTX] also con-
+tains information from other parts of the schema,
+columns are no longer updated independently.
+2.3 Output Layer
+The output layer composes the SQL pro-
+gram from both sequence encoder outputs
+h[CTX];hq1;;hqnand context enhancing
+schema encoder outputs hC1;hC2;;h[EMPTY] .
+Similar to Xu et al. (2017) and Hwang et al.
+(2019), the task is decomposed into 6 sub-tasks,
+each predicting a part of the ﬁnal SQL program.
+HCi
+HCi,0 HCi,1H[CTX]
+... HCi,kAttention(a) Context enhancing schema encoder
+(Equation 1).
+HciH[CTX]
+ProjProj
++ LN Rci(b) Sub-network that modulates schema
+representation with context (Equation 2).
+Hci
+ECTypeH[CTX]
+ProjProj
++ LN CLS(c) Neural network for select column ag-
+gregator (Task S-AGG, Equation 3).
+Figure 1: Components of X-SQL neural network model architecture.
+Unlike their models, X-SQL enjoys a much
+simpliﬁed structure due to context enhancement.
+We ﬁrst introduce a task dependent sub-network
+that modulates the schema representation hCius-
+ing contexthCTX. Speciﬁcally,
+rCi=LayerNorm 
+U0h[CTX] +V0hCi
+:(2)
+Different from Equation 1, this computation is
+done separately for each sub-task, to better align
+the schema representation with the particular part
+of natural language question that each sub-task
+should focus on.
+The ﬁrst task, S-COL, predicts the column for
+the SELECT clause. The probability of column
+Cibeing chosen for the SELECT statement is
+modeled as
+pS-COL(Ci) = SOFTMAX 
+WS-COLrCi
+withWS-COL2R1d. Note, S-COL depends on
+rCionly, as opposed to both query and schema in
+previous work.
+The second task, S-AGG, predicts the aggre-
+gator for the column selected by SELECT. To
+enhance the intuition that aggregator depends on
+the selected column type, e.g. MIN aggregator
+doesn’t go with a string typed column, we explic-
+itly add column type embedding to the model. The
+probability of the aggregator is computed as
+pS-AGG(AjjCi) = SOFTMAX
+WS-AGG[j;:] (3)
+LAYER NORM
+U00h[CTX]+V00hCi+ET
+Ci
+whereWS-AGG2R6dwith 6 being the num-
+ber of aggregators. Different from other sub-tasks
+we usehCihere rather than rCi, as we incorporate
+column type in a similar way to Equation 2. Type
+embeddingET
+Ciis learned separately from the one
+used by the sequence encoder.The remaining 4 tasks W-NUM, W-COL, W-
+OP and W-VAL together determine the WHERE
+part. Task W-NUM ﬁnds the number of where
+clauses using WW-NUMh[CTX] , and is modeled
+as a classiﬁcation over four possible labels each
+representing 1 to 4 where clauses in the ﬁnal
+SQL. It doesn’t predict the empty where clause
+case, which is delegated to W-COL through the
+Kullback-Leibler divergence as explained in Sec-
+tion 2.4. Task W-COL outputs a distribution over
+columns using
+pW-COL(Ci) = SOFTMAX 
+WW-COLrCi
+(4)
+and based on the number from W-NUM, top scor-
+ing columns are selected for the where clauses.
+Task W-OP chooses the most likely operator for
+the given where column using pW-OP(OjjCi) =
+SOFTMAX 
+WW-OP[j;:]rCi
+. Intuitively opera-
+tor also depends on the column type, and could
+be modeled in the same way as Task S-AGG in
+Equation 3. However, we didn’t observe improve-
+ment during experiments, therefore we prefer to
+keep the original simple model. Model parameters
+WW-NUM,WW-COL,WW-OPare inR4d,R1d
+andR3drespectively, with number of possible
+operators being 3.
+Predicting value for where clause (task W-V AL)
+is formulated as predicting a span of text from
+query, which simply becomes predicting the be-
+ginning and the end position of the span using
+pW-VAL
+start (qjjCi) = SOFTMAXg 
+Ustarthqj+VstartrCi
+and
+pW-VAL
+end (qjjCi) = SOFTMAXg 
+Uendhqj+VendrCi
+whereg(x):=Wx +b. Parameters
+Ustart;Vstart;Uend;Vend2Rmdand different g
+functions are learned for predicting start and end.
+Table 2: Dev/test results for each sub-module. means results obtained by running SQLova code from github.
+Model S-COL S -AGG W -NUM W -COL W -OP W -VAL
+SQLova 97.3 / 96.8 90.5 / 90.6 98.7 / 98.5 94.7 / 94.3 97.5 / 97.3 95.9 / 95.4
+X-SQL 97.5 / 97.2 90.9 / 91.1 99.0 / 98.6 96.1 / 95.4 98.0 / 97.6 97.0 / 96.6
+SQLova + EG97.3 / 96.5 90.7 / 90.4 97.7 / 97.0 96.0 / 95.5 96.4 / 95.8 96.6 / 95.9
+X-SQL + EG 97.5 / 97.2 90.9 / 91.1 99.0 / 98.6 97.7 / 97.2 98.0 / 97.5 98.4 / 97.9
+2.4 Training and Inference
+During training, we optimize the objective which
+is a summation over individual sub-task losses.
+We use cross entropy loss for task S-COL,
+S-AGG, W-NUM, W-OP and W-VAL. The loss
+for W-COL is deﬁned as the Kullback-Leibler
+(KL) divergence between D(QjjPW-COL), where
+PW-COLis modeled by Equation 4. Distribution Q
+from ground truth is computed as follows:
+If there is no where clause, Q[EMPTY] re-
+ceives probability mass 1 for special column
+[EMPTY] ,
+Forn1where clauses, each where column
+receives a probability mass of1
+n.
+Inference is relatively straightforward except
+for the W-COL. If the highest scoring col-
+umn is the special column [EMPTY] , we ig-
+nore the output from W-NUM and return empty
+where clause. Otherwise, we choose top nnon-
+[EMPTY] columns as indicated by W-NUM and
+W-COL.
+3 Experiments
+We use the default train/dev/test split of the Wik-
+iSQL dataset. Both logical form accuracy (exact
+match of SQL queries) and execution accuracy (ra-
+tio of predicted SQL queries that lead to correct
+answer) are reported. The logical form accuracy
+is the metric we optimize during training.
+Table 1 includes results both with and with-
+out execution guidance (EG) applied during in-
+ference (Wang et al., 2018b). We compare our
+results with the most recent work of WikiSQL
+leaderboard, including the previous state-of-the-
+art SQLova model. X-SQL is shown to be con-
+sistently and signiﬁcantly better across all metrics
+and achieves the new state-of-the-art on both dev
+and test set. Without EG, X-SQL delivers an ab-
+solute 2.6% (83.3 vs. 80.7) improvement in log-
+ical form accuracy and 2.5% improvement in ex-
+ecution accuracy on test set. Even with EG, X-
+SQL is still 2.4% better in logical form accuracy,and 2.2% better in execution accuracy. It is worth
+noting that X-SQL+EG is the ﬁrst model that sur-
+passes the 90% accuracy on test set. On the other
+hand, for dev set human performance is estimated
+to be 88.2% according to Hwang et al. (2019). X-
+SQL is the ﬁrst model better than human perfor-
+mance without the help of execution guidance.
+Table 1: Logical form ( lf) and execution ( ex) accuracy.
+ModelDev Test
+Acc lfAcc ex Acc lfAcc ex
+SQLNet 63.2 69.8 61.3 68.0
+SQLova 81.6 87.2 80.7 86.2
+X-SQL 83.8 89.5 83.3 88.7
+SQLova + EG 84.2 90.2 83.6 89.6
+X-SQL + EG 86.2 92.3 86.0 91.8
+Table 2 reports the accuracy for each sub-task,
+and demonstrates consistent improvement. In par-
+ticular, task W-COL shows an absolute 1.1% gain
+without EG and 1.7% with EG. We attribute this
+to our new approach of formalizing the where col-
+umn prediction as a list-wise ranking problem us-
+ing KL divergence. Another signiﬁcant improve-
+ment is the W-VAL task, with an absolute 1.2%
+gain without EG and 2.0% with EG. This partly
+results from the column set prediction (i.e. W-
+COL) improvement as well, since the value gener-
+ation depends highly on the predicted column set
+for the where clause.
+4 Conclusion
+We propose a new model X-SQL, demonstrate
+its exceptional performance on the WikiSQL task,
+and achieve new state-of-the-art across all met-
+rics. While the contribution around loss objec-
+tive may be bounded by the speciﬁc SQL syntax
+that WikiSQL uses, how contextual information is
+leveraged and how schema type is used can be im-
+mediately applied to other tasks that involve pre-
+trained language model for structured data. Future
+work includes experimenting with more complex
+dataset such as Spider (Yu et al., 2018b).
+References
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2018. BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing. arXiv preprint arXiv:1810.04805 .
+Li Dong and Mirella Lapata. 2018. Coarse-to-ﬁne de-
+coding for neural semantic parsing. In Proceedings
+of the 56th Annual Meeting of the Association for
+Computational Linguistics , pages 731–742.
+Catherine Finegan-Dollak, Jonathan K. Kummerfeld,
+Li Zhang, Karthik Ramanathan, Sesh Sadasivam,
+Rui Zhang, and Dragomir Radev. 2018. Improv-
+ing text-to-sql evaluation methodology. In Proceed-
+ings of the 56th Annual Meeting of the Association
+for Computational Linguistics (Volume 1: Long Pa-
+pers) , pages 351–360.
+Wonseok Hwang, Jinyeung Yim, Seunghyun Park, and
+Minjoon Seo. 2019. A comprehensive exploration
+on WikiSQL with table-aware word contextualiza-
+tion. Technical report.
+Xiaodong Liu, Pengcheng He, Weizhu Chen, and Jian-
+feng Gao. 2019. Multi-task deep neural networks
+for natural language understanding. arXiv preprint
+arXiv:1901.11504 .
+Alec Radford, Karthik Narasimhan, Tim Salimans, and
+Ilya Sutskever. 2018. Improving language under-
+standing by generative pre-training. URL https://s3-
+us-west-2. amazonaws. com/openai-assets/research-
+covers/languageunsupervised/language under-
+standing paper. pdf .
+Tianze Shi, Kedar Tatwawadi, Kaushik Chakrabarti,
+Yi Mao, Oleksandr Polozov, and Weizhu Chen.
+2018. Incsql: Training incremental text-to-sql
+parsers with non-deterministic oracles. arXiv
+preprint arXiv:1809.05054 .
+Alex Wang, Amanpreet Singh, Julian Michael, Fe-
+lix Hill, Omer Levy, and Samuel Bowman. 2018a.
+Glue: A multi-task benchmark and analysis platform
+for natural language understanding. In Proceedings
+of the 2018 EMNLP Workshop BlackboxNLP: An-
+alyzing and Interpreting Neural Networks for NLP ,
+pages 353–355.
+Chenglong Wang, Po-Sen Huang, Oleksandr Polozov,
+Marc Brockschmidt, and Rishabh Singh. 2018b.
+Execution-guided neural program decoding. In
+ICML workshop on Neural Abstract Machines &
+Program Induction v2 (NAMPI) .
+Xiaojun Xu, Chang Liu, and Dawn Song. 2017. SQL-
+Net: Generating structured queries from natural
+language without reinforcement learning. arXiv
+preprint arXiv:1711.04436 .
+Tao Yu, Zifan Li, Zilin Zhang, Rui Zhang, and
+Dragomir Radev. 2018a. TypeSQL: Knowledge-
+based type-aware neural text-to-SQL generation. In
+Proceedings of the 2018 Conference of the NorthAmerican Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies,
+Volume 2 (Short Papers) , pages 588–594.
+Tao Yu, Rui Zhang, Kai Yang, Michihiro Yasunaga,
+Dongxu Wang, Zifan Li, James Ma, Irene Li,
+Qingning Yao, Shanelle Roman, Zilin Zhang,
+and Dragomir Radev. 2018b. Spider: A large-
+scale human-labeled dataset for complex and cross-
+domain semantic parsing and text-to-sql task. In
+EMNLP .
+Victor Zhong, Caiming Xiong, and Richard Socher.
+2017. Seq2SQL: Generating structured queries
+from natural language using reinforcement learning.
+CoRR , abs/1709.00103.

@@ -1,0 +1,2159 @@
+Title: Open-Domain Conversational Agents: Current Progress, Open Problems, and Future Directions
+
+Open-Domain Conversational Agents:
+Current Progress, Open Problems, and Future Directions
+Stephen Roller, Y-Lan Boureau, Jason Weston, Antoine Bordes, Emily Dinan,
+Angela Fan, David Gunning, Da Ju, Margaret Li, Spencer Poff, Pratik Ringshia,
+Kurt Shuster, Eric Michael Smith, Arthur Szlam, Jack Urbanek, Mary Williamson
+Facebook AI Research
+parlai@fb.com
+Abstract
+We present our view of what is necessary to build an engaging
+open-domain conversational agent: covering the qualities of
+such an agent, the pieces of the puzzle that have been built so
+far, and the gaping holes we have not ﬁlled yet. We present a
+biased view, focusing on work done by our own group, while
+citing related work in each area. In particular, we discuss in
+detail the properties of continual learning, providing engaging
+content, and being well-behaved – and how to measure success
+in providing them. We end with a discussion of our experience
+and learnings, and our recommendations to the community.
+Good open-domain conversationalists seamlessly blend
+entertaining wit and knowledge while making others feel
+heard. The breadth of possible conversation topics and lack
+of a well-deﬁned objective make it challenging to deﬁne a
+roadmap towards training a good conversational agent, or
+chatbot. Despite recent progress across the board (Adiwar-
+dana et al ., 2020; Roller et al ., 2020), conversational agents
+are still incapable of carrying an open-domain conversation
+that remains interesting, consistent, accurate, and reliably
+well-behaved (e.g., not offensive) while navigating a variety
+of topics.
+Traditional task-oriented dialogue systems rely on slot-
+ﬁlling and structured modules (e.g., Young et al .(2013); Gao
+et al.(2019); Jurafsky and Martin (2019)). These approaches
+have proven adept at producing usable commercial systems in
+narrow domains such as plane ticket booking. However, they
+are limited to the domain they were trained on and do not af-
+ford generalization to new domains or open chit-chat settings,
+necessitating the coding of many modules, or skills, and a
+managing system that switches between them. End-to-end
+approaches based on neural networks, on the other hand, offer
+the promise of adapting to arbitrarily wide new domains with-
+out additional handcrafting, but have yet to reach the full po-
+tential promised. Deep architectures trained end-to-end have
+been very successful in many other domains, such as speech
+recognition (Hinton et al ., 2012; Collobert, Puhrsch, and Syn-
+naeve, 2016), computer vision (Krizhevsky, Sutskever, and
+Hinton, 2012), and machine translation (Sutskever, Vinyals,
+and Le, 2014; Gehring et al ., 2017). Hence, the research com-
+munity is investing heavily in improving end-to-end models
+for dialogue (Zhang et al ., 2019; Adiwardana et al ., 2020;
+Equal contribution to this position paper.Roller et al ., 2020), in the hope of achieving similar success.
+In this paper, we highlight some of the recent work towards
+that goal, beginning by attempting to deﬁne the problem itself.
+We thus describe the desirable traits that we believe a super-
+human open-domain conversational agent should have, state
+principles our research follows, and propose ways to measure
+our progress. We examine the challenges of this research pro-
+gram, summarize the results we have already obtained, and
+propose guidelines for the community to accelerate progress.
+Note that while we try to cite related work where possible,
+this article is written with a strong bias toward describing
+the progress in the goals and research directions of our own
+group. Further, we discuss only open academic research with
+reproducible published results, hence we will not address
+much of the considerable work that has been put into build-
+ing commercial systems, where methods, data and results
+are not in the public domain. Finally, given that we focus on
+open-domain conversation, we do not focus on speciﬁc goal-
+oriented techniques; we also do not cover spoken dialogue in
+this work, focusing on text and image input/output only. For
+more general recent surveys, see Gao et al .(2019); Jurafsky
+and Martin (2019); Huang, Zhu, and Gao (2020).
+Qualities of a Conversational Agent
+We deﬁne our long-term goal as building a superhuman open-
+domain conversational agent. That is, we aim to build an
+agent that is preferred on average to an alternative human
+speaking partner in open conversation, which we will discuss
+in detail later in the measuring success section (evaluation
+being an open problem in itself). We note that this is different
+from passing a Turing test (Turing, 1950): we do not wish to
+fool humans into believing our agent is human, but instead
+that our agent should be enjoyed as a speaking partner, which
+we believe is a simpler problem.
+We expect that such an agent must be continually-learning ,
+must provide engaging content during conversations, and
+should be well-behaved . Each of these high-level traits can
+be unpacked into a number of behaviors and attributes, many
+of which constitute major research directions with open ques-
+tions. We describe each of the main properties in turn, along
+with their major challenges.arXiv:2006.12442v2  [cs.CL]  13 Jul 2020
+Continually Learning
+Continual learning is a cornerstone of the conversational
+agent we envision, allowing it to adapt to new contexts, new
+users, keep up to date with current conversation topics, and
+continuously improve. This entails three primary skills: con-
+tinuous online training of underlying models, extracting use-
+ful learning signals from interaction, and updating relevant
+sources of knowledge.
+Continual Online Training Recent dialogue research has
+leveraged various data sources for training: corpora of human-
+human conversations in narrow domains (see Serban et al .
+(2018) and the list of currently available ParlAI tasks1for
+a large set of available corpora), public conversations on
+internet discussion boards or social media, or acted dialogues
+from crowdsourced workers (Zhang et al ., 2018; Dinan et al .,
+2019b; Shuster et al ., 2018; Rashkin et al ., 2019; Shuster et
+al., 2020; Smith et al ., 2020). Relying on static datasets allows
+for reproducibility and model comparisons, but creates a
+potential mismatch of data distribution between train time and
+deployment of the conversational agent. The framework of
+combining a pre-trained model with ﬁne-tuning over another
+dataset of interest has generally produced good results, as we
+have seen in much of our work (Dinan et al ., 2019a, 2020,
+2019b; Humeau et al ., 2019; Rashkin et al ., 2019; Zhang et
+al., 2019; Shuster et al ., 2020; Smith et al ., 2020; Roller et
+al., 2020). However, this ﬁne-tuning procedure over a static
+dataset still does not allow for dynamically adapting to new
+topics of interest or new audiences, and the current set of
+available tasks is far from covering everything that an open-
+domain conversation might touch on. Thus, an important part
+of our research program consists in deploying conversational
+agents so that new data of humans interacting with the agent
+in an open-ended conversation can continuously be obtained
+and used for ﬁne-tuning models with fresh data.
+Open problems . Obtaining a source of continually renewed
+data opens the door to many open problems. The general chal-
+lenges of never-ending learning (Mitchell et al ., 2018; Carl-
+son et al ., 2010) and avoiding catastrophic forgetting (French,
+1999; Kirkpatrick et al ., 2017) have a particular ﬂavor in the
+domain of conversation: the general task is always to talk to
+people about any subject, but the set of people, the topics of
+interest, the facts that have happened may all change. As in
+other domains, the performance that can be achieved on a
+task after ﬁne-tuning is highly dependent on the data a model
+has been pre-trained on. Empirical evidence suggests that
+data with a very large range of domains (e.g., social media
+data) provides the best basis for ﬁne-tuning (Zhang et al .,
+2019; Shuster et al ., 2020; Adiwardana et al ., 2020; Roller
+et al., 2020). It remains unclear how to elicit interaction
+data that would be the most useful as a general-purpose pre-
+training corpus. Comparisons across many different types
+of pre-training suggest that training on many existing dia-
+logue corpora is not as effective across the board as simply
+using readily available non-interactive corpora (Shuster et
+al., 2020). The same may be true of any interactive data
+we collect in the context of a given framework. Continual
+1https://parl.ai/docs/tasks.html
+Data
+Dialogue (HB)
+FeedbackSelf-feeding 
+chatbotUser
+Deploy Train
+x (context)
+x (context) (x,f)f
+(feedback)y
+(response)
+x
+ModelsInterface(x,y) HB
+(x,y) HH
+(x,s)
+(x,f)
+RetrainDialogue (HH)
+Satisfactiony y
+qss>t
+f
+Figure 1: The self-feeding chatbot trains on the dialogues it
+engages in to continually learn (Hancock et al., 2019).
+training also requires ﬁguring out the best trade-off between
+being able to stay current (biasing towards more recent data)
+and retaining ability to talk about past topics. There could
+be many different policies around this, and reinforcement
+learning could be used to explore and optimize to ﬁnd the
+best successful ones, in terms of people’s satisfaction. More
+generally, a continually learning agent is a good substrate for
+comparing policies targeting all kinds of desirable objectives
+such as all the traits mentioned in this overview. However,
+determining what a good reinforcing signal should be for
+open-domain conversation is very much still an open prob-
+lem: contrary to goal-oriented dialogue, where there is a clear
+sense of what the reward is, open-domain conversation does
+not have natural rewards. Implicit signals such as dialogue
+length and frequency of engagement have been used as met-
+rics to rate models, for example for the Alexa prize (Ashwin
+et al., 2017), but capture the ability to create a sticky habit
+rather than the quality of the interaction per se. Repeatedly
+asking users for satisfaction or detailed quality ratings is cum-
+bersome and decreases the ﬂuidity of the interaction. Some
+attempts at predicting a quality score from a range of different
+signals have shown some positive results (Serban et al ., 2017;
+Fang et al ., 2018; Ghandeharioun et al ., 2019), and have been
+used to train models through reinforcement learning (Serban
+et al., 2017; Fang et al ., 2018), but they still show limited
+correlation with gold standard quality ratings (Serban et al .,
+2017). This approach leads to the next topic – how to learn
+from interaction directly in the conversation rather than from
+a separate rating functionality.
+Learning from interaction Beyond training on additional
+in-distribution data in a self-supervised way, an exciting av-
+enue for reﬁning conversational agents consists in taking
+advantage of the interactive character of a conversation by
+directly soliciting feedback from conversation partners. This
+has been explored in Hancock et al .(2019), where a “self-
+feeding chatbot” learns to estimate its partner’s satisfaction
+and can also ask for feedback when it believes it has made
+a mistake, see Figure 1. Learning from these additional sig-
+nals signiﬁcantly improves performance, especially when the
+amount of data is initially small. There has also been some
+work on predicting conversation quality from signals such
+as sentiment or questions (Ghandeharioun et al ., 2019) or
+using other forms of feedback from the conversation (Li et
+al., 2017a,b; Weston, 2016; Yang et al ., 2017), but results are
+still preliminary.
+Open problems . Feedback that is not explicitly requested
+by the conversational agent is not clearly marked as being
+about the conversation itself and not about the subject of the
+conversation. For example, detecting a negative sentiment
+could mean that the conversation partner is upset about some-
+thing that happened to them outside of the conversation, and
+the appropriate response would then be to display empathy,
+not ﬁgure out how the conversation generation went wrong.
+Another open problem is how to use sentiment or other sig-
+nals inferred from the conversation in a reinforcement learn-
+ing setting, as an objective of open-domain conversation. An
+example would be to try and avoid offensive comments or
+elicit positive sentiment. The objective of obtaining a given
+emotional response from an artiﬁcial agent was in fact used
+in a recent paper leveraging reinforcement learning in conver-
+sation grounded in a fantasy adventure game (Prabhumoye et
+al., 2020). But there are many difﬁculties when it comes to
+optimizing directly over interaction rewards, or proxy auto-
+mated metrics: models could try and dissuade conversation
+partners from talking about anything negative, or only focus
+on topics that are known to be more positive, rather than be-
+ing truly generalist. Models optimizing a proxy metrics could
+simply lead to those metrics becoming artiﬁcially inﬂated
+and gradually decoupled from the true underlying quality of
+the conversation.
+Updating sources of knowledge A tip frequently given
+to people aiming to become better conversationalists is to
+consult the news to know what is currently happening. Con-
+versation topics shift according to current events or trends,
+and a good conversational agent needs to be able to adapt
+to these trends. This could be achieved through a variety of
+ways. If the agent has been trained to retrieve and incorporate
+information from an external source of knowledge (Dinan et
+al., 2019b; Qin et al ., 2019b; Prabhumoye, Quirk, and Galley,
+2019; Ghazvininejad et al ., 2018), then simply updating that
+source would allow the agent to inject current information
+into the conversation. If the source is itself dynamic (e.g.,
+Wikipedia is constantly being updated), then simply reading
+from the updated version could be enough.
+An important consideration when striving to stay current
+is that this may put retrieval models at a disadvantage. Pure
+retrieval models produce utterances by retrieving from a set
+of training utterances. This precludes saying anything that
+was not said before the time when the set of retrieval utter-
+ances was created. Generative models build new utterances
+from scratch and are therefore not subject to that limitation,
+and they are naturally better suited to adapting to changing
+contexts. Until recently, their performance was below that of
+retrieval models (Dinan et al ., 2019b; Li, Weston, and Roller,
+2019; Rashkin et al ., 2019; Shuster et al ., 2019; Zhang et al .,
+2018), unless they relied on reﬁning retrieved utterances (We-
+ston, Dinan, and Miller, 2018). However, larger pre-training
+datasets coupled with improved decoding choices, such as im-posing a minimum length constraint on decoded generations,
+has been shown to erase the superiority of retrieval models
+(Roller et al ., 2020), and generative models are now being
+rated highly by humans (Adiwardana et al ., 2020; Roller et
+al., 2020) .
+Open problems . The very nature of the challenge of staying
+current makes it difﬁcult to devise a suitable benchmark, as
+a static benchmark does not capture the ability of adapting
+to changing topics. Some measure of that can be achieved
+through partitioning data and topics between training and
+validation/test (Dinan et al ., 2019b), but this only works in
+settings where there is a clear delineation of topics, as op-
+posed to the more ﬂuid nature of natural chitchat, and impor-
+tantly, does not address the important point of deciding what
+topics are interesting to introduce in a conversation in the
+ﬁrst place. However there are already works in the space of
+conversational AI that show promise for gauging an agent’s
+ability to adapt. Dinan et al .(2019a) suggests a protocol for
+a dynamically evolving benchmark; the same idea could be
+adapted to gauge what topics a conversation partner expects
+to be able to discuss with an agent, and update the agent
+accordingly. The need for a dynamic benchmark is also a
+potential advantage of deploying conversational agents for
+wide-spread interaction with people: a dynamic benchmark
+could then be deﬁned as a regular survey of people who en-
+gage with a released conversational agent, for example asking
+them to rate whether the agent was capable of conversing
+about the topics that they were interested in.
+Interacting with human users Our approach to achieving
+continual learning at scale relies on large-scale interaction
+with humans, which in turn requires our systems to be ﬁelded
+and suitable for interaction with willing human users. To
+that end, it is important to make conversational systems re-
+silient and capable of handling many human conversation
+partners. In particular, systems are easier to deploy and train
+in a continual manner if they are computationally reason-
+able. Architectures proposed in Humeau et al .(2019) achieve
+promising trade-offs that maintain high performance while
+allowing for substantial computational savings. As for con-
+necting conversational agents to human conversation part-
+ners, we have deployed a conversational agent as a publicly
+available game2dual goal of collecting human utterances as
+additional examples of good conversations, and obtaining
+continuous human evaluation of new conversational models.
+The game is structured as a voting game where a human is
+paired with another human and is asked to write response ut-
+terances, as well as select between utterances from the model
+and utterances written by the other human player.
+Open problems . While a lot of progress has been made
+in making language architectures more compact, the best-
+performing systems for end-to-end open conversation are still
+relying on memory- and compute-heavy Transformer archi-
+tectures (Adiwardana et al ., 2020; Roller et al ., 2020). Quan-
+tizing models and diminishing their memory and computation
+footprint is an exciting problem space, and could ultimately
+allow people to interact with an on-device model. Recent
+2https://parl.ai/projects/beat_the_bot
+REGULAR MODEL
+Nice, I like football too.
+KNOWLEDGEABLE MODEL
+I’ve always been more of a fan of the
+American football team from Pittsburgh,
+the Steelers!Knowledge level Dialogue
+I’m a huge football fan - 
+the Eagles are my favorite 
+team!
+Nice, I like football too.Figure 2: Using Knowledge: the Wizard of Wikipedia task
+(Dinan et al., 2019b)
+.
+work on creating smaller architectures through knowledge
+distillation (Sanh et al ., 2019), adaptive spans (Sukhbaatar
+et al., 2019), and pruning (Fan, Grave, and Joulin, 2019)
+provide promising directions for creating compact but high
+performance models.
+Engaging Content
+Humans will not want to interact with an agent unless it
+provides content that engages them in its messages. In a goal-
+oriented setting (e.g., a weather forecast) this is minimally
+supplied by achieving the goal, however even in those set-
+tings, and especially in others without such clear goals, there
+are multiple important factors that are at play. We cover some
+of those issues here.
+Expert & Knowledgeable Firstly, it is important that a
+general conversationalist exhibit a broad familiarity with
+different experiences or common background knowledge, or
+else as a specialist conversationalist have in-depth expertise
+in the skill demanded. In order to discuss with an art lover,
+an agent should command a reasonable level of knowledge
+about what are some famous pieces, techniques, or artists.
+A science geek would similarly require some information
+about space. An agent should exhibit the ability to work
+with knowledge and facts, and incorporate this information
+skillfully into its replies.
+Traditional goal-oriented dialogue has focused on narrow
+tasks that would typically be useful for a dialogue-based as-
+sistant, for example restaurant (Henderson, Thomson, and
+Williams, 2014), taxi, train, and hotel (Budzianowski et al .,
+2018) or trip (El Asri et al ., 2017) booking. Classical goal-
+oriented dialogue literature typically uses structured knowl-
+edge, slot ﬁlling or labeling, and studies reinforcement learn-
+ing extensively (Singh et al., 2000).
+Question answering (QA) is another area where agents can
+display their expertise, typically recalling knowledge from
+large structured or unstructured resources and then formulat-
+ing a response (Chen et al ., 2017; Fan et al ., 2019). Recent
+QA datasets have extended to a conversational form with a
+series of questions possibly referencing earlier ones in theconversation (Choi et al ., 2018; Reddy, Chen, and Manning,
+2019).
+However, neither goal-oriented nor QA tasks completely
+cover what a knowledgeable open-domain conversational
+agent should be able to do. To that end, human-human
+dialogues where people discuss topics in depth have also
+been studied. In Wizard of Wikipedia (Dinan et al ., 2019b)
+22k such dialogues were collected between an expert part-
+ner and a curious learner (see also Ghazvininejad et al .
+(2018); Parthasarathi and Pineau (2018) for some other re-
+lated datasets). To do this, 1k conversational topics were
+ﬁrst crowdsourced, ranging from armadillos to ice cream to
+lifeguards, and then each dialogue starts with a chosen topic
+from among them. The expert speaker has access to a retrieval
+search engine over Wikipedia with the last dialogue turns
+as the query, and can thus inject knowledge obtained from
+there into the conversation. The aim of collecting the data in
+this way is one can then make this available to a conversa-
+tional agent that learns to replace the human expert instead.
+A new architecture, called Transformer Memory Networks,
+was designed which yields more knowledgeable agents, out-
+performing systems that do not employ a memory structure
+for storing knowledge in both automatic metrics and human
+evaluations. Generative model variants yield the most pro-
+nounced improvement and are rated by humans as 26% more
+engaging on average than their knowledgeless counterparts.
+Our eventual hope is to combine these skills – open do-
+main knowledgeable conversation, QA and task completion
+amongst others – to build a truly engaging, knowledgeable
+and skillful bot.
+Open problems . Being expert and knowledgeable is con-
+nected fundamentally to both memory andreasoning , es-
+pecially commonsense reasoning, which we discuss in the
+separate sections to follow. While we have made progress on
+individual problems, e.g. speciﬁc tasks or question answering
+in general, we are still missing a strong ability to transfer to
+new tasks, one of the most fundamental open problems in
+machine learning today. We believe this will be solved by im-
+provements in both (i) architectures and learning mechanisms
+that better incorporate compositionality; and (ii) continual
+learning that updates knowledge and expertise in those tasks.
+Expressiveness and Flow Maintaining a good conversa-
+tion requires balance – between simplicity and detail; staying
+on topic and changing it; asking questions and answering
+them. In generative models, a known issue is their propensity
+to produce short, dull utterances which over-use frequent
+words, and under-use rare words – which does not follow
+the human training distribution (Holtzman et al ., 2019; Fan,
+Lewis, and Dauphin, 2018). Meanwhile at the discourse,
+rather than single utterance level, the training procedures
+typically employed are even less well suited – as the classi-
+cal next token prediction objective is far from planning an
+entire dialogue ﬂow. Thus, approaches that simply optimize
+perplexity might fail to ask any questions of the user, for
+example, or can repeat the same topic over and over (Dinan
+et al., 2020).
+Numerous works have attempted to work on the so-called
+Engagingness3.2
+3.0
+2.8
+2.6
+2.4
+2.2
+-10 -8 -6 -4 -2 0 2 4 6 8
+More generic No control More speciﬁcBeam search baseline Human
+Repetition-controlled baseline Speciﬁcity-controlled Speciﬁcity control levelFigure 3: Controlling speciﬁcity in generative models affects
+user engagingness evaluations (See et al., 2019).
+Speciﬁcity level Dialogue
+What do you do for a 
+living?
+I build antique homes and 
+refurbish houses.
+TOO SPICY!
+I build antique homes, refurbish furniture, 
+lauder plasma ﬁgurines, ﬁdget wood, etc.10SPICY
+I build antique homes and refurbish houses.8MILD
+My dad taught me everything I know - 
+I’m a construction worker.4BLAND
+I’m a construction worker.2
+Figure 4: Speciﬁcity level using generative control (See et
+al., 2019).
+generic response problem. One solution is the use of control-
+lable neural text generation methods, in particular conditional
+training (Fan, Grangier, and Auli, 2018; Kikuchi et al ., 2016;
+Peng et al ., 2018) and weighted decoding (Ghazvininejad
+et al., 2017; Baheti et al ., 2018). These methods provide a
+mechanism to control, and hence increase, the rare words
+used, resulting in less generic utterances. In the work of
+See et al .(2019), it was shown that controlling for such a
+measure strongly affects engagingness according to human
+evaluations, see Figures 3 and 4.
+The work of See et al .(2019) goes further and shows
+that it is possible to control multiple important attributes for
+chitchat dialogue: repetition, speciﬁcity, response-relatedness
+and question-asking, in order to optimize for well-balanced
+conversations. Human evaluations measured the effect of
+these control parameters on multi-turn interactive conversa-
+tions on the PersonaChat task, and showed repetition and
+question-asking were also similarly controllable, and impor-
+tantly, provide clear improvements in human quality judg-
+ments. The ﬁnal model is one of the best approaches on this
+task (Li, Weston, and Roller, 2019).
+Another recent approach is the use of so-called unlikeli-
+hood training (Welleck et al ., 2020). Intended as a replace-
+ment to classical likelihood training, it aims to ﬁx the problem
+of degenerate neural text generation that occurs in language
+modeling (Holtzman et al ., 2019). It works by applying a
+penalization term against degenerate behavior, e.g. unwanted
+Persona  (model) Dialogue
+Hi, do you have any pets?
+Cool, what are the names
+of your cats?
+I don’t have a cat, just a dog. 
+Do you play any sports?I do! i have 2 cats.
+I do not have any pets. 
+What is your cats name?
+Sadly, no, I sing in the church 
+choir, so no home time.- I have 2 cats.
+- I work as a teacher at a middle school.
+- My favorite color is yellow.
+- I dislike country music.
+NEUTRAL ENTAILMENT CONTRADICTIONFigure 5: Dialogue natural language inference (Welleck et al .,
+2019) can be used to make dialogue models more consistent.
+repetitions that do not match the human training distribution,
+pushing down the probability of those generations. In lan-
+guage modeling this has been shown to outperform other
+approaches such as nucleus sampling or beam blocking, pro-
+ducing state-of-the-art generations. First experiments apply-
+ing it to dialogue appear also promising (Li et al ., 2020).
+Finally, simply adding minimal length constraints to genera-
+tions has been shown to signiﬁcantly improve human ratings
+(Roller et al., 2020).
+Open problems . While appropriate decoding techniques
+have helped generative models outperform retrieval mod-
+els (Roller et al ., 2020) in evaluations, this still tends to
+come from providing more sensible and on topic responses,
+rather than expressing as rich or colorful language as re-
+trieval models, e.g. they tend to overuse common n-grams,
+and underuse rare words, and still tend to say they don’t
+know things. Hence, to improve further, generative models
+should be pushed to better mimic the human distribution of
+training data, and to generalize that to new settings. Besides
+the quality of single utterances, optimizing dialogue ﬂow is a
+wide open problem as well.
+Consistency A general problem of generative models to-
+day is that, although at ﬁrst glance the text looks human, and
+language modeling at the token level looks very accurate,
+generating longer contexts typically exposes its ﬂaws. While
+current systems are quite good at staying on topic (Radford et
+al., 2019), perhaps because they still do not really understand
+what they are saying they may contradict themselves subtly
+or non-subtly in subsequent sentences, e.g. “Arsenal won the
+premiership for the ﬁrst time this year” in one sentence and
+“Arsenal have won the premiership again this year” further
+on. While this topic is so far less studied directly in dialogue,
+the task of natural language inference (NLI) poses such un-
+derstanding as a classiﬁcation problem (entails, neutral or
+contradicts) and progress has been made in this area (Welleck
+et al., 2019). Perhaps the most direct use of this research in
+dialogue is our work in developing the dialogue NLI dataset
+(Welleck et al ., 2019), which directly collects such labels
+within the scope of contradicting utterances in multi-turn
+conversations, see Figure 5. We showed that training on such
+data and applying it as a reranker for a retrieval model de-
+creases the number of contradicting utterances – across three
+test sets, an average of 3x fewer contradictions were observed
+– while humans rated these models as more consistent and
+less contradictory. A ﬁrst step in applying this same work to
+a generative model instead is performed in Li et al .(2020) by
+applying unlikelihood training, which was described in the
+previous section.
+Open problems . The latter work increased consistency
+by applying a classiﬁer as a post-processing operation, and
+within a limited domain (the Persona-Chat task, from which
+the Dialogue NLI dataset is derived). Future work should
+embed such understanding directly in the model itself so
+that it understands not to make these mistakes, and such
+understanding should generalize across many tasks. A general
+problem in NLI is the concern that classiﬁers are performing
+well by picking up on biases and shallow features rather than
+having fundamental understanding, and the same concerns
+apply here as well (Gururangan et al ., 2018; Poliak et al .,
+2018).
+Memory Current research often does not address many
+aspects of memory. This is due to both our current model
+architectures (e.g. Transformers which condition on a small
+amount of input text) and our data collection procedures (e.g.
+crowdsourcing short conversations between strangers). Dia-
+logue history is typically truncated to a few turns, a “goldﬁsh
+memory” approach, and even there our models do not ex-
+hibit a clear grasp of their use, e.g. the consistency issues we
+discussed before.
+The current approaches to using long-term knowledge are
+either graph representations (Moon et al ., 2019a) or unstruc-
+tured text retrieval (Chen et al ., 2017; Dodge et al ., 2016;
+Dinan et al ., 2019b), which is then prepended onto the dia-
+logue history and attended over, an approach advocated by
+the memory networks architectures (Weston, Chopra, and
+Bordes, 2014; Dinan et al ., 2019b). These approaches have
+been effective at answering questions about long-term facts
+(Chen et al ., 2017), discussing topics in depth (Dinan et al .,
+2019b), and some work explores recalling long-term personal
+memories as well (Moon et al ., 2019b). For example, DrQA
+(Chen et al ., 2017) proposed the machine reading at scale
+framework of retrieving from a large unstructured knowl-
+edge base, and then performing machine reading to answer
+the question, e.g. using OpenSQuAD. Wizard of Wikipedia
+(Dinan et al ., 2019b), mentioned before, proposed a similar
+retrieval framework but for multi-turn dialogue about a topic,
+retrieving from Wikipedia on each turn to both answer ques-
+tions, ask question, and respond to statements, see Figure 2.
+Open problems . Much of this area is still open. While the
+latter described ﬁxed knowledge base approaches are effec-
+tive at utilizing static long-term facts, they miss two important
+points. Firstly, that new memories are created all the time,
+i.e. there should be a write as well as a read operation. We
+are missing both architectures, datasets and benchmarks to
+train and evaluate such models. Secondly, if knowledge is
+only read for a particular short-term goal and never distilled,
+we may limit generalization and learning. While in machine
+learning some read, write memory architectures have beendeveloped (Graves, Wayne, and Danihelka, 2014; Henaff
+et al., 2017) they have mostly not been successful so far at
+scaling to realistic large-scale dialogue tasks. While during
+training, methods like BERT (Devlin et al ., 2019) do train
+over Wikipedia and hence can be shown to condense knowl-
+edge bases into their weights (Petroni et al ., 2019) we contend
+that this is not the same as reading sentences and learning
+a compressed, indexable knowledge base (a memory) that
+makes generalizations from them. For example, reading all
+the diverse information about Barack Obama and using it to
+build an indexable memory where this information is interre-
+lated and some conclusions are already stored. Currently, any
+conclusions our models do make are simply thrown away –
+e.g. the reasoning our QA systems perform every question.
+To build up deeper reasoning over time, presumably these
+need to be stored and used as building blocks – for the model
+to stand on its own shoulders and think (slightly more) gi-
+ant thoughts. This also links memory tocontinual learning ,
+which was discussed previously as an important aim.
+Commonsense & Reasoning Much of the work in con-
+versational agents does not address reasoning directly, other
+than that which is implicitly required to perform the tasks
+proposed. For task-oriented dialogue, that ranges from un-
+derstanding user utterances, to searching databases to ﬁnd
+matches (Bordes, Boureau, and Weston, 2017). Question-
+answering, which can be thought of as a single turn task is
+similar, either requiring reading comprehension (Rajpurkar
+et al., 2016) or retrieval as well in the more realistic case
+(Nguyen et al ., 2016; Chen et al ., 2017). Although potentially
+any amount of reasoning is required to propose a response,
+many such tasks end up with sophisticated word overlap
+methods providing strong baselines (Chen, Bolton, and Man-
+ning, 2016). Nevertheless, when data is in domain, systems
+can be built that are successful on these tasks.
+NLP researchers have thus sought to address reasoning
+more directly in order to evaluate and develop systems fur-
+ther. To do this one direction they have studied is artiﬁcial
+tasks involving controlled reasoning on toy problems in order
+to develop more sophisticated architectures (Weston et al .,
+2015). This line of investigation proved to be the ﬁrst success-
+ful demonstration of multiple layers of attention for reasoning
+with text (Weston, Chopra, and Bordes, 2014; Sukhbaatar et
+al., 2015) which has now become part of the defacto method
+(Vaswani et al ., 2017). Considerable resources have also been
+invested in developing much larger and more natural crowd-
+sourced benchmarks such as natural language inference (NLI)
+tasks (Bowman et al ., 2015; Williams, Nangia, and Bowman,
+2018; Nie et al ., 2020) and commonsense reasoning tasks
+(Zellers et al ., 2019; Qin et al ., 2019a). Good progress is
+being made on these tasks, although questions still remain
+about how much true generalization is actually occurring
+(Glockner, Shwartz, and Goldberg, 2018; Gururangan et al .,
+2018). Recently, an attempt to avoid such biases has been
+made by collecting such tasks in rounds, where humans ad-
+versarially try to ﬁnd the ﬂaws in the models, so that they can
+be ﬁxed (Nie et al., 2020).
+Open problems . Much of the work on reasoning within
+the ﬁeld of NLP has so far not been transferred to dialogue
+systems or language generation in general. A clear step is
+thus to make progress in that direction. One intriguing possi-
+bility is to apply apply likelihood and unlikelihood training
+to dialogue generation by rewarding correct reasoning and
+penalizing incorrect reasoning (Li et al., 2020).
+Multimodality and Grounding Language is of course of-
+ten used to express concepts relating to the world we live in,
+which we perceive with our eyes, ears and other senses. Thus,
+grounding language to other modalities should help to learn
+the underlying meaning of language, and to connect to human
+usage. Practically, an engaging conversational agent should
+also be able to discuss these other senses – for example, the
+contents of an image or a video. Work in this area encom-
+passes image captioning (Lin et al ., 2014), video captioning
+(Yu et al ., 2016), visual QA (Antol et al ., 2015), and more
+conversationally, visual dialogue (Das et al ., 2017). Embod-
+ied agents that use language are also being explored (Das et
+al., 2018; Savva et al ., 2019; Szlam et al ., 2019; Urbanek et
+al., 2019).
+In terms of open-domain conversation, the most relevant vi-
+sual tasks are natural conversations grounded in images, such
+as Image-Chat (Shuster et al ., 2018) and Image Grounded
+Conversations (Mostafazadeh et al ., 2017). When people en-
+gage with one another and talk about what they see around
+them, they don’t make neutral observations — they express
+their points of view. Image-Chat is a large 187k dialogue
+dataset of human-human conversations about images where
+the speakers incorporate given personalities, see Figure 6. In
+that work an architecture is developed, named TransResNet,
+that projects the image, personality, and caption in the same
+space using image (ResNet), personality, and text (Trans-
+former) encoders. The best system is able to produce dialogue
+that is close to matching human performance in terms of en-
+gagement and relevance. Annotators preferred the model’s
+captions on the ﬁrst turn over captions written by people
+49.5 percent of the time. Recent work also shows that we
+can combine both nonconversational multimodal data and
+conversational multimodal data to obtain strong performance
+on both (Ju et al., 2019).
+Open problems . There is deﬁnitely less work between
+modalities, e.g. language and vision, than there is of work
+within a single modality – so there is much research to be
+done. We believe adding these modalities may enable conver-
+sational agents to be actually engaging – as language alone
+does not connect so clearly with the user’s direct experience.
+While most of this article concerns building a disembodied
+conversational agent, such an agent could still ‘see’ for exam-
+ple by the user sending it images. In the long-term, embodied
+agents either in virtual worlds or the real world via robots
+will be part of the picture too.
+Personality Humans are strongly affected by the use of
+personality in language, and such language can be found to
+be engaging, winning over the hearts of users, independent
+of its other merits, such as achieving an explicit goal.
+HIGH-SPIRITED
+Those are the most beautiful ﬁreworks I have 
+ever seen!
+CULTURED
+Fireworks have been used in our celebrations 
+for centuries.
+ARROGANT
+Fireworks are overrated and loud.
+HUMBLE
+I’m so grateful for whoever invented ﬁreworks.SKEPTICAL
+That’s a lot of ﬁreworks, there’s no way they 
+set them oﬀ at once.Attitude type Dialogue
+Fireworks have been 
+used in our celebrations 
+for centuries.
+Figure 6: Conversations about Images: Image-Chat (Shuster
+et al., 2018)
+.
+Initial attempts at training agents on dialogue data to cap-
+ture personality, e.g. from OpenSubtitles movie dialogues
+or Twitter showed such models could express personality,
+but were an amalgam of all the personalities in the training
+set. For example asking “what do you do for a living” and
+“what is your job?” a single agent would answer two different
+professions (Vinyals and Le, 2015), related to the consistency
+discussion above. In order to solve this two strategies have
+been tried: trying to learn to model the personality as part of
+the learned weights given the speaker id from the data (Li et
+al., 2016), or providing training data with explicit personality
+information. The latter is the subject of the Persona-Chat
+dataset (Zhang et al ., 2018), which consists of 1155 crowd-
+sourced personas, written as 5 or more sentences describing a
+given character, e.g. “I love horror movies.”, and 11k two-way
+conversations between randomly paired characters. A second,
+larger but noisier, dataset where a similar type of setup has
+been constructed from pushshift.io Reddit has also been built
+(Mazar ´e et al ., 2018; Baumgartner et al ., 2020). Persona-Chat
+was the subject of study of the ConvAI2 NeurIPS 2018 com-
+petition, and so is well studied by several groups (Dinan et
+al., 2020).
+A different view of personality, rather than speciﬁc tastes
+and interests, is character behavior in terms of personality
+traits, e.g. sweet, old-fashioned or frivolous. The Image-Chat
+dataset, similarly to Persona-Chat, collects paired conversa-
+tions with crowdworkers but this time asked to play the role
+of 215 such traits (Shuster et al ., 2018). The results show
+models are able to mimic such traits well with such super-
+vised data, and that they strongly affect user engagement. For
+example, captions conditioned on a personality were found
+to be signiﬁcantly more engaging than neutral captions, with
+a win rate of 64.5% (Shuster et al., 2018).
+While some developers have chosen to use ﬁxed personali-
+ties in their bots, such as Xiaoice, which has the personality
+of a young woman (Shum, He, and Li, 2018; Zhou et al .,
+2020), we believe it is better for a bot to be able to adapt a
+multitude of personalities (Zhang et al ., 2018; Mazar ´e et al .,
+2018). Although this increases complexity, and prevents the
+use of well-curated copywriting, it offers a richer environ-
+ment to research ideas about cognition, and enables bots with
+richer and more varied backgrounds. Furthermore, the ideal
+conversational partner is different for each user, which they
+may wish to choose or adapt to their desires.
+Open problems . While some research progress has been
+made in an agent following a given speciﬁed personality, the
+ability to generalize from the basic description, e.g. if it likes
+one heavy metal band or one ﬂavor of ice cream, does it like
+others, has still more or less not been evaluated. Modeling
+these changing over time is also more or less unexplored,
+being difﬁcult to study in the short conversation setup which
+is currently employed. Overall the consistency of the person-
+ality has the same issues as other types of consistency, which
+we discussed previously. Finally, while we can condition on
+a given personality, which one of these should be matched to
+be engaging to a particular user, which would clearly bring
+gains in terms of engaging content, is also less studied.
+Being Personal We make a distinction between an agent
+displaying personality, above, and being personal in its con-
+versation, which we discuss here, sometimes called being
+personalized . Between humans, personal connection is im-
+portant in order to build a relationship with a conversation
+partner. In the beginning of a relationship, conversations of-
+ten focus on simple questions about ourselves: Who are you?
+Where do you work? Do you have a family? Answers to these
+questions often drive the remainder of a conversation, as the
+purpose of such questions is typically to ﬁnd common ground
+or interests. The Persona-Chat dataset directly tries to model
+this (Zhang et al., 2018).
+Open problems . As relationships develop, users will ex-
+pect a model (or person!) to maintain a reasonable degree
+of continuity in just how personal the conversation is. In-
+deed, end-to-end chatbots are often embarrassingly forgetful,
+and unable to maintain even simple attributes (like a name)
+across multiple turns, let alone many sessions, which links to
+memory . Connecting dialogue research to recommendation
+systems research which deals with personalization also seems
+a clear link that should be solidiﬁed further (Dodge et al .,
+2016; Kang et al., 2019).
+Putting It All Together In order to adapt to the possibili-
+ties of different users and situations, all of the above aspects
+are important. Each of the individual aspects necessary for
+a conversational agent has unsolved, open problems, as we
+have described. Yet, even solving those individual problems
+will still leave the most important piece – putting them alto-
+gether into a coherent whole.
+To that end, a small step towards that goal has been
+attempted by building a 12 dialogue task challenge, do-
+deca Dialogue (Shuster et al ., 2020). The challenge includes
+diverse tasks which incorporate knowledge (expertness), per-
+sonality, and multimodality (images), covering some of the
+aspects described here. The promise is that multi-tasking on
+these tasks can potentially provide a single agent capable
+of all these skills, and our initial experiments indicate this
+might be possible. Taking this further, more aspects should
+be incorporated into such a single system, and improved
+model architectures should be developed that leverage these
+disparate aspects into a uniﬁed whole. For example, Smith etHuman BlenderBot 9.4B
+If you could have dinner with one person, dead or alive, who would
+that be?
+That's a tough one. I think I'd have to go with Steve Jobs. I'd love to
+pick his brain.
+Ah, interesting choice. What do you know about Steve Jobs?
+He was one of the most inﬂuential people in the history of
+technology. He was a visionary.
+What questions would you ask him?
+I'd want to know how he came up with the idea for the iPod. It was
+so revolutionary at the time.
+Totally...the iPod changed the way everyone listens to music.
+It really did. It's crazy to think that it was released in 2001. That was
+a long time ago.
+Omg wow, that makes me feel old!
+I know, right? Time ﬂies by so fast. I wish I could go back to those
+simpler times.
+Me too, friend, me too. Speaking of music, what's your favorite
+album to listen to lately?
+I've been listening to a lot of Led Zeppelin lately. They're my favorite
+band.
+Figure 7: Conversation between a human and the BlenderBot
+model from (Roller et al., 2020).
+al.(2020) showed that retrieval models can seamlessly weave
+multiple behaviors and skills in a single conversation, includ-
+ing knowledgeability, personality, and empathy, by building
+the dataset Blended Skill Talk (BST). Such models were
+strongly preferred by humans over those which were only
+able to perform any individual skill. BlenderBot (Roller et al .,
+2020) used the same strategy, ﬁrst pre-training on social me-
+dia data, and then ﬁne-tuning large generative models on BST
+(with either 90M, 2.7B or 9.4B parameters). A cherry-picked
+conversation between a human and the 9.4B model is shown
+in Figure 7. For more examples, including lemon-picked
+examples, we refer readers to that paper.
+While engagingness is necessary for people to be willing
+to talk to a conversational agent, it is not sufﬁcient: Tay (Neff
+and Nagy, 2016; Miller, Wolf, and Grodzinsky, 2017) is an
+example of agent that might have been engaging, but in a
+way that required its removal. We now discuss points that are
+additional requirements for a well-behaved conversational
+agent.
+Well-Behaved
+An important quality for a conversational agent is to treat
+people the way they want to be treated. This can mean not
+spamming them with a deluge of unwanted messages, which
+is most easily accomplished by generally letting people initi-
+ate interactions. But there are also more speciﬁc caveats to
+take into consideration.
+Offensive and Toxic Content Avoiding anything that
+would offend people, in terms of controversial topics, opin-
+ions, or language, while remaining engaging, is a very dif-
+ﬁcult problem. Dinan et al .(2019a) showed that it is possi-
+FEELS PROUD
+Congrats, that’s great!INAPPROPRIATE
+What? How could you get promoted?Inferred feelings Dialogue
+I finally got promoted 
+at work!
+Congrats, that’s great!Figure 8: Empathetic dialogue (Rashkin et al., 2019).
+ble to use a human-in-the-loop iterative adversarial design
+to improve a conversational agent along that axis through
+carefully designed crowdsourcing, which improved metrics
+on different toxic content detection tasks and made models
+much more robust to adversarial attacks over three rounds of
+iterative reﬁnement. Another ﬁnding was that the dialogue
+context where an utterance appears is an important part of
+what makes it offensive. Other works have attempted to con-
+trol for the toxicity of models by removing offensive content
+from the training data (Zhang et al ., 2019; Adiwardana et
+al., 2020) or training objectives (He and Glass, 2019). It was
+shown in Roller et al .(2020) that ﬁne-tuning on crowdworker
+data where workers are instructed not to use toxic language,
+compared to pre-training on social media data, provides less
+toxic models.
+Open problems . Humans are very adaptable when it comes
+to circumventing ﬁlters and safeguards (Dinan et al ., 2019a).
+This is one more reason why continual learning is important.
+However, there is currently a lack of deep understanding of
+what makes something offensive or objectionable to someone.
+Another aspect that is currently missing is how to predict peo-
+ple’s individual preferences, both in terms of where they draw
+the line between what is funny if slightly irreverent, and what
+is offensive, or what is approachable, engaging language, and
+what is inappropriate slang. Promising methods for controlled
+text generation (See et al ., 2019) and text rewriting (Lample
+et al., 2019; Smith et al ., 2019) could be reﬁned to provide
+models more personally tailored to individual preferences,
+but are still not mature enough for that application. Another
+promising route would be to train policies to avoid offen-
+sive or toxic utterances through reinforcement learning: toxic
+comment classiﬁers could be used to supply a reward signal
+and shape the conversation at a longer range than through
+mere on-the-ﬂy suppression. But again, it may lead to un-
+desirable outcomes that models learn to only talk about the
+weather or bland topics, so reward objectives would have to
+be balanced carefully.
+Empathy and Compassion Interactions with others are
+received more positively and have better outcomes when
+they include some level of empathy (Wentzel, 1997; Levin-
+son, Gorawara-Bhat, and Lamb, 2000; Bickmore and Cassell,
+2001; Kim, Kaplowitz, and Johnston, 2004; Fraser, Papaioan-nou, and Lemon, 2018), taken loosely as recognizing and
+acknowledging when the conversation partner displays some
+emotion, and responding in a caring and compassionate man-
+ner. This is especially necessary in open-domain conversation,
+which often revolves around situations that led to the expe-
+rience of emotions. Since humans tend to engage with ma-
+chines in a social way (Reeves and Nass, 1996; Lee, Kiesler,
+and Forlizzi, 2010), it is important for conversational agents
+to be able to respond with empathy. Rashkin et al .(2019)
+proposes a benchmark and crowdsourced dataset of conversa-
+tions between workers talking about situations corresponding
+to a balanced set of emotions, to gauge how empathetic exist-
+ing models are, and shows that training models on that data
+yields models that are rated as more empathetic.
+Open problems . While demonstrating empathy and care is
+an important objective, it is unclear how to balance it with
+other objectives such as informing or entertaining. While
+crowdworker conversations exist that contain multiple skills
+(Smith et al ., 2020), these may not reﬂect the optimal bal-
+ance we wish a ﬁnal trained bot to exhibit. It is also unclear
+whether different people prefer different levels of empathy,
+and whether this individual preference could be inferred from
+spontaneous choices of conversation topics (e.g., does the
+mention of a personal situation signal a need for empathetic
+responding?) or otherwise signalled. If there is no universally
+optimal level of empathy, a natural objective would be to be
+able to control to what extent a given model shows empathy,
+depending on the conversational context and partner.
+Privacy Preserving people’s privacy is a central aspect of
+any deployed conversational agent. One approach that we
+have followed when deploying bot games is to frame the
+conversation as an artiﬁcial game where players are assigned
+personas (Zhang et al ., 2018), thus shielding their true pri-
+vate information through role-playing. This is a continuation
+of the approach taken in multiple papers using role-played
+situations (Rashkin et al ., 2019), assigned traits (Shuster et
+al., 2018, 2019), assigned movie preferences (Kang et al .,
+2019), or even an entire fantasy universe (Urbanek et al .,
+2019; Prabhumoye et al., 2020).
+Open problems . Relying on role-playing and publicly avail-
+able data creates a potential distribution mismatch problem,
+where it is unclear whether people are talking about the same
+things and in the same way as if they were truly having a
+normal private one-on-one conversation. This makes the cre-
+ation of public benchmarks difﬁcult. If improvement of an
+agent trained on role-played and public data correlates well
+with increased satisfaction with private conversations, then
+this would be a good sign that we can keep focusing training
+efforts on that regime. Another avenue would be to explore
+using privacy-preserving libraries such as CrypTen3and de-
+centralized approaches such as federated learning (Kone ˇcn´y
+et al., 2016) to handle learning from non-public data. Locally
+personalizing a shared model (for example, on a personal
+mobile device) with data that would remained siloed on the
+personal device could be another way to deploy ﬁne-tuned
+3https://github.com/facebookresearch/
+crypten
+personalized models in a privacy-preserving way. These solu-
+tions would require drastically down-sizing current models
+and making them efﬁcient and small enough that they could
+be loaded on device and locally updated without communi-
+cating with external servers. Benchmarks could then rely on
+gauging people’s satisfaction on their private interaction with
+the agent. Our research on more efﬁcient models (Humeau
+et al., 2019) is a step in that direction, and so are works that
+explore smaller footprints for Transformer-based models, e.g.
+through knowledge distillation (Sanh et al ., 2019), adaptive
+spans (Sukhbaatar et al ., 2019), or layer pruning (Fan, Grave,
+and Joulin, 2019).
+Measuring Success
+Evaluation of Natural Language Generation remains a
+broadly unsolved problem, with a patchwork of solutions
+being used across different domains. The open-ended nature
+of generating sequences in a multi-turn setup naturally makes
+the task difﬁcult to evaluate – with full evaluation possessing
+many of the difﬁculties of the task itself as it requires deep
+understanding of the content of the conversation. In this sec-
+tion, we describe some of the approaches that have been used
+to evaluate dialogue systems, their relative advantages, and a
+number of open problems.
+Human Evaluations Goal-oriented dialogue systems of-
+ten have clear evaluation methodologies, e.g. task completion
+can be measured if the correct actions are taken (Hastie, 2012;
+Henderson, Thomson, and Williams, 2014; Bordes, Boureau,
+and Weston, 2017; El Asri et al ., 2017; Wen et al ., 2017).
+Chitchat tasks, such as those discussed in this work, are more
+open ended, and instead feature conversations without a pre-
+cise goal that can be automatically evaluated. Furthermore,
+automatic metrics (discussed below), have not been shown to
+have a clear correlation with human evaluations (Liu et al .,
+2016; Lowe et al ., 2017). This means the current standard for
+all dialogue research involves human trials.
+However, there are multiple ways one may choose to eval-
+uate the effectiveness of the system, and human judgements
+are often difﬁcult to measure. Today, the two most common
+evaluation forms for dialogue include single-turn pairwise
+evaluation, and multi-turn Likert evaluation.
+In single-turn pairwise evaluation (Vinyals and Le, 2015;
+Li et al ., 2016), a human evaluator is typically presented
+with a full conversational context, and shown two possible
+responses, and asked to pick which model they feel is bet-
+ter. This test affords the beneﬁts and simplicity of an A/B
+test, but fails to take into account any multi-turn aspects of
+a conversation. For example, a model which repeats itself
+across multiple turns will not be identiﬁed by such a system,
+a behavior known to be highly disliked by human evaluators
+(See et al ., 2019). It furthermore removes any noise produced
+across multiple turns, wherein a system would be required to
+ingest its own responses in the conversation history, rather
+than some produced by a human (Li, Weston, and Roller,
+2019).
+Another common evaluation framework is multi-turn Lik-
+ert evaluation (Ashwin et al ., 2017; Venkatesh et al ., 2017;Zhang et al ., 2018; Rashkin et al ., 2019; See et al ., 2019; Di-
+nan et al ., 2020, 2019b), in which a human evaluator is asked
+to discuss with an agent for several minutes, and then evaluate
+performance on a Likert (1–5) scale. Such evaluations easily
+capture a model’s ability to carry on longer conversations,
+and handling of out-of-distribution situations, and therefore
+may be preferred over single-turn pairwise evaluations. How-
+ever, multi-turn Likert is not without its own difﬁculties: it
+is considerably more labor intensive than A/B tests, as it
+requires longer and higher-cognitive involvement from the
+annotators, and it relies on absolute identiﬁcation rather than
+relative discrimination, even though absolute identiﬁcation is
+not reliable in humans (Stewart, Brown, and Chater, 2005).
+Likert evaluations are often not strong enough to ﬁnd statisti-
+cally signiﬁcant differences between some models, making
+it difﬁcult to measure incremental improvements (Kulikov
+et al., 2019). To make matters worse, it is usually necessary
+that one must also re-evaluate the baselines at the same time
+as one’s novel model, as the distribution of human annotators
+can easily shift over time, causing measurement errors (See et
+al., 2019). Another common difﬁculty is related to sequential
+effects (e.g., reviewed in Stewart, Brown, and Chater (2005)),
+where the ﬁrst system an annotator evaluates can heavily
+inﬂuence their future ratings, causing difﬁculties in using an
+absolute scale.
+Some groups have proposed hybrid approaches between
+single-turn pairwise evaluation and multi-turn Likert scoring.
+For example, Novikova, Du ˇsek, and Rieser (2018) propose a
+method that combines continuous scales and relative assess-
+ments, but in single-turn, rather than multi-turn evaluation;
+and Adiwardana et al .(2020) propose binary good/bad an-
+notations of individual utterances in a multi-turn setting. Li,
+Weston, and Roller (2019) recently proposed ACUTE-Eval,
+in which evaluators are asked to complete pairwise evalua-
+tions of complete dialogues. An example of ACUTE is shown
+in Figure 9. This setup affords a number of advantages over
+both single-turn pairwise, and multi-turn Likert evaluations.
+The explicit use of comparisons remedies many of the is-
+sues of sequential effects, while still providing the ability to
+expose issues that are present only in multi-turn evaluations.
+Furthermore, the pairwise setup facilitates replication and
+efﬁcient reuse of data: conversations collected in previous
+trials and by other systems can be directly compared with
+a new system, without having to recollect additional data.
+This can signiﬁcantly reduce the resources needed by a new
+evaluation, and ensure that multiple papers are comparing to
+prior work consistently.
+As a trade-off, ACUTE-Eval does require that one per-
+forms twostages of evaluation: one where humans conduct
+conversation with a model, and another where third-persons
+indicate pairwise preferences. If one has many systems to
+compare, this may actually increase resource requirements,
+since one must pay the full price of multi-turn collection, and
+another of pairwise evaluations. Fortunately, we can reuse the
+same dialogue in multiple pairwise comparisons, reducing
+the number of conversations required to detect statistical sig-
+niﬁcance, alleviating some of the issue. When comparing to
+multiple existing systems, the beneﬁt of being able to re-use
+old collections outweighs the resource requirements of the
+Figure 9: ACUTE-Eval has human annotators directly com-
+pare multi-turn conversations with different systems.
+new collections, mitigating these effects (Li, Weston, and
+Roller, 2019).
+However, as an alternative, we ﬁnd that ACUTE-Eval can
+also work in “self-chat” mode, where models are used for
+both sides of a conversation, instead of human-model chat.
+This eliminates the requirement of the initial human collec-
+tion, and conversations may be generated without human in-
+volvement, dramatically reducing the resource requirements
+of evaluation. We found in our experiments that results from
+self-chat experiments highly correlated with those of human-
+chat experiments, for most, but not all systems (Li, Weston,
+and Roller, 2019). This mirrors other successes in using self-
+play, self-chat, and simulated users to evaluate dialogue sys-
+tems (Fazel-Zarandi et al ., 2017; Shah et al ., 2018a,b; Wei et
+al., 2018; Ghandeharioun et al., 2019).
+Automatic metrics Evaluation of chitchat tasks with au-
+tomatic metrics is difﬁcult precisely because of their open-
+ended nature. For example, the answer to the question “What
+are you doing tonight?” has many possible answers, each
+with little word overlap. This means standard metrics based
+on word-overlap with reference responses, as frequently used
+in question-answering (Rajpurkar et al ., 2016) or machine
+translation (Papineni et al ., 2002), do not work well, and have
+poor correlation with human judgments (Liu et al ., 2016;
+Novikova et al ., 2017; Lowe et al ., 2017). Nevertheless, a
+number of studies do report automatic metrics, sometimes
+without human studies (Lowe et al ., 2015; Serban et al ., 2016;
+Parthasarathi and Pineau, 2018). Some commonly used word-
+overlap metrics include F1 (Rajpurkar et al ., 2016), BLEU
+(Papineni et al., 2002; Li et al., 2017c), ROUGE (Lin, 2004;Fan et al ., 2019), CIDEr (Vedantam, Zitnick, and Parikh,
+2015; Zhou et al ., 2020), and METEOR (Banerjee and Lavie,
+2005; Zhou et al ., 2020). Each covers slightly different as-
+pects, and may be more appropriate in speciﬁc situations, but
+none is known to be a perfect evaluation of conversational
+models.
+More specialized metrics may be used for speciﬁc subtypes
+of conversational AI systems. For example, ranking models
+are often evaluated using Recall @ K or Top-1 Accuracy
+(Zhang et al ., 2018; Dinan et al ., 2019b, 2020; Humeau et al .,
+2019). These can be used as rough proxies for improvements,
+but the open nature of dialogue means that there may be many
+valid answers in a given candidate list. Such metrics are also
+unable to capture how well a model will generalize to new
+situations.
+Similarly, generative models typically report perplexity of
+a held-out test set (e.g. Li et al .(2017c); Dinan et al .(2020);
+Shuster et al .(2020); Fan et al .(2019); Adiwardana et al .
+(2020); Roller et al .(2020)), and recent work has even found
+perplexity correlates strongly with human evaluations within
+the same model class (Adiwardana et al ., 2020). While per-
+plexity does give a good estimate of the probability that a
+generative model would produce the gold label, such results
+may be actually quite rare under beam search (Fan, Grangier,
+and Auli, 2018; Holtzman et al ., 2019; Welleck et al ., 2020),
+and not representative of an actual generation of a model un-
+der beam search or sampling. Perplexity also depends on the
+dictionary, and not all models will necessarily have entirely
+comparable perplexities, especially when unknown words
+are present in validation or test labels, making it difﬁcult to
+compare systems across multiple time horizons (Dinan et al .,
+2020). Modern model using BPE dictionaries further compli-
+cate complications of comparing perplexities across multiple
+systems (Sennrich, Haddow, and Birch, 2016). Specialized
+systems, which focus on improving speciﬁc behaviors of gen-
+erative models, might instead focus on specialized metrics
+that are not indicative of overall generation quality, but in-
+stead on specialized behavior like repetition (See et al ., 2019;
+Welleck et al ., 2020; Li et al ., 2020) or vocabulary usage (See
+et al., 2019; Holtzman et al ., 2019; Li et al ., 2020). Altering
+the behavior of the generation method can dramatically in-
+ﬂuence human evaluations, while maintaining identical or
+near-identical perplexity (See et al ., 2019; Welleck et al .,
+2020, 2019; Adiwardana et al., 2020; Roller et al., 2020).
+Noting the inadequacy of each of these automatic metrics,
+a number of researchers have proposed learning metrics for
+dialogue evaluation (Lowe et al ., 2017; Ghandeharioun et
+al., 2019). Typically, this is done via a regression from a
+number of automatically-extracted features (e.g. sentiment
+and semantic similarity) to human evaluations. In particular,
+Ghandeharioun et al .(2019) perform such correlations us-
+ing features extracted via self-play of models. Such systems
+provide a promise of improved speed of research and devel-
+opment of dialogue agents, but so far have not been met with
+wide adoption. A common point of criticism is that there can
+be little effective difference between a learned metric and
+one that is used as an actual model for performing utterance
+selection. Put another way, one can easily maximize a metric
+by employing methods like ranking all utterances according
+to a learned metric, or using Monte Carlo Tree Search (Ku-
+magai et al ., 2016) during generation to na ¨ıvely optimize the
+automatic metric. In this manner, the problem of learning an
+automatic metric is difﬁcult to disentangle from the rest of
+dialogue research.
+Open problems . Selection of an automatic metric for di-
+alogue research, or natural language generation in general,
+remains a widely open problem that attracts many researchers.
+Despite concerns, we remain optimistic about methods which
+approach the problem via learning. Future work may addi-
+tionally consider holistic evaluations, which require the full
+conversation to complete before being able to make an indi-
+vidual prediction. This may help mitigate concerns around
+using the metric to drive dialogue selection. Similarly, adver-
+sarial networks may provide a potential avenue for improv-
+ing automatic selection via continually improved detection
+of compute-generated responses. In the short term, shared
+tasks may offer the best avenue to ﬁnding automatic metrics
+which correlate with human judgements (Ashwin et al ., 2017;
+Dinan et al ., 2020; Yoshino et al ., 2018), but also rely on
+a diversity of submitted systems in order to consider such
+evaluations. If all participants use similar models with similar
+pretraining using similar corpora, then we should not expect
+clear distinctions to be made apparent in shared tasks.
+Behavioral Metrics Yet more alternatives are available as
+models are deployed to real users, especially behavioral met-
+rics. For example, in the Alexa Prize, models were evaluated
+by how many turns were completed before a conversation
+was abandoned (Ashwin et al ., 2017). Others might be eval-
+uated by the retention rate of users (e.g. how many users
+choose to have a second or third conversation with a model).
+Such behavioral metrics can be powerful implicit indicators
+of preferences of users, but have a large number of issues. For
+example, models which frequently ask for clariﬁcation will
+naturally result in more turns of conversation, but naturally
+frustrate users; systems which initiate a conversation will
+have higher retention, but may not be appreciated by users.
+A careful and thoughtful balance of allowed behaviors must
+be employed, and researchers should feel discouraged from
+using “engagement hacks.”
+Open problems . There is signiﬁcant question as to what
+are the correct implicit behavioral metrics to collect, and
+what few methods exist now depend heavily on the medium
+and design of the system. As more models are deployed to
+the wild, we encourage researchers to share their successes
+and best practices so that the community may come to a
+consensus.
+Discussion It is likely that all of the above (human evalu-
+ations, automatic metrics, and behavioral metris) and more,
+will need to be measured with some granularity, in order to
+understand trade-offs of different behaviors and attributes.
+In the short term, deployed models should likely focus on
+retention, in order to ensure a steady stream of users to afford
+experimentation and iteration.Discussion
+In this section, we strive to enumerate our core research
+and ethical values. We discuss how we prioritize trade-offs
+in our decisions, as well as lessons internalized from our
+experiences with different steps in the development process.
+We end on reﬂections of trends in the community, and calls
+for action within the community.
+Values and Guiding Principles
+One primary principle behind our work is openness . We
+strive, whenever possible, that the ﬁndings of our research
+should be shared freely via publications whenever it provides
+beneﬁt. Furthermore, the items necessary to reproduction of
+our results should additionally be made public when possi-
+ble. This includes pretrained models, but also code and data
+necessary to reproduce these results. We believe that siloed
+research inhibits progress of the ﬁeld, and point to the recent
+radical improvements in the NLP community stemming from
+the openness of the publication of Transformers (Vaswani et
+al., 2017) and explosion of following open models (Devlin et
+al., 2019; Lample and Conneau, 2019; Dai et al ., 2019; Yang
+et al., 2019; Liu et al ., 2019). With the trend of pretraining
+coming to dominate the ﬁeld, open datasets are more impor-
+tant than ever. Our own data, models, and code will are made
+public via ParlAI4(Miller et al., 2017), our uniﬁed platform
+for dialogue research. Our current best approach, BlenderBot
+(Roller et al., 2020) is available there.
+Indeed, our uniﬁed platform additionally propels our sec-
+ond value: swiftness . In the past few years, the NLP commu-
+nity has been radically changed via massive improvements
+to the availability of compute and data. Reacting and improv-
+ing upon the most state-of-the-art work will be important to
+the success of open-domain conversational agents. We have
+found ParlAI to be important to remaining swift during these
+times of rapid development. By providing a uniﬁed platform
+for collection of data, implementation of models, evaluation
+of agents, and deployment of agents, we are able to signif-
+icantly reduce development time. For example, our recent
+development of Polyencoders (Humeau et al ., 2019) required
+no modiﬁcation to be evaluated using our new evaluation
+framework (Li, Weston, and Roller, 2019).
+We also prioritize privacy as a value in our research. On-
+line chats are often where our most intimate and sensitive
+discussion happens, and one may imagine that users may
+be even more uninhibited in their interactions with bot. As
+such, we must act responsibly with respect to data releases.
+This means that all users must be provided informed consent
+around how their conversations will be used. Furthermore,
+we should only release anonymized versions of data, and
+make every effort to ensure that sensitive data is not included
+in public releases. Indeed, we must always value privacy
+over openness and swiftness, whenever our values are in di-
+rect conﬂict with one another. However, we believe that we
+can have all three values at once: for example, games with
+role-playing aspects, like Beat-the-Bot, have mitigated the
+likelihood of sensitive information being included in a con-
+versation, and enable us to open-source the data. In future
+4https://parl.ai
+deployments, we will also add a private mode to appropri-
+ate selections, which disables logging and data collection.
+We also hope that federated learning (Kone ˇcn´y et al ., 2016)
+and other privacy-oriented machine learning techniques will
+enable future variants to perform learning in a privacy-ﬁrst
+manner.
+Our Experiences
+We have internalized a number of lessons from experiences
+with training and releasing models.
+Pretraining First, we have found that pretraining is impor-
+tant to performance for nearly every variant of chitchat we
+have experimented with (Wolf et al ., 2019b; Dinan et al .,
+2020), including both in retrieval (Humeau et al ., 2019) and
+generative methods (Shuster et al ., 2020; Zhang et al ., 2019;
+Adiwardana et al ., 2020; Roller et al ., 2020). Furthermore,
+we have consistently found that domain-speciﬁc pretraining
+is important to high performance: that is, using dialogue-
+like pretraining signiﬁcantly outperforms generic pretraining
+on resources like Wikipedia and BooksCorpus (Dinan et al .,
+2019b; Humeau et al ., 2019; Dinan et al ., 2019a, 2020). This
+further underscores the importance that our models should
+be openly available, in order to ensure researchers with fewer
+computational resources are still able to conduct high-quality
+research. Such efforts are important to ensuring pretraining
+acts as a rising tide, rather than protectionism for the groups
+with the most resources.
+Efﬁciency Even groups with large computational resources
+will ﬁnd that models must be computationally accessible in
+order to be deployed on a wide scale. Deployed models need
+to run on commodity hardware, without access to GPUs
+or TPUs. Indeed, this was the core motivation behind the
+development of Polyencoders (Humeau et al ., 2019). As a
+rule of thumb, a researcher should be able to communicate
+with her model in real-time on a mid-tier laptop, with zero
+additional development effort. This restriction ensures that
+we are developing models that are able to be deployed easily.
+Furthermore, since automatic metrics are untrustworthy in
+dialogue, it also ensures that a researcher can manually test
+her model, understanding its power and limitations. Although
+the recent trend in NLP is to train larger models requiring
+GPUs for inference Devlin et al .(2019); Liu et al .(2019);
+Radford et al .(2019); Zhang et al .(2019); Adiwardana et
+al.(2020), methods for more efﬁcient inference and smarter
+algorithms provide ways to retain performance while keeping
+high performance (Sanh et al ., 2019; Fan, Grave, and Joulin,
+2019; Humeau et al., 2019).
+Best practices We have also adopted a number of soft-
+ware engineering best practices around our development pro-
+cess. In particular, we have found automatic testing and con-
+tinuous integration to be invaluable to our developments.
+We regularly verify our released models perform as ex-
+pected, allowing us to readily identify and remedy backwards-
+compatibility issues. High quality code reviews, even during
+early model prototypes, have helped us identify bugs andmisunderstandings in our models early and sped up develop-
+ment. Universal usage of a shared platform ParlAI (Miller et
+al., 2017) has ensured that we maintain a consistent level of
+quality across multiple projects, and that we can minimize
+efforts around reproduction and guarantee performance and
+longevity of models. Many of these beneﬁts are obvious and
+well-known to software engineers, but are easily forgotten
+and ignored in research.
+Deployment In contrast to development of models, deploy-
+ment has presented us with a very different set of lessons.
+There are a number of major engineering complications in-
+volved whenever games require the involvement of twoor
+more humans, as in Beat-the-Bot; these run antithetical to
+usual scaling recommendations like sharding. Slowness in
+pairing can signiﬁcantly frustrate users, and cause them to
+abandon the game, further exacerbating the issue. Further-
+more, users want the game to react instantly, but wish to
+take their time in responding. The result is that users may be
+more satisﬁed with games and interactions that do not require
+another human to be present.
+We have also found that deploying models has resulted in
+a consistent and steady stream of adversarial users (“trolls”).
+This is highly unsuprising, as shown by the legacy of Mi-
+crosoft’s Taybot (Neff and Nagy, 2016; Miller, Wolf, and
+Grodzinsky, 2017). Interestingly, we found that adversarial
+users had a tendency to assume that they were training the bot
+online, similar to Microsoft Tay, and believed the bot would
+learn to mimic their suggested responses quickly. These users
+focused heavily on suggesting highly offensive responses,
+especially to innocent and common questions. Other adver-
+saries focused on asking sensitive questions in hopes the bot
+would produce an offensive response, with the intention of
+publicizing the bot’s failures. Both of these experiences em-
+phasize the importance of the safety of responses, especially
+around the need for safety-in-context. They also demonstrate
+the signiﬁcant risks in online learning, and why it must be
+deployed with extreme caution and safeguards.
+Recommendations to the Community
+Based on our experiences and view of open problems, there
+are a number of recommendations we suggest to the commu-
+nity, in hopes of encouraging development while continuing
+the pursuit of open and accessible science.
+Shared Tasks We urge the community to rally behind a
+deﬁnitive set of tasks and measurements for conducting en-
+gaging chitchat research. The current state of the fractured
+community makes it difﬁcult to compare works, despite hav-
+ing similar domain and purpose. Recent competitions, such
+as the ConvAI2 challenge (Dinan et al ., 2020) and the DSTC7
+challenge (Yoshino et al ., 2018), stand as excellent models
+for such endeavors. As we progress, these challenges must
+incorporate more and more difﬁcult challenges encompassing
+all of the behaviors that are necessary for the ultimate bot.
+We note that our recently developed DodecaDialogue suite
+(Shuster et al ., 2020) offers an evaluation framework that
+encompasses many of the research challenges discussed in
+this document, and encourage the rest of the community to
+employ it.
+Such standardized tasks should also include real, interac-
+tive learning systems, such as those developed in the Alexa
+Prize competition (Ashwin et al ., 2017). We hope that future
+iterations will also provide for more liberal open data and
+participation. We believe these are an excellent way for re-
+search to progress, and encourage these continue and expand.
+Naturally, this is complicated by the number of open research
+problems, such as what is the correct way to do automatic
+evaluation of systems.
+Software As we standardize on data, groups may see addi-
+tional beneﬁt from standardizing on software stacks as well.
+Our ParlAI (Miller et al ., 2017)5framework attempts to in-
+tegrate standardized data, released models and software as a
+one-stop solution and its wide adoption by the community
+has created an ecosystem of improved support, feature de-
+velopment, and engineering improvements. Our openness
+to collaborations, contributions, and requests from groups
+outside our own organization is a reﬂection of our core be-
+lief that sharing research tools is the most productive way to
+make fast advances as a ﬁeld.
+A number of design principles went into ParlAI, which
+we believe have paid repeated dividends and enabled faster
+research for ourselves. In particular, ParlAI has focused on
+unifying the format of all tasks into simple input-output text
+pairs have helped us to treat ensure our systems are highly
+reusable, and that different tasks may be easily combined
+to produce models which exhibit joint behaviors. We also
+attempt to avoid overly-specialized architectures as often as
+possible, ensuring our models are also useful across a wide
+variety of tasks. Furthermore, we observe that today’s best
+models are tomorrow’s baselines, and that the centralized
+repository of reproducible and pretrained models and im-
+plementations signiﬁcantly lowers the overhead needed to
+perform comparisons to prior work.
+Perhaps more easily overlooked is the success we have ex-
+perienced by enforcing allparts of the system act via a uniﬁed
+API of Agents . This means that datasets (teachers), models,
+crowdworkers, and actual users are all exposed through a uni-
+ﬁed means. As a result, we may move effortlessly and raplidly
+progress between Wizard of Oz data collection, model train-
+ing, human evaluation, and model deployment.
+Other efforts in the software space include RASA (Bock-
+lisch et al ., 2017), PolyAI (Henderson et al ., 2019), Uber’s
+Plato (Papangelis et al., 2019), Microsoft’s IceCaps (Shiv et
+al., 2019), and Huggingface Transformers library (Wolf et al .,
+2019a), not focused on dialogue per se, but used as a base in
+much dialogue work.
+Conclusion
+Our research has shown that it is possible to train models
+to improve on some of the most common weaknesses of
+chatbots today. Over time, we’ll work toward bringing these
+5Available at https://parl.aisubtasks together into one uniﬁed intelligent agent by nar-
+rowing and eventually closing the gap with human perfor-
+mance. In the future, intelligent chatbots will be capable of
+open-domain dialogue in a way that’s personable, consistent,
+empathetic, and engaging.
+As part of our contribution to the broader research com-
+munity, we’re sharing our new models, training code, and
+data sets within ParlAI (Miller et al ., 2017), our open source
+dialogue research platform. We hope that this platform will
+continue to foster research advances across the research com-
+munity and contribute to pushing dialogue research forward,
+addressing many of the open problems we have described
+here.
+References
+Adiwardana, D.; Luong, M.-T.; So, D. R.; Hall, J.; Fiedel, N.;
+Thoppilan, R.; Yang, Z.; Kulshreshtha, A.; Nemade, G.;
+Lu, Y .; et al. 2020. Towards a human-like open-domain
+chatbot. arXiv preprint arXiv:2001.09977 .
+Antol, S.; Agrawal, A.; Lu, J.; Mitchell, M.; Batra, D.;
+Lawrence Zitnick, C.; and Parikh, D. 2015. Vqa: Visual
+question answering. In Proceedings of the IEEE interna-
+tional conference on computer vision , 2425–2433.
+Ashwin, R.; Rohit, P.; Chandra, K.; Anu, V .; Raefer, G.;
+Qing, L.; Jeff, N.; Behnam, H.; Ming, C.; Ashish, N.; Eric,
+K.; Kate, B.; Amanda, W.; Yi, P.; Han, S.; Sk, J.; Gene,
+H.; and Art, P. 2017. Conversational AI: The science
+behind the Adlexa Prize. In Proceedings of Workshop on
+Conversational AI .
+Baheti, A.; Ritter, A.; Li, J.; and Dolan, B. 2018. Generating
+more interesting responses in neural conversation models
+with distributional constraints. In Proceedings of the 2018
+Conference on Empirical Methods in Natural Language
+Processing , 3970–3980. Association for Computational
+Linguistics.
+Banerjee, S., and Lavie, A. 2005. METEOR: An automatic
+metric for MT evaluation with improved correlation with
+human judgments. In Proceedings of the ACL Workshop on
+Intrinsic and Extrinsic Evaluation Measures for Machine
+Translation and/or Summarization , 65–72. Ann Arbor,
+Michigan: Association for Computational Linguistics.
+Baumgartner, J.; Zannettou, S.; Keegan, B.; Squire, M.; and
+Blackburn, J. 2020. The pushshift reddit dataset. arXiv
+preprint arXiv:2001.08435 .
+Bickmore, T., and Cassell, J. 2001. Relational agents: a model
+and implementation of building user trust. In Proceedings
+of the SIGCHI conference on Human factors in computing
+systems , 396–403. ACM.
+Bocklisch, T.; Faulkner, J.; Pawlowski, N.; and Nichol, A.
+2017. RASA: Open source language understanding and
+dialogue management.
+Bordes, A.; Boureau, Y .-L.; and Weston, J. 2017. Learning
+end-to-end goal-oriented dialog. In Proceedings of the
+International Conference on Learning Representations .
+Bowman, S. R.; Angeli, G.; Potts, C.; and Manning, C. D.
+2015. A large annotated corpus for learning natural lan-
+guage inference. In Proceedings of the 2015 Conference
+on Empirical Methods in Natural Language Processing ,
+632–642. Lisbon, Portugal: Association for Computational
+Linguistics.
+Budzianowski, P.; Wen, T.-H.; Tseng, B.-H.; Casanueva, I.;
+Ultes, S.; Ramadan, O.; and Ga ˇsi´c, M. 2018. MultiWOZ -
+a large-scale multi-domain wizard-of-Oz dataset for task-
+oriented dialogue modelling. In Proceedings of the 2018
+Conference on Empirical Methods in Natural Language
+Processing , 5016–5026. Brussels, Belgium: Association
+for Computational Linguistics.
+Carlson, A.; Betteridge, J.; Kisiel, B.; Settles, B.; Hruschka,
+E. R.; and Mitchell, T. M. 2010. Toward an architecture for
+never-ending language learning. In Twenty-Fourth AAAI
+Conference on Artiﬁcial Intelligence .
+Chen, D.; Fisch, A.; Weston, J.; and Bordes, A. 2017. Read-
+ing wikipedia to answer open-domain questions. In Pro-
+ceedings of the 55th Annual Meeting of the Association for
+Computational Linguistics , 1870–1879. Association for
+Computational Linguistics.
+Chen, D.; Bolton, J.; and Manning, C. D. 2016. A thorough
+examination of the CNN/daily mail reading comprehen-
+sion task. In Proceedings of the 54th Annual Meeting of
+the Association for Computational Linguistics (Volume 1:
+Long Papers) , 2358–2367. Berlin, Germany: Association
+for Computational Linguistics.
+Choi, E.; He, H.; Iyyer, M.; Yatskar, M.; Yih, W.-t.; Choi, Y .;
+Liang, P.; and Zettlemoyer, L. 2018. QuAC: Question an-
+swering in context. In Proceedings of the 2018 Conference
+on Empirical Methods in Natural Language Processing .
+Collobert, R.; Puhrsch, C.; and Synnaeve, G. 2016.
+Wav2letter: an end-to-end convnet-based speech recog-
+nition system. arXiv preprint arXiv:1609.03193 .
+Dai, Z.; Yang, Z.; Yang, Y .; Carbonell, J.; Le, Q.; and
+Salakhutdinov, R. 2019. Transformer-XL: Attentive lan-
+guage models beyond a ﬁxed-length context. In Proceed-
+ings of the 57th Annual Meeting of the Association for
+Computational Linguistics , 2978–2988. Florence, Italy:
+Association for Computational Linguistics.
+Das, A.; Kottur, S.; Gupta, K.; Singh, A.; Yadav, D.; Moura,
+J. M.; Parikh, D.; and Batra, D. 2017. Visual dialog. In
+Proceedings of the IEEE Conference on Computer Vision
+and Pattern Recognition , volume 2.
+Das, A.; Datta, S.; Gkioxari, G.; Lee, S.; Parikh, D.; and Batra,
+D. 2018. Embodied question answering. In Proceedings
+of the IEEE Conference on Computer Vision and Pattern
+Recognition Workshops , 2054–2063.
+Devlin, J.; Chang, M.-W.; Lee, K.; and Toutanova, K. 2019.
+BERT: Pre-training of deep bidirectional transformers for
+language understanding. In Proceedings of the 2019 Con-
+ference of the North American Chapter of the Association
+for Computational Linguistics: Human Language Tech-
+nologies, Volume 1 (Long and Short Papers) , 4171–4186.Minneapolis, Minnesota: Association for Computational
+Linguistics.
+Dinan, E.; Humeau, S.; Chintagunta, B.; and Weston, J.
+2019a. Build it break it ﬁx it for dialogue safety: Ro-
+bustness from adversarial human attack. In Proceedings
+of the 2019 Conference on Empirical Methods in Natu-
+ral Language Processing and the 9th International Joint
+Conference on Natural Language Processing (EMNLP-
+IJCNLP) , 4537–4546. Hong Kong, China: Association for
+Computational Linguistics.
+Dinan, E.; Roller, S.; Shuster, K.; Fan, A.; Auli, M.; and
+Weston, J. 2019b. Wizard of Wikipedia: Knowledge-
+powered conversational agents. In Proceedings of the
+International Conference on Learning Representations .
+Dinan, E.; Logacheva, V .; Malykh, V .; Miller, A.; Shuster,
+K.; Urbanek, J.; Kiela, D.; Szlam, A.; Serban, I.; Lowe, R.;
+Prabhumoye, S.; Black, A. W.; Rudnicky, A.; Williams,
+J.; Pineau, J.; Burtsev, M.; and Weston, J. 2020. The
+second conversational intelligence challenge (ConvAI2).
+In Escalera, S., and Herbrich, R., eds., The NeurIPS ’18
+Competition , 187–208. Cham: Springer International Pub-
+lishing.
+Dodge, J.; Gane, A.; Zhang, X.; Bordes, A.; Chopra, S.;
+Miller, A.; Szlam, A.; and Weston, J. 2016. Evaluating
+prerequisite qualities for learning end-to-end dialog sys-
+tems. In Proceedings of the International Conference on
+Learning Representations .
+El Asri, L.; Schulz, H.; Sharma, S.; Zumer, J.; Harris, J.;
+Fine, E.; Mehrotra, R.; and Suleman, K. 2017. Frames:
+a corpus for adding memory to goal-oriented dialogue
+systems. In Proceedings of the 18th Annual SIGDIAL
+Meeting on Discourse and Dialogue , 207–219. ACL.
+Fan, A.; Jernite, Y .; Perez, E.; Grangier, D.; Weston, J.; and
+Auli, M. 2019. ELI5: Long form question answering. In
+Proceedings of the 57th Annual Meeting of the Association
+for Computational Linguistics , 3558–3567. Florence, Italy:
+Association for Computational Linguistics.
+Fan, A.; Grangier, D.; and Auli, M. 2018. Controllable
+abstractive summarization. In Proceedings of the 2nd
+Workshop on Neural Machine Translation and Generation ,
+45–54. Association for Computational Linguistics.
+Fan, A.; Grave, E.; and Joulin, A. 2019. Reducing trans-
+former depth on demand with structured dropout. In Pro-
+ceedings of the International Conference on Learning Rep-
+resentations .
+Fan, A.; Lewis, M.; and Dauphin, Y . 2018. Hierarchical
+neural story generation. In Proceedings of the 56th Annual
+Meeting of the Association for Computational Linguistics
+(Volume 1: Long Papers) , 889–898.
+Fang, H.; Cheng, H.; Sap, M.; Clark, E.; Holtzman, A.; Choi,
+Y .; Smith, N. A.; and Ostendorf, M. 2018. Sounding board:
+A user-centric and content-driven social chatbot. In Pro-
+ceedings of the 2018 Conference of the North American
+Chapter of the Association for Computational Linguistics:
+Demonstrations , 96–100. New Orleans, Louisiana: Asso-
+ciation for Computational Linguistics.
+Fazel-Zarandi, M.; Li, S.-W.; Cao, J.; Casale, J.; Henderson,
+P.; Whitney, D.; and Geramifard, A. 2017. Learning robust
+dialog policies in noisy environments. In Proceedings of
+Workshop on Conversational AI .
+Fraser, J.; Papaioannou, I.; and Lemon, O. 2018. Spoken
+conversational ai in video games: Emotional dialogue man-
+agement increases user engagement. In Proceedings of
+the 18th International Conference on Intelligent Virtual
+Agents , 179–184. ACM.
+French, R. M. 1999. Catastrophic forgetting in connectionist
+networks. Trends in cognitive sciences 3(4):128–135.
+Gao, J.; Galley, M.; Li, L.; et al. 2019. Neural approaches to
+conversational ai. Foundations and Trends Rin Informa-
+tion Retrieval 13(2-3):127–298.
+Gehring, J.; Auli, M.; Grangier, D.; Yarats, D.; and Dauphin,
+Y . N. 2017. Convolutional sequence to sequence learning.
+InProceedings of the 34th International Conference on
+Machine Learning-Volume 70 , 1243–1252. JMLR. org.
+Ghandeharioun, A.; Shen, J. H.; Jaques, N.; Ferguson, C.;
+Jones, N.; Lapedriza, `A.; and Picard, R. W. 2019. Ap-
+proximating interactive human evaluation with self-play
+for open-domain dialog systems. Advances in Neural In-
+formation Processing Systems .
+Ghazvininejad, M.; Shi, X.; Priyadarshi, J.; and Knight, K.
+2017. Hafez: an interactive poetry generation system. In
+Proceedings of ACL 2017, System Demonstrations , 43–48.
+Association for Computational Linguistics.
+Ghazvininejad, M.; Brockett, C.; Chang, M.-W.; Dolan, B.;
+Gao, J.; Yih, W.-t.; and Galley, M. 2018. A knowledge-
+grounded neural conversation model. In Proceedings of
+the Conference on Association for the Advancement of
+Artiﬁcial Intelligence (AAAI) .
+Glockner, M.; Shwartz, V .; and Goldberg, Y . 2018. Breaking
+NLI systems with sentences that require simple lexical
+inferences. In Proceedings of the 56th Annual Meeting of
+the Association for Computational Linguistics (Volume 2:
+Short Papers) , 650–655. Melbourne, Australia: Associa-
+tion for Computational Linguistics.
+Graves, A.; Wayne, G.; and Danihelka, I. 2014. Neural turing
+machines. arXiv preprint arXiv:1410.5401 .
+Gururangan, S.; Swayamdipta, S.; Levy, O.; Schwartz, R.;
+Bowman, S.; and Smith, N. A. 2018. Annotation artifacts
+in natural language inference data. In Proceedings of
+the 2018 Conference of the North American Chapter of
+the Association for Computational Linguistics: Human
+Language Technologies, Volume 2 (Short Papers) , 107–
+112. Association for Computational Linguistics.
+Hancock, B.; Bordes, A.; Mazare, P.-E.; and Weston, J. 2019.
+Learning from dialogue after deployment: Feed yourself,
+chatbot! In Proceedings of the 57th Annual Meeting of
+the Association for Computational Linguistics , 3667–3684.
+Florence, Italy: Association for Computational Linguistics.
+Hastie, H. 2012. Metrics and evaluation of spoken dialogue
+systems. In Lemon, O., and Pietquin, O., eds., Data-DrivenMethods for Adaptive Spoken Dialogue Systems . Springer.
+131–150.
+He, T., and Glass, J. 2019. Negative training for
+neural dialogue response generation. arXiv preprint
+arXiv:1903.02134 .
+Henaff, M.; Weston, J.; Szlam, A.; Bordes, A.; and LeCun,
+Y . 2017. Tracking the world state with recurrent entity
+networks. In Proceedings of the International Conference
+on Learning Representations .
+Henderson, M.; Budzianowski, P.; Casanueva, I.; Coope,
+S.; Gerz, D.; Kumar, G.; Mrk ˇsi´c, N.; Spithourakis, G.;
+Su, P.-H.; Vulic, I.; and Wen, T.-H. 2019. A repository
+of conversational datasets. In Proceedings of the Work-
+shop on NLP for Conversational AI . Data available at
+github.com/PolyAI-LDN/conversational-datasets.
+Henderson, M.; Thomson, B.; and Williams, J. D. 2014. The
+second dialog state tracking challenge. In Proceedings of
+the 15th Annual Meeting of the Special Interest Group on
+Discourse and Dialogue , 263–272.
+Hinton, G.; Deng, L.; Yu, D.; Dahl, G.; Mohamed, A.-r.;
+Jaitly, N.; Senior, A.; Vanhoucke, V .; Nguyen, P.; Kings-
+bury, B.; et al. 2012. Deep neural networks for acoustic
+modeling in speech recognition. IEEE Signal processing
+magazine 29.
+Holtzman, A.; Buys, J.; Forbes, M.; and Choi, Y . 2019. The
+curious case of neural text degeneration. In Proceedings of
+the International Conference on Learning Representations .
+Huang, M.; Zhu, X.; and Gao, J. 2020. Challenges in building
+intelligent open-domain dialog systems. ACM Transac-
+tions on Information Systems (TOIS) 38(3):1–32.
+Humeau, S.; Shuster, K.; Lachaux, M.; and Weston, J. 2019.
+Poly-encoders: Architectures and pre-training strategies
+for fast and accurate multi-sentence scoring. In Proceed-
+ings of the International Conference on Learning Repre-
+sentations .
+Ju, D.; Shuster, K.; Boureau, Y .-L.; and Weston, J. 2019.
+All-in-one image-grounded conversational agents. arXiv
+preprint arXiv:1912.12394 .
+Jurafsky, D., and Martin, J. H. 2019. Speech and lan-
+guage processing: An introduction to natural language
+processing, computational linguistics, and speech recog-
+nition. Draft of October 16th, 2019, Chapter 26. Website:
+https://web.stanford.edu/ jurafsky/slp3.
+Kang, D.; Balakrishnan, A.; Shah, P.; Crook, P.; Boureau,
+Y .-L.; and Weston, J. 2019. Recommendation as a commu-
+nication game: Self-supervised bot-play for goal-oriented
+dialogue. In Proceedings of the 2019 Conference on Em-
+pirical Methods in Natural Language Processing and the
+9th International Joint Conference on Natural Language
+Processing (EMNLP-IJCNLP) , 1951–1961. Hong Kong,
+China: Association for Computational Linguistics.
+Kikuchi, Y .; Neubig, G.; Sasano, R.; Takamura, H.; and
+Okumura, M. 2016. Controlling output length in neural
+encoder-decoders. In Proceedings of the 2016 Conference
+on Empirical Methods in Natural Language Processing ,
+1328–1338. Association for Computational Linguistics.
+Kim, S. S.; Kaplowitz, S.; and Johnston, M. V . 2004. The ef-
+fects of physician empathy on patient satisfaction and com-
+pliance. Evaluation & the health professions 27(3):237–
+251.
+Kirkpatrick, J.; Pascanu, R.; Rabinowitz, N.; Veness, J.; Des-
+jardins, G.; Rusu, A. A.; Milan, K.; Quan, J.; Ramalho, T.;
+Grabska-Barwinska, A.; et al. 2017. Overcoming catas-
+trophic forgetting in neural networks. Proceedings of the
+national academy of sciences 114(13):3521–3526.
+Kone ˇcn´y, J.; McMahan, H. B.; Yu, F. X.; Richtarik, P.; Suresh,
+A. T.; and Bacon, D. 2016. Federated learning: Strate-
+gies for improving communication efﬁciency. In NIPS
+Workshop on Private Multi-Party Machine Learning .
+Krizhevsky, A.; Sutskever, I.; and Hinton, G. E. 2012. Im-
+agenet classiﬁcation with deep convolutional neural net-
+works. In Advances in neural information processing sys-
+tems, 1097–1105.
+Kulikov, I.; Miller, A.; Cho, K.; and Weston, J. 2019. Impor-
+tance of search and evaluation strategies in neural dialogue
+modeling. In Proceedings of the 12th International Con-
+ference on Natural Language Generation , 76–87. Tokyo,
+Japan: Association for Computational Linguistics.
+Kumagai, K.; Kobayashi, I.; Mochihashi, D.; Asoh, H.; Naka-
+mura, T.; and Nagai, T. 2016. Human-like natural language
+generation using monte Carlo tree search. In Proceedings
+of the INLG 2016 Workshop on Computational Creativity
+in Natural Language Generation , 11–18. Edinburgh, UK:
+Association for Computational Linguistics.
+Lample, G., and Conneau, A. 2019. Cross-lingual language
+model pretraining. Advances in Neural Information Pro-
+cessing Systems .
+Lample, G.; Subramanian, S.; Smith, E.; Denoyer, L.; Ran-
+zato, M.; and Boureau, Y .-L. 2019. Multiple-attribute text
+rewriting. In Proceedings of International Conference on
+Learning Representations .
+Lee, M. K.; Kiesler, S.; and Forlizzi, J. 2010. Receptionist
+or information kiosk: how do people talk with a robot? In
+Proceedings of the 2010 ACM conference on Computer
+supported cooperative work , 31–40. ACM.
+Levinson, W.; Gorawara-Bhat, R.; and Lamb, J. 2000. A
+study of patient clues and physician responses in primary
+care and surgical settings. Jama 284(8):1021–1027.
+Li, J.; Galley, M.; Brockett, C.; Spithourakis, G. P.; Gao, J.;
+and Dolan, B. 2016. A persona-based neural conversation
+model. In Proceedings of the 54th Annual Meeting of
+the Association for Computational Linguistics , 994–1003.
+ACL.
+Li, J.; Miller, A. H.; Chopra, S.; Ranzato, M.; and Weston,
+J. 2017a. Dialogue learning with human-in-the-loop. In
+Proceedings of International Conference on Learning Rep-
+resentations .
+Li, J.; Miller, A. H.; Chopra, S.; Ranzato, M.; and Weston, J.
+2017b. Learning through dialogue interactions by askingquestions. In Proceedings of International Conference on
+Learning Representations .
+Li, Y .; Su, H.; Shen, X.; Li, W.; Cao, Z.; and Niu, S. 2017c.
+DailyDialog: A manually labelled multi-turn dialogue
+dataset. In Proceedings of The 8th International Joint
+Conference on Natural Language Processing (IJCNLP
+2017) .
+Li, M.; Roller, S.; Kulikov, I.; Welleck, S.; Boureau, Y .-L.;
+Cho, K.; and Weston, J. 2020. Don’t say that! making in-
+consistent dialogue unlikely with unlikelihood training. In
+Proceedings of the 58th Annual Meeting of the Association
+for Computational Linguistics .
+Li, M.; Weston, J.; and Roller, S. 2019. ACUTE-EV AL:
+Improved dialogue evaluation with optimized questions
+and multi-turn comparisons. In NeurIPS workshop on
+Conversational AI .
+Lin, T.-Y .; Maire, M.; Belongie, S.; Hays, J.; Perona, P.;
+Ramanan, D.; Doll ´ar, P.; and Zitnick, C. L. 2014. Microsoft
+coco: Common objects in context. In European conference
+on computer vision , 740–755. Springer.
+Lin, C.-Y . 2004. ROUGE: A package for automatic evalua-
+tion of summaries. In Text Summarization Branches Out ,
+74–81. Barcelona, Spain: Association for Computational
+Linguistics.
+Liu, C.-W.; Lowe, R.; Serban, I.; Noseworthy, M.; Charlin, L.;
+and Pineau, J. 2016. How NOT to evaluate your dialogue
+system: An empirical study of unsupervised evaluation
+metrics for dialogue response generation. In Proceedings
+of the 2016 Conference on Empirical Methods in Natural
+Language Processing , 2122–2132. ACL.
+Liu, Y .; Ott, M.; Goyal, N.; Du, J.; Joshi, M.; Chen, D.; Levy,
+O.; Lewis, M.; and Stoyanov, L. Z. V . 2019. RoBERTa:
+A robustly optimized BERT pretraining approach. arXiv
+preprint arXiv:1907.11692 .
+Lowe, R.; Pow, N.; Serban, I.; and Pineau, J. 2015. The
+Ubuntu dialogue corpus: A large dataset for research in
+unstructured multi-turn dialogue systems. In Proceedings
+of the 16th Annual Meeting of the Special Interest Group
+on Discourse and Dialogue , 285–294. ACL.
+Lowe, R.; Noseworthy, M.; Serban, I. V .; Angelard-Gontier,
+N.; Bengio, Y .; and Pineau, J. 2017. Towards an automatic
+turing test: Learning to evaluate dialogue responses. In
+Proceedings of the 55th Annual Meeting of the Association
+for Computational Linguistics , 1116–1126. ACL.
+Mazar ´e, P.-E.; Humeau, S.; Raison, M.; and Bordes, A. 2018.
+Training millions of personalized dialogue agents. In Pro-
+ceedings of the 2018 Conference on Empirical Methods
+in Natural Language Processing , 2775–2779. Brussels,
+Belgium: Association for Computational Linguistics.
+Miller, A.; Feng, W.; Batra, D.; Bordes, A.; Fisch, A.; Lu, J.;
+Parikh, D.; and Weston, J. 2017. ParlAI: A dialog research
+software platform. In Proceedings of the 2017 Conference
+on Empirical Methods in Natural Language Processing:
+System Demonstrations , 79–84. ACL.
+Miller, K.; Wolf, M. J.; and Grodzinsky, F. 2017. Why we
+should have seen that coming. ORBIT Journal 1(2).
+Mitchell, T.; Cohen, W.; Hruschka, E.; Talukdar, P.; Yang, B.;
+Betteridge, J.; Carlson, A.; Dalvi, B.; Gardner, M.; Kisiel,
+B.; et al. 2018. Never-ending learning. Communications
+of the ACM 61(5):103–115.
+Moon, S.; Shah, P.; Kumar, A.; and Subba, R. 2019a. Opendi-
+alkg: Explainable conversational reasoning with attention-
+based walks over knowledge graphs. In Proceedings of the
+57th Annual Meeting of the Association for Computational
+Linguistics , 845–854.
+Moon, S.; Shah, P.; Subba, R.; and Kumar, A. 2019b. Mem-
+ory grounded conversational reasoning. In Proceedings
+of the 2019 Conference on Empirical Methods in Natu-
+ral Language Processing and the 9th International Joint
+Conference on Natural Language Processing (EMNLP-
+IJCNLP): System Demonstrations , 145–150.
+Mostafazadeh, N.; Brockett, C.; Dolan, B.; Galley, M.; Gao,
+J.; Spithourakis, G.; and Vanderwende, L. 2017. Image-
+grounded conversations: Multimodal context for natural
+question and response generation. In Proceedings of the
+Eighth International Joint Conference on Natural Lan-
+guage Processing (Volume 1: Long Papers) , 462–472.
+Taipei, Taiwan: Asian Federation of Natural Language
+Processing.
+Neff, G., and Nagy, P. 2016. Automation, algorithms, and
+politics— talking to bots: Symbiotic agency and the case
+of tay. International Journal of Communication 10.
+Nguyen, T.; Rosenberg, M.; Song, X.; Gao, J.; Tiwary, S.;
+Majumder, R.; and Deng, L. 2016. MS MARCO: A
+human generated machine reading comprehension dataset.
+InAdvances in Neural Information Processing Systems .
+Nie, Y .; Williams, A.; Dinan, E.; Bansal, M.; Weston, J.; and
+Kiela, D. 2020. Adversarial NLI: A new benchmark for
+natural language understanding. In Proceedings of the
+58th Annual Meeting of the Association for Computational
+Linguistics .
+Novikova, J.; Du ˇsek, O.; Curry, A. C.; and Rieser, V . 2017.
+Why we need new evaluation metrics for NLG. In Pro-
+ceedings of the 2017 Conference on Empirical Methods in
+Natural Language Processing , 2241–2252. ACL.
+Novikova, J.; Du ˇsek, O.; and Rieser, V . 2018. RankME:
+Reliable human ratings for natural language generation. In
+Proceedings of the 2018 Conference of the North American
+Chapter of the Association for Computational Linguistics:
+Human Language Technologies, Volume 2 (Short Papers) ,
+72–78. New Orleans, Louisiana: Association for Compu-
+tational Linguistics.
+Papangelis, A.; Wang, Y .-C.; Molino, P.; and Tur, G. 2019.
+Collaborative multi-agent dialogue model training via rein-
+forcement learning. In Proceedings of the 20th Annual SIG-
+dial Meeting on Discourse and Dialogue , 92–102. Stock-
+holm, Sweden: Association for Computational Linguistics.
+Papineni, K.; Roukos, S.; Ward, T.; and Zhu, W.-J. 2002.
+Bleu: a method for automatic evaluation of machine trans-
+lation. In Proceedings of the 40th Annual Meeting ofthe Association for Computational Linguistics , 311–318.
+Philadelphia, Pennsylvania, USA: Association for Compu-
+tational Linguistics.
+Parthasarathi, P., and Pineau, J. 2018. Extending neural
+generative conversational model using external knowledge
+sources. In Proceedings of the 2018 Conference on Empir-
+ical Methods in Natural Language Processing , 690–695.
+ACL.
+Peng, N.; Ghazvininejad, M.; May, J.; and Knight, K. 2018.
+Towards controllable story generation. In Proceedings of
+the First Workshop on Storytelling , 43–49. Association for
+Computational Linguistics.
+Petroni, F.; Rockt ¨aschel, T.; Riedel, S.; Lewis, P.; Bakhtin,
+A.; Wu, Y .; and Miller, A. 2019. Language models as
+knowledge bases? In Proceedings of the 2019 Conference
+on Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natural Lan-
+guage Processing (EMNLP-IJCNLP) , 2463–2473. Hong
+Kong, China: Association for Computational Linguistics.
+Poliak, A.; Naradowsky, J.; Haldar, A.; Rudinger, R.; and
+Van Durme, B. 2018. Hypothesis only baselines in natural
+language inference. In Proceedings of the Seventh Joint
+Conference on Lexical and Computational Semantics .
+Prabhumoye, S.; Li, M.; Urbanek, J.; Dinan, E.; Kiela, D.;
+Weston, J.; and Szlam, A. 2020. I love your chain mail!
+making knights smile in a fantasy game world. arXiv
+preprint arXiv:2002.02878 .
+Prabhumoye, S.; Quirk, C.; and Galley, M. 2019. Towards
+content transfer through grounded text generation. In Pro-
+ceedings of the 2019 Conference of the North American
+Chapter of the Association for Computational Linguistics:
+Human Language Technologies, Volume 1 (Long and Short
+Papers) , 2622–2632. Minneapolis, Minnesota: Association
+for Computational Linguistics.
+Qin, L.; Bosselut, A.; Holtzman, A.; Bhagavatula, C.; Clark,
+E.; and Choi, Y . 2019a. Counterfactual story reasoning
+and generation. In Proceedings of the 2019 Conference
+on Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natural Lan-
+guage Processing (EMNLP-IJCNLP) , 5043–5053. Hong
+Kong, China: Association for Computational Linguistics.
+Qin, L.; Galley, M.; Brockett, C.; Liu, X.; Gao, X.; Dolan,
+B.; Choi, Y .; and Gao, J. 2019b. Conversing by reading:
+Contentful neural conversation with on-demand machine
+reading. arXiv preprint arXiv:1906.02738 .
+Radford, A.; Wu, J.; Child, R.; Luan, D.; Amodei, D.; and
+Sutskever, I. 2019. Language models are unsupervised
+multitask learners. OpenAI Blog 1(8).
+Rajpurkar, P.; Zhang, J.; Lopyrev, K.; and Liang, P. 2016.
+SQuAD: 100,000+ questions for machine comprehension
+of text. In Proceedings of the 2016 Conference on Empiri-
+cal Methods in Natural Language Processing , 2383–2392.
+ACL.
+Rashkin, H.; Smith, E. M.; Li, M.; and Boureau, Y .-L. 2019.
+Towards empathetic open-domain conversation models:
+A new benchmark and dataset. In Proceedings of the
+57th Annual Meeting of the Association for Computational
+Linguistics , 5370–5381. Florence, Italy: Association for
+Computational Linguistics.
+Reddy, S.; Chen, D.; and Manning, C. D. 2019. CoQA: A
+conversational question answering challenge. Transactions
+of the Association for Computational Linguistics 7:249–
+266.
+Reeves, B., and Nass, C. I. 1996. The media equation: How
+people treat computers, television, and new media like real
+people and places. Cambridge university press.
+Roller, S.; Dinan, E.; Goyal, N.; Ju, D.; Williamson, M.;
+Liu, Y .; Xu, J.; Ott, M.; Shuster, K.; Smith, E. M.; et al.
+2020. Recipes for building an open-domain chatbot. arXiv
+preprint arXiv:2004.13637 .
+Sanh, V .; Debut, L.; Chaumond, J.; and Wolf, T. 2019. Distil-
+BERT, a distilled version of BERT: smaller, faster, cheaper
+and lighter. arXiv preprint arXiv:1910.01108 .
+Savva, M.; Kadian, A.; Maksymets, O.; Zhao, Y .; Wijmans,
+E.; Jain, B.; Straub, J.; Liu, J.; Koltun, V .; Malik, J.; et al.
+2019. Habitat: A platform for embodied ai research. arXiv
+preprint arXiv:1904.01201 .
+See, A.; Roller, S.; Kiela, D.; and Weston, J. 2019. What
+makes a good conversation? how controllable attributes
+affect human judgments. In Proceedings of the 2019 Con-
+ference of the North American Chapter of the Association
+for Computational Linguistics , 1702–1723. ACL.
+Sennrich, R.; Haddow, B.; and Birch, A. 2016. Neural
+machine translation of rare words with subword units. In
+Proceedings of the 54th Annual Meeting of the Association
+for Computational Linguistics , 1715–1725. ACL.
+Serban, I. V .; Sordoni, A.; Bengio, Y .; Courville, A. C.; and
+Pineau, J. 2016. Building end-to-end dialogue systems
+using generative hierarchical neural network models. In
+AAAI , volume 16, 3776–3784.
+Serban, I. V .; Sankar, C.; Germain, M.; Zhang, S.; Lin, Z.;
+Subramanian, S.; Kim, T.; Pieper, M.; Chandar, S.; Ke,
+N. R.; et al. 2017. A deep reinforcement learning chatbot.
+arXiv preprint arXiv:1709.02349 .
+Serban, I. V .; Lowe, R.; Henderson, P.; Charlin, L.; and
+Pineau, J. 2018. A survey of available corpora for building
+data-driven dialogue systems: The journal version. Dia-
+logue & Discourse 9(1):1–49.
+Shah, P.; Hakkani-T ¨ur, D.; Liu, B.; and T ¨ur, G. 2018a. Boot-
+strapping a neural conversational agent with dialogue self-
+play, crowdsourcing and on-line reinforcement learning. In
+Proceedings of the 2018 Conference of the North American
+Chapter of the Association for Computational Linguistics:
+Human Language Technologies, Volume 3 (Industry Pa-
+pers) , 41–51. New Orleans - Louisiana: Association for
+Computational Linguistics.
+Shah, P.; Hakkani-T ¨ur, D.; T ¨ur, G.; Rastogi, A.; Bapna, A.;
+Nayak, N.; and Heck, L. 2018b. Building a conversational
+agent overnight with dialogue self-play. arXiv preprint
+arxiv:1801.04871 .Shiv, V . L.; Quirk, C.; Suri, A.; Gao, X.; Shahid, K.; Govin-
+darajan, N.; Zhang, Y .; Gao, J.; Galley, M.; Brockett, C.;
+Menon, T.; and Dolan, B. 2019. Microsoft icecaps: An
+open-source toolkit for conversation modeling. In Pro-
+ceedings of the 57th Annual Meeting of the Association
+for Computational Linguistics: System Demonstrations ,
+123–128. Florence, Italy: Association for Computational
+Linguistics.
+Shum, H.-y.; He, X.-d.; and Li, D. 2018. From Eliza to
+XiaoIce: challenges and opportunities with social chat-
+bots. Frontiers of Information Technology & Electronic
+Engineering 19(1):10–26.
+Shuster, K.; Humeau, S.; Bordes, A.; and Weston, J. 2018.
+Engaging image chat: Modeling personality in grounded
+dialogue. arXiv preprint arXiv:1811.00945 .
+Shuster, K.; Humeau, S.; Hu, H.; Bordes, A.; and Weston,
+J. 2019. Engaging image captioning via personality. In
+The IEEE Conference on Computer Vision and Pattern
+Recognition (CVPR) .
+Shuster, K.; Ju, D.; Roller, S.; Dinan, E.; Boureau, Y .-L.; and
+Weston, J. 2020. The dialogue dodecathlon: Open-domain
+knowledge and image grounded conversational agents. In
+Proceedings of the 58th Annual Meeting of the Association
+for Computational Linguistics .
+Singh, S. P.; Kearns, M. J.; Litman, D. J.; and Walker, M. A.
+2000. Reinforcement learning for spoken dialogue systems.
+InAdvances in Neural Information Processing Systems ,
+956–962.
+Smith, E. M.; Gonzalez-Rico, D.; Dinan, E.; and Boureau, Y .-
+L. 2019. Zero-shot ﬁne-grained style transfer: Leveraging
+distributed continuous style representations to transfer to
+unseen styles. arXiv preprint arXiv:1911.03914 .
+Smith, E.; Williamson, M.; Shuster, K.; Weston, J.; and
+Boureau, Y .-L. 2020. Can you put it all together: Eval-
+uating conversational agents’ ability to blend skills. In
+Proceedings of the 58th Annual Meeting of the Association
+for Computational Linguistics .
+Stewart, N.; Brown, G. D.; and Chater, N. 2005. Absolute
+identiﬁcation by relative judgment. Psychological review
+112(4):881.
+Sukhbaatar, S.; Weston, J.; Fergus, R.; et al. 2015. End-to-
+end memory networks. In Advances in Neural Information
+Processing Systems , 2440–2448.
+Sukhbaatar, S.; Grave, E.; Bojanowski, P.; and Joulin, A.
+2019. Adaptive attention span in transformers. In Pro-
+ceedings of the 57th Annual Meeting of the Association
+for Computational Linguistics , 331–335. Florence, Italy:
+Association for Computational Linguistics.
+Sutskever, I.; Vinyals, O.; and Le, Q. V . 2014. Sequence to
+sequence learning with neural networks. In Advances in
+Neural Information Processing Systems , 3104–3112.
+Szlam, A.; Gray, J.; Srinet, K.; Jernite, Y .; Joulin, A.; Syn-
+naeve, G.; Kiela, D.; Yu, H.; Chen, Z.; Goyal, S.; et al.
+2019. Why build an assistant in minecraft? arXiv preprint
+arXiv:1907.09273 .
+Turing, A. M. 1950. Computing machinery and intelligence .
+Springer.
+Urbanek, J.; Fan, A.; Karamcheti, S.; Jain, S.; Humeau, S.;
+Dinan, E.; Rockt ¨aschel, T.; Kiela, D.; Szlam, A.; and We-
+ston, J. 2019. Learning to speak and act in a fantasy text
+adventure game. In Proceedings of the 2019 Conference
+on Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natural
+Language Processing (EMNLP-IJCNLP) , 673–683. Hong
+Kong, China: Association for Computational Linguistics.
+Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones,
+L.; Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. At-
+tention is all you need. In Advances in Neural Information
+Processing Systems , 5998–6008.
+Vedantam, R.; Zitnick, C. L.; and Parikh, D. 2015. Cider:
+Consensus-based image description evaluation. In CVPR ,
+4566–4575. IEEE Computer Society.
+Venkatesh, A.; Khatri, C.; Ram, A.; Guo, F.; Gabriel, R.;
+Nagar, A.; Prasad, R.; Cheng, M.; Hedayatnia, B.; Met-
+allinou, A.; et al. 2017. On evaluating and comparing
+conversational agents. Advances in Neural Information
+Processing Systems, Conversational AI Workshop .
+Vinyals, O., and Le, Q. 2015. A neural conversational model.
+InProceedings of the 31st International Conference on
+Machine Learning, Deep Learning Workshop .
+Wei, W.; Le, Q. V .; Dai, A. M.; and Li, L.-J. 2018. A goal-
+oriented neural conversation model by self-play.
+Welleck, S.; Weston, J.; Szlam, A.; and Cho, K. 2019. Di-
+alogue natural language inference. In Proceedings of the
+57th Annual Meeting of the Association for Computational
+Linguistics , 3731–3741. Florence, Italy: Association for
+Computational Linguistics.
+Welleck, S.; Kulikov, I.; Roller, S.; Dinan, E.; Cho, K.; and
+Weston, J. 2020. Neural text generation with unlikeli-
+hood training. In International Conference on Learning
+Representations .
+Wen, T.-H.; Vandyke, D.; Mrk ˇsi´c, N.; Gasic, M.; Rojas Bara-
+hona, L. M.; Su, P.-H.; Ultes, S.; and Young, S. 2017. A
+network-based end-to-end trainable task-oriented dialogue
+system. In Proceedings of the 15th Conference of the
+European Chapter of the Association for Computational
+Linguistics . ACL. 438–449.
+Wentzel, K. R. 1997. Student motivation in middle school:
+The role of perceived pedagogical caring. Journal of edu-
+cational psychology 89(3):411.
+Weston, J.; Bordes, A.; Chopra, S.; Rush, A. M.; van
+Merri ¨enboer, B.; Joulin, A.; and Mikolov, T. 2015. To-
+wards ai-complete question answering: A set of prerequi-
+site toy tasks. arXiv preprint arXiv:1502.05698 .
+Weston, J.; Chopra, S.; and Bordes, A. 2014. Memory
+networks. arXiv preprint arXiv:1410.3916 .
+Weston, J.; Dinan, E.; and Miller, A. 2018. Retrieve and
+reﬁne: Improved sequence generation models for dialogue.
+InProceedings of the 2018 EMNLP Workshop SCAI: The2nd International Workshop on Search-Oriented Conver-
+sational AI , 87–92. Brussels, Belgium: Association for
+Computational Linguistics.
+Weston, J. E. 2016. Dialog-based language learning. In
+Advances in Neural Information Processing Systems , 829–
+837.
+Williams, A.; Nangia, N.; and Bowman, S. 2018. A broad-
+coverage challenge corpus for sentence understanding
+through inference. In Proceedings of the 2018 Confer-
+ence of the North American Chapter of the Association for
+Computational Linguistics: Human Language Technolo-
+gies, Volume 1 (Long Papers) , 1112–1122. New Orleans,
+Louisiana: Association for Computational Linguistics.
+Wolf, T.; Debut, L.; Sanh, V .; Chaumond, J.; Delangue, C.;
+Moi, A.; Cistac, P.; Rault, T.; Louf, R.; Funtowicz, M.; and
+Brew, J. 2019a. HuggingFace’s transformers: State-of-the-
+art natural language processing. ArXiv abs/1910.03771.
+Wolf, T.; Sanh, V .; Chaumond, J.; and Delangue, C. 2019b.
+TransferTransfo: A transfer learning approach for neural
+network based conversational agents. In NeurIPS Work-
+shop on Conversational AI .
+Yang, Z.; Zhang, S.; Urbanek, J.; Feng, W.; Miller, A. H.;
+Szlam, A.; Kiela, D.; and Weston, J. 2017. Mastering
+the dungeon: Grounded language learning by mechanical
+turker descent. In Proceedings of International Conference
+on Learning Representations .
+Yang, Z.; Dai, Z.; Yang, Y .; Carbonell, J.; Salakhutdinov, R.;
+and Le, Q. V . 2019. Xlnet: Generalized autoregressive
+pretraining for language understanding. arXiv preprint
+arXiv:1906.08237 .
+Yoshino, K.; Hori, C.; Perez, J.; D’Haro, L. F.; Polymenakos,
+L.; Gunasekara, C.; Lasecki, W. S.; Kummerfeld, J.; Galley,
+M.; Brockett, C.; Gao, J.; Dolan, B.; Gao, S.; Marks, T. K.;
+Parikh, D.; and Batra, D. 2018. The 7th dialog system
+technology challenge. arXiv preprint .
+Young, S.; Ga ˇsi´c, M.; Thomson, B.; and Williams, J. D. 2013.
+Pomdp-based statistical spoken dialog systems: A review.
+Proceedings of the IEEE 101(5):1160–1179.
+Yu, H.; Wang, J.; Huang, Z.; Yang, Y .; and Xu, W. 2016.
+Video paragraph captioning using hierarchical recurrent
+neural networks. In Proceedings of the IEEE conference
+on computer vision and pattern recognition , 4584–4593.
+Zellers, R.; Holtzman, A.; Bisk, Y .; Farhadi, A.; and Choi,
+Y . 2019. HellaSwag: Can a machine really ﬁnish your
+sentence? In Proceedings of the 57th Annual Meeting of
+the Association for Computational Linguistics , 4791–4800.
+Florence, Italy: Association for Computational Linguistics.
+Zhang, S.; Dinan, E.; Urbanek, J.; Szlam, A.; Kiela, D.; and
+Weston, J. 2018. Personalizing dialogue agents: I have
+a dog, do you have pets too? In Proceedings of the 56th
+Annual Meeting of the Association for Computational Lin-
+guistics , 2204–2213. ACL.
+Zhang, Y .; Sun, S.; Galley, M.; Chen, Y .-C.; Brockett, C.; Gao,
+X.; Gao, J.; Liu, J.; and Dolan, B. 2019. DialoGPT: Large-
+scale generative pre-training for conversational response
+generation. arXiv preprint arXiv:1911.00536 .
+Zhou, L.; Gao, J.; Li, D.; and Shum, H.-Y . 2020. The de-
+sign and implementation of XiaoIce, an empathetic social
+chatbot. Computational Linguistics 1–62.

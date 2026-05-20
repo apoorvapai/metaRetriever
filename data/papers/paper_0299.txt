@@ -1,0 +1,1131 @@
+Title: Directional Bias Amplification
+
+Directional Bias Ampliﬁcation
+Angelina Wang and Olga Russakovsky
+Princeton University
+Abstract
+Mitigating bias in machine learning systems
+requires reﬁning our understanding of bias
+propagation pathways: from societal structures
+to large-scale data to trained models to impact
+on society. In this work, we focus on one aspect
+of the problem, namely bias ampliﬁcation : the
+tendency of models to amplify the biases present
+in the data they are trained on. A metric for
+measuring bias ampliﬁcation was introduced
+in the seminal work by Zhao et al. (2017);
+however, as we demonstrate, this metric suffers
+from a number of shortcomings including
+conﬂating different types of bias ampliﬁcation
+and failing to account for varying base rates of
+protected attributes. We introduce and analyze
+a new, decoupled metric for measuring bias
+ampliﬁcation, BiasAmp!(Directional Bias
+Ampliﬁcation). We thoroughly analyze and
+discuss both the technical assumptions and
+normative implications of this metric. We
+provide suggestions about its measurement by
+cautioning against predicting sensitive attributes,
+encouraging the use of conﬁdence intervals due
+to ﬂuctuations in the fairness of models across
+runs, and discussing the limitations of what
+this metric captures. Throughout this paper,
+we work to provide an interrogative look at the
+technical measurement of bias ampliﬁcation,
+guided by our normative ideas of what we want
+it to encompass. Code is located at https:
+//github.com/princetonvisualai/
+directional-bias-amp .
+1. Introduction
+The machine learning community is becoming increasingly
+cognizant of problems surrounding fairness and bias, and
+. Correspondence to: Angelina Wang <an-
+gelina.wang@princeton.edu >.
+Proceedings of the 38thInternational Conference on Machine
+Learning , PMLR 139, 2021. Copyright 2021 by the author(s).correspondingly, a plethora of new algorithms and metrics
+are being proposed (see e.g., Mehrabi et al. (2019) for a sur-
+vey). The analytic gatekeepers of the systems often take the
+form of fairness evaluation metrics, and it is vital that these
+be deeply investigated both technically and normatively. In
+this paper, we endeavor to do this for bias ampliﬁcation.
+Bias ampliﬁcation occurs when a model exacerbates biases
+from the training data at test time. It is the result of the
+algorithm (Foulds et al., 2018), and unlike some other forms
+of bias, cannot be solely attributed to the dataset.
+Directional bias ampliﬁcation metric. We propose a new
+way of measuring bias ampliﬁcation, BiasAmp!(Direc-
+tional Bias Ampliﬁcation),1that builds off a prior metric
+from “Men Also Like Shopping: Reducing Gender Bias
+Ampliﬁcation using Corpus-level Constraints” (Zhao et al.,
+2017), that we will call BiasAmpMALS . Our metric’s tech-
+nical composition aligns with the real-world qualities we
+want it to encompass, addressing a number of the previous
+metric’s shortcomings by being able to: 1) focus on both
+positive and negative correlations, 2) take into account the
+base rates of each protected attribute, and most importantly
+3) disentangle the directions of ampliﬁcation.
+As an example, consider a visual dataset (Fig. 1) where
+each image has a label for the task T, which is painting
+or not painting, and further is associated with a protected
+attributeA, which is woman or man.2If the gender of
+the person biases the prediction of the task, we consider
+thisA!Tbias ampliﬁcation; if the reverse happens, then
+T!A. Bias ampliﬁcation as it is currently being measured
+merges together these two different paths which have differ-
+ent normative implications and therefore demand different
+remedies. This speaks to a larger problem of imprecision
+when discussing problems of bias (Blodgett et al., 2020).
+For example, “gender bias” can be vague; it is unclear if the
+system is assigning gender in a biased way, or if there is a
+disparity in model performance between different genders.
+Both are harmful in different ways, but the conﬂation of
+1The arrow is meant to signify the direction that bias ampliﬁca-
+tion is ﬂowing, and not intended to be a claim about causality.
+2We use the terms man andwoman to refer to binarized socially-
+perceived (frequently annotator-inferred) gender expression, rec-
+ognizing these labels are not inclusive and may be inaccurate.arXiv:2102.12594v2  [cs.LG]  7 Jun 2021
+Directional Bias Ampliﬁcation
+Figure 1. Consider an image dataset where the goal is to classify the task, T, as painting or not painting, and the attribute, A, as woman or
+man. Women are correlated with painting, and men with not painting. In this work we are particularly concerned with errors contributing
+to the ampliﬁcation of bias, i.e., existing training correlations (yellow and red in the ﬁgure). We further disentangle these errors into those
+that amplify the attribute to task correlation (i.e., incorrectly predict the task based on the person’s attribute; shown in yellow) versus those
+that amplify the task to attribute (shown in red).
+these biases can lead to misdirected solutions.
+Bias ampliﬁcation analysis. The notion of bias ampliﬁca-
+tion allows us to encapsulate the idea that systemic harms
+and biases can be more harmful than errors made without
+such a history (Bearman et al., 2009). For example, in
+images, overclassifying women as cooking carries a more
+negative connotation than overclassifying men as cooking.
+The distinction of which errors are more harmful can often
+be determined by lifting the patterns from the training data.
+In our analysis and normative discussion, we look into this
+and other implications through a series of experiments. We
+consider whether predicting protected attributes is necessary
+in the ﬁrst place; by not doing so, we can trivially remove
+T!Aampliﬁcation. We also encourage the use of conﬁ-
+dence intervals because BiasAmp!, along with other fair-
+ness metrics, suffers from the Rashomon Effect (Breiman,
+2001), or multiplicity of good models. In other words, in
+supervised machine learning, random seeds have relatively
+little impact on accuracy ; in contrast, they appear to have a
+greater impact on fairness.
+Notably, a trait of bias ampliﬁcation is that it is not at odds
+with accuracy. Bias ampliﬁcation measures the model’s
+errors, so a model with perfect accuracy will have perfect
+(zero) bias ampliﬁcation. (Note nevertheless that the metrics
+are not always correlated.) This differs from many other
+fairness metrics, because the goal of not amplifying biases
+and thus matching task-attribute correlations is aligned with
+that of accurate predictions. For example, satisfying fairness
+metrics like demographic parity (Dwork et al., 2012) are
+incompatible with perfect accuracy when parity is not met
+in the ground-truth. For the same reason bias ampliﬁcation
+permits a classiﬁer with perfect accuracy, it also comes with
+a set of limitations that are associated with treating data
+correlations as the desired ground-truth, and thus make it
+less appropriate for social applications where other metrics
+are better suited for measuring a fair allocation of resources.Outline. To ground our work, we ﬁrst distinguish what bias
+ampliﬁcation captures that standard fairness metrics cannot,
+then distinguish BiasAmp!from BiasAmpMALS . Our key
+contributions are: 1) proposing a new way to measure bias
+ampliﬁcation, addressing multiple shortcomings of prior
+work and allowing us to better diagnose models, and 2)
+providing a comprehensive technical analysis and normative
+discussion around the use of this measure in diverse settings,
+encouraging thoughtfulness with each application.
+2. Related Work
+Fairness Measurements. Fairness is nebulous and context-
+dependent, and approaches to quantifying it include equal-
+ized odds (Hardt et al., 2016), equal opportunity (Hardt et al.,
+2016), demographic parity (Dwork et al., 2012; Kusner
+et al., 2017), fairness through awareness (Dwork et al., 2012;
+Kusner et al., 2017), fairness through unawareness (Grgic-
+Hlaca et al., 2016; Kusner et al., 2017), and treatment equal-
+ity (Berk et al., 2017). We examine bias ampliﬁcation, a
+type of group fairness where correlations are ampliﬁed.
+As an example of what differentiates bias ampliﬁcation, we
+present a scenario based on Fig. 1. We want to classify a per-
+son whose attribute is man or woman with the task of paint-
+ing or not. The majority groups “(painting, woman)” and
+“(not painting, man)” each have 30 examples, and the minor-
+ity groups “(not painting, woman)” and “(painting, man)”
+each have 10. A classiﬁer trained to recognize painting on
+this data is likely to learn these associations and over-predict
+painting on images of women and under-predict painting
+on images of men; however, algorithmic interventions may
+counteract this and result in the opposite behavior. In Fig. 2
+we show how four standard fairness metrics (in blue) vary
+under different amounts of learned ampliﬁcation: FPR dif-
+ference, TPR difference (Chouldechova, 2016; Hardt et al.,
+2016), accuracy difference in task prediction (Berk et al.,
+2017), and average mean-per-class accuracy across sub-
+Directional Bias Ampliﬁcation
+Figure 2. Fairness metrics vary in how they respond to model
+errors. In our image dataset (Fig. 1) of predicting someone who
+is a woman or man to be painting or not, we consider a paint-
+ing classiﬁer that always predicts the task correctly for men, but
+varies for women. The x-axes correspond to the percentage of
+women predicted to be painting, where the ground-truth is 0.75.
+Below that the model is under-predicting women to be painting,
+and above it the model is over-predicting. The two metrics in
+the ﬁrst column, FPR and TPR difference, only capture one of
+under- or over-prediction. The next two metrics in the second col-
+umn, accuracy difference between attribute subgroups and average
+mean-per-class accuracy across attribute subgroups, are symmetric
+around 0.75, being unable to differentiate. Thus, the bias am-
+pliﬁcation metrics in the last column are needed to distinguish
+between under- and over-prediction ( BiasAmpMALS from Zhao
+et al. (2017) in Sec. 3.2, and our proposed BiasAmpA!Tin Sec. 4).
+BiasAmpMALS requires attribute predictions, so we assume per-
+fect attribute prediction here to make the comparison.
+groups (Buolamwini & Gebru, 2018). However, these four
+metrics are not designed to account for the training correla-
+tions, and unable to distinguish between cases of increased
+or decreased learned correlations, motivating a need for a
+measurement that can: bias ampliﬁcation.
+Bias Ampliﬁcation. Bias ampliﬁcation has been measured
+by looking at binary classiﬁcations without attributes (Leino
+et al., 2019), GANs (Jain et al., 2020; Choi et al., 2020),
+and correlations (Zhao et al., 2017; Jia et al., 2020). We
+consider attributes in our formulation, which is a classiﬁ-
+cation setting, and thus differs from GANs. We dissect in
+detail the correlation work, and propose measuring condi-
+tional correlations, which we term “directional.” Wang et al.
+(2019) measures ampliﬁcation by predicting the sensitive
+attribute from the model outputs, thus relying on multiple
+target labels simultaneously; we propose a decomposable
+metric to allow for more precise model diagnosis.
+The Word Embedding Association Test (WEAT) (Caliskan
+et al., 2017) measures bias ampliﬁcation in de-
+contextualized word embeddings, speciﬁcally, non-
+conditional correlations (Bolukbasi et al., 2016). However,
+with newer models like BERT and ELMo that havecontextualized embeddings, WEAT does not work (May
+et al., 2019), so new techniques have been proposed
+incorporating context (Lu et al., 2019; Kuang & Davison,
+2016). We use these models to measure the directional
+aspect of ampliﬁcations, as well as to situate them in the
+broader world of bias ampliﬁcation. Directionality of
+ampliﬁcation has been observed (Stock & Cisse, 2018;
+Qian et al., 2019), but we take a more systematic approach.
+Causality. Bias ampliﬁcation is also studied in the causal
+statistics literature (Bhattacharya & V ogt, 2007; Wooldridge,
+2016; Pearl, 2010; 2011; Middleton et al., 2016). However,
+despite the same terminology, the deﬁnitions and implica-
+tions are largely distinct. Our work follows the machine
+learning bias ampliﬁcation literature discussed in the pre-
+vious section and focuses on the ampliﬁcation of socially-
+relevant correlations in the training data.
+Predictive Multiplicity. The Rashomon Effect (Breiman,
+2001), or multiplicity of good models, has been studied
+in various contexts. The variables investigated that differ
+across good models include explanations (Hancox-Li, 2020),
+individual treatments (Marx et al., 2020; Pawelczyk et al.,
+2020), and variable importance (Fisher et al., 2019; Dong
+& Rudin, 2019). We build on these and investigate how
+fairness also differs between equally “good” models.
+3. Existing Bias Ampliﬁcation Metric
+We describe the existing metric (Zhao et al., 2017) and
+highlight shortcomings that we address in Sec. 4.
+3.1. Notation
+LetAbe the set of protected demographic groups: for ex-
+ample,A=fwoman, mangin Fig. 1.Aafora2A is
+the binary random variable corresponding to the presence
+of the group a; thusP(Awoman = 1) can be empirically
+estimated as the fraction of images in the dataset contain-
+ing women. Note that this formulation is generic enough
+to allow for multiple protected attributes and intersecting
+protected groups. Let Ttwitht2T similarly correspond
+to binary target tasks, e.g., T=fpaintinggin Fig. 1.
+3.2. Formulation and shortcomings
+Using this notation, Zhao et al. (2017)’s metric is:
+BiasAmpMALS =1
+jTjX
+a2A;t2Tyatat (1)
+withyat= 1
+P(Aa= 1jTt= 1)>1
+jAj
+at=P(^Aa= 1j^Tt= 1) P(Aa= 1jTt= 1)
+where ^Aaand^Ttdenote model predictions for the protected
+groupaand the target task trespectively. One attractive
+Directional Bias Ampliﬁcation
+property of this metric is that it doesn’t require any ground
+truth test labels: assuming the training and test distributions
+are the same, P(Aa= 1jTt= 1) can be estimated on the
+training set, and P(^Aa= 1j^Tt= 1) relies only on the
+predicted test labels. However, it also has a number of
+shortcomings.
+Shortcoming 1: The metric focuses only on positive cor-
+relations. This may lead to numerical inconsistencies, es-
+pecially in cases with multiple protected groups.
+To illustrate, consider a scenario with 3 protected groups
+A1,A2, andA3(disjoint; every person belongs to one), one
+binary taskT, and the following dataset3:
+•WhenA1= 1:10exs. ofT= 0and40exs. ofT= 1
+•WhenA2= 1:40exs. ofT= 0and10exs. ofT= 1
+•WhenA3= 1:10exs. ofT= 0and20exs. ofT= 1
+From Eq. 1, we see y1= 1,y2= 0,y3= 0. Now consider a
+model that always makes correct predictions of the protected
+attribute ^Aa, always correctly predicts the target task when
+A1= 1, but predicts ^T= 0wheneverA2= 1and^T= 1
+wheneverA3= 1. Intuitively, this would correspond to a
+case of overall learned bias ampliﬁcation. However, Eqn. 1
+would measure bias ampliﬁcation as 0 since the strongest
+positive correlation (in the A1= 1group) is not ampliﬁed.
+Note that this issue doesn’t arise as prominently when there
+are only 2 disjoint protected groups (binary attributes),
+which was the case implicitly considered in Zhao et al.
+(2017). However, even with two groups there are mis-
+calibration concerns. For example, consider the dataset
+above but only with the A1= 1 andA2= 1 examples.
+A model that correctly predicts the protected attribute ^Aa,
+correctly predicts the task on A1= 1, yet predicts ^T= 0
+wheneverA2= 1would have bias ampliﬁcation value of
+1=40
+40 40
+50= 0:2. However, a similar model that now
+correctly predicts the task on A2= 1 but always predicts
+^T= 1onA1= 1would have a much smaller bias ampliﬁ-
+cation value of 1=50
+60 40
+50= 0:033, although intuitively
+the amount of bias ampliﬁcation is the same.
+Shortcoming 2: The chosen protected group may not be
+correct due to imbalance between groups. To illustrate,
+consider a scenario with 2 disjoint protected groups:
+•WhenA1= 1:60exs. ofT= 0and30exs. ofT= 1
+•WhenA2= 1:10exs. ofT= 0and20exs. ofT= 1
+We calculate y1= 130
+50>1
+2
+= 1 andy2= 0, even
+though the correlation is actually the reverse. Now a model,
+which always predicts ^Aacorrectly, but intuitively ampliﬁes
+bias by predicting ^T= 0wheneverA1= 1and predicting
+3For the rest of this subsection, for simplicity since we have
+only one task, we drop the subscript tso that Tt,yatandat
+become T,yaandarespectively. Further, assume the training
+and test datasets have the same number of examples (exs.).^T= 1wheneverA2= 1would actually get a negative bias
+ampliﬁcation score of0
+30 30
+50= 0:6.
+BiasAmpMALS erroneously focuses on the protected group
+with the most examples ( A1= 1) rather than on the pro-
+tected group that is actually correlated with T= 1(A2= 1).
+This situation manifests when min
+1
+jAj;P(Aa= 1)
+<
+P(Aa= 1jTt= 1)<max
+1
+jAj;P(Aa= 1)
+, which
+is more likely to arise as the the distribution of attribute
+Aa= 1becomes more skewed.
+Shortcoming 3: The metric entangles directions of bias
+ampliﬁcation. By considering only the predictions rather
+than the ground truth labels at test time, we are unable to
+distinguish between errors stemming from ^Aaand those
+from ^T. For example, looking at just the test predictions
+we may know that the prediction pair ^T= 1;^A1= 1 is
+overrepresented, but do not know whether this is due to
+overpredicting ^T= 1on images with A1= 1or vice versa.
+3.3. Experimental analysis
+To verify that the above shortcomings manifest in practical
+settings, we revisit the analysis of Zhao et al. (2017) on the
+COCO (Lin et al., 2014) image dataset with two disjoint
+protected groups Awoman andAman, and 66 binary target
+tasks,Tt, corresponding to the presence of 66 objects in the
+images. We directly use the released model predictions of
+^Aaand^Ttfrom Zhao et al. (2017).
+First, we observe that in COCO there are about 2.5x as many
+men as women, leading to shortcoming 2 above. Consider
+the object oven ;BiasAmpMALS calculatesP(Aman=
+1jToven = 1) = 0:56>1
+2and thus considers this to be
+correlated with men rather than women. However, com-
+putingP(Aman= 1;Toven = 1) = 0:0103<0:0129 =
+P(Aman= 1)P(Toven= 1) reveals that men are in fact not
+correlated with oven, and this result stems from the fact that
+men are overrepresented in the dataset generally. Not sur-
+prisingly, the model trained on this data associates women
+with ovens and underpredicts men with ovens at test time,
+i.e.,P(^Aman= 1j^Toven= 1) P(Aman= 1jToven= 1) =
+ 0:10, erroneously measuring negative bias ampliﬁcation.
+In terms of directions of bias ampliﬁcation, we recall that
+Zhao et al. (2017) discovers that “Technology oriented cat-
+egories initially biased toward men such as keyboard ...
+have each increased their bias toward males by over 0.100.”
+Concretely, from Eqn. 1, P(Aman= 1jTkeyboard = 1) =
+:70andP(^Aman= 1j^Tkeyboard = 1) =:83, demonstrating
+an ampliﬁcation of bias. However, the direction or cause of
+bias ampliﬁcation remains unclear: is the presence of man
+in the image increasing the probability of predicting a key-
+board, or vice versa? Looking more closely at the model’s
+disentangled predictions, we see that when conditioning on
+Directional Bias Ampliﬁcation
+the attribute, P(^Tkeyboard = 1jAman= 1) = 0:0020<
+0:0032 =P(Tkeyboard = 1jAman= 1) , and when condi-
+tioning on the task, P(^Aman= 1jTkeyboard = 1) = 0:78>
+0:70 =P(Aman= 1jTkeyboard = 1) , indicating that while
+keyboards are under-predicted on images with men, men
+are over-predicted on images with keyboards. Thus the root
+cause of this ampliﬁcation appears to be in the gender pre-
+dictor rather than the object detector. Such disentangement
+allows us to properly focus algorithmic intervention efforts.
+Finally, we make one last observation regarding the results
+of Zhao et al. (2017). The overall bias ampliﬁcation is
+measured to be :040. However, we observe that “man” is
+being predicted at a higher rate (75.6%) than is actually
+present (71.2%). With this insight, we tune the decision
+threshold on the validation set such that the gender predic-
+tor is well-calibrated to be predicting the same percentage
+of images to have men as the dataset actually has. When
+we calculate BiasAmpMALS on these newly thresholded
+predictions for the test set, we see bias ampliﬁcation drop
+from 0:040to0:001just as a result of this threshold change,
+outperforming even the solution proposed in Zhao et al.
+(2017) of corpus-level constraints, which achieved a drop to
+only0:021. Fairness can be quite sensitive to the threshold
+chosen (Chen & Wu, 2020), so careful threshold selection
+should be done, rather than using a default of 0:5. When a
+threshold is needed in our experiments, we pick it to be well-
+calibrated on the validation set. In other words, we estimate
+the expected proportion pof positive labels from the train-
+ing set and choose a threshold such that on Nvalidation
+examples, the Nphighest-scoring are predicted positive.
+Although we do not take this approach, because at deploy-
+ment time it is often the case that discrete predictions are
+required, one could also imagine integrating bias ampliﬁca-
+tion across threshold to have a threshold-agnostic measure
+of bias ampliﬁcation, similar to what is proposed by Chen
+& Wu (2020).
+4. BiasAmp !(Directional Bias Ampliﬁcation)
+Now we present our metric, BiasAmp!, which retains the
+desirable properties of BiasAmpMALS , while addressing the
+shortcomings noted in Section 3.2. To account for the need
+to disentangle the two possible directions of bias ampliﬁ-
+cation (shortcoming 3) the metric consists of two values:
+BiasAmpA!Tcorresponds to the ampliﬁcation of bias re-
+sulting from the protected attribute inﬂuencing the task pre-
+diction, and BiasAmpT!Acorresponds to the ampliﬁcation
+of bias resulting from the task inﬂuencing the protected
+attribute prediction. Concretely, our directional bias ampliﬁ-
+Table 1. Bias ampliﬁcation, as measured on the test set, changes
+across three image conditions: original, noisy person mask, full
+person mask. BiasAmpMALS misleadingly makes it appear as if
+bias ampliﬁcation increases as the gender cues are removed. In
+reality, A!T decreases with less visual attribute cues to bias the
+task prediction, while it is T !A that increases as the model relies
+on visual cues from the task to predict the attribute.
+cation metric is:
+BiasAmp!=1
+jAjjTjX
+a2A;t2Tyatat+ (1 yat)( at)
+yat= 1[P(Aa= 1;Tt= 1)>P(Aa= 1)P(Tt= 1)]
+at=8
+>><
+>>:P(^Tt= 1jAa= 1) P(Tt= 1jAa= 1)
+if measuring A!T
+P(^Aa= 1jTt= 1) P(Aa= 1jTt= 1)
+if measuring T!A
+(2)
+The ﬁrst line generalizes BiasAmpMALS to include all at-
+tributesAaand measure the ampliﬁcation of their positive
+or negative correlations with task Tt(shortcoming 1). The
+newyatidentiﬁes the direction of correlation of Aawith
+Tt, properly accounting for base rates (shortcoming 2). Fi-
+nally, atdecouples the two possible directions of bias
+ampliﬁcation (shortcoming 3). Since values may be nega-
+tive, reporting the aggregated bias ampliﬁcation value could
+obscure attribute-task pairs that exhibit strong bias ampliﬁ-
+cation; thus, disaggregated results per pair can be returned.
+4.1. Experimental analysis
+We verify that our metric successfully resolves the empirical
+inconsistencies of Sec. 3.2. As expected, BiasAmpA!T
+is positive at .1778 in shortcoming 1 and .3333 in 2;
+BiasAmpT!Ais 0 in both. We further introduce a sce-
+nario for empirically validating the decoupling aspect of
+our metric. We use a baseline ampliﬁcation removal idea
+of applying segmentation masks (noisy or full) over the
+people in an image to mitigate bias stemming from human
+attributes (Wang et al., 2019). We train on the COCO clas-
+siﬁcation task, with the same 66 objects from Zhao et al.
+(2017), a VGG16 (Simonyan & Zisserman, 2014) model pre-
+trained on ImageNet (Russakovsky et al., 2015) to predict
+objects and gender, with a Binary Cross Entropy Loss over
+all outputs, and measure BiasAmpT!AandBiasAmpA!T;
+Directional Bias Ampliﬁcation
+Figure 3. Illustrative captions from the Equalizer model (Hendricks
+et al., 2018), which in these captions decreases T!Abias
+ampliﬁcation from the Baseline, but inadvertently increases A!
+T. Green underlined words are correct, and red italicized words are
+incorrect. In the images, the Equalizer improves on the Baseline
+for the gendered word, but introduces biased errors in the captions.
+we report 95% conﬁdence intervals for 5 runs of each sce-
+nario. In Tbl. 1 we see that, misleadingly, BiasAmpMALS
+reports increased ampliﬁcation as gender cues are removed.
+However what is actually happening is, as expected, that as
+less of the person is visible, A !T decreases because there
+are less human attribute visual cues to bias the task predic-
+tion. It is T!A that increases because the model must lean
+into task biases to predict the person’s attribute. However,
+we can also see from the overlapping conﬁdence intervals
+that the difference between noisy and full masks does not
+appear to be particularly robust; we continue a discussion
+of this phenomenon in Sec. 5.2.4
+5. Analysis and Discussion
+We now discuss some of the normative issues surrounding
+bias ampliﬁcation: in Sec. 5.1 with the existence of T !A
+bias ampliﬁcation, which implies the prediction of sensitive
+attributes; in Sec. 5.2 about the need for conﬁdence intervals
+to make robust conclusions; and in Sec. 5.3 about scenarios
+in which the original formulation of bias ampliﬁcation as a
+desire to match base correlations may not be the intention.
+5.1. Considerations of T !A Bias Ampliﬁcation
+If we think more deeply about these bias ampliﬁcations,
+we might come to a normative conclusion that T!A,
+which measures sensitive attribute predictions conditioned
+on the tasks, should not exist in the ﬁrst place. There are
+4This simultaneously serves as inspiration for an intervention
+approach to mitigating bias ampliﬁcation. In Appendix A.4 we
+provide a more granular analysis of this experiment, and how it
+can help to inform mitigation. Further mitigation techniques are
+outside of our scope, but we look to works like Singh et al. (2020);
+Wang et al. (2019); Agarwal et al. (2020).very few situations in which predicting sensitive attributes
+makes sense (Scheuerman et al., 2020; Larson, 2017), so
+we should carefully consider if this is strictly necessary for
+target applications. For the image domains discussed, by
+simply removing the notion of predicting gender, we triv-
+ially remove all T!Abias ampliﬁcation. In a similar
+vein, there has been great work done on reducing gender
+bias in image captions (Hendricks et al., 2018; Tang et al.,
+2020), but it is often focused on targeting T!Arather than
+A!Tampliﬁcation. When disentangling the directions
+of bias, we ﬁnd that the Equalizer model (Hendricks et al.,
+2018), which was trained with the intention of increasing
+the quality of gender-speciﬁc words in captions, inadver-
+tently increases A!Tbias ampliﬁcation for certain tasks.
+We treat gender as the attribute and the objects as different
+tasks. In Fig. 3 we see examples where the content of the
+Equalizer’s caption exhibits bias coming from the person’s
+attribute. Even though the Equalizer model reduces T!A
+bias ampliﬁcation in these images, it inadvertently increases
+A!T. It is important to disentangle the two directions of
+bias and notice that while one direction is becoming more
+fair, another is actually becoming more biased. Although
+this may not always be the case, depending on the down-
+stream application (Bennett et al., 2021), perhaps we could
+consider simply replacing all instances of gendered words
+like “man” and “woman” in the captions with “person” to
+trivially eliminate T!A, and focus on A!Tbias ampli-
+ﬁcation. Speciﬁcally when gender is the sensitive attribute,
+Keyes (2018) thoroughly explains how we should carefully
+think about why we might implement Automatic Gender
+Recognition (AGR), and avoid doing so.
+On the other hand, sensitive attribute labels, ideally from
+self-disclosure, can be very useful. For example, these labels
+are necessary to measure A!Tampliﬁcation, which is
+important to discover, as we do not want our prediction task
+to be biased for or against people with certain attributes.
+5.2. Variance in Estimator Bias
+Evaluation metrics, ours included, are speciﬁc to each model
+on each dataset. Under common loss functions such as cross
+entropy loss, some evaluation metrics like average preci-
+sion are not very sensitive to random seed. However, bias
+ampliﬁcation, along with other fairness metrics like FPR
+difference, often ﬂuctuates greatly across runs. Because the
+loss functions that machine learning practitioners tend to
+default to using are proxies for accuracy, it makes sense
+that various local minima, while equal in accuracy, are not
+necessarily equal for other measurements. The phenomena
+of differences between equally predictive models has been
+termed the Rashomon Effect (Breiman, 2001), or predictive
+multiplicity (Marx et al., 2020).
+Thus, like previous work (Fisher et al., 2019), we urge
+Directional Bias Ampliﬁcation
+transparency, and advocate for the inclusion of conﬁdence
+intervals. To illustrate the need for this, we look at the facial
+image domain of CelebA (Liu et al., 2015), deﬁning two
+different scenarios of the classiﬁcation of big nose or
+young as our task, and treating the gender labels as our
+attribute. Note that we do not classify gender, for reasons
+raised in Sec. 5.1, so we only measure A!Tampliﬁcation.
+For these tasks, women are correlated with no big nose and
+being young, and men with big nose and not being young.
+We examine two different scenarios, one where our inde-
+pendent variable is model architecture, and another where
+it is the ratio between number of images of the majority
+groups (e.g., young women and not young men) and mi-
+nority groups (e.g., not young women and young men). By
+looking at the conﬁdence intervals, we can determine which
+condition allows us to draw reliable conclusions about the
+impact of that variable on bias ampliﬁcation.
+For model architecture, we train 3 models pretrained
+on ImageNet (Russakovsky et al., 2015) across 5 runs:
+ResNet18 (He et al., 2016), AlexNet (Krizhevsky et al.,
+2012), and VGG16 (Simonyan & Zisserman, 2014). Train-
+ing details are in Appendix A.2. In Fig. 4 we see from
+the conﬁdence intervals that while model architecture does
+not result in differing enough of bias ampliﬁcation to con-
+clude anything about the relative fairness of these models,
+across-ratio differences are signiﬁcant enough to draw con-
+clusions about the impact of this ratio on bias ampliﬁcation.
+We encourage researchers to include conﬁdence intervals
+so that ﬁndings are more robust to random ﬂuctuations.
+Concurrent work covers this multiplicity phenomenon in
+detail (D’Amour et al., 2020), and calls for more application-
+speciﬁc speciﬁcations that would constrain the model space.
+However, that may not always be feasible, so for now our
+proposal of error bars is more general and immediately im-
+plementable. In a survey of recently published fairness
+papers from prominent machine learning conferences, we
+found that 25 of 48 (52%) reported results of a fairness met-
+ric without error bars (details in Appendix A.2. Even if the
+model itself is deterministic, error bars could be generated
+through bootstrapping (Efron, 1992) to account for the fact
+that the test set itself is but a sample of the population, or
+varying the train-test splits (Friedler et al., 2019).
+5.3. Limitations of Bias Ampliﬁcation
+An implicit assumption that motivates bias ampliﬁcation
+metrics, including ours, is that the ground truth exists and
+is known. Further, a perfectly accurate model can be con-
+sidered perfectly fair, despite the presence of task-attribute
+correlations in the training data. This allows us to treat the
+disparity between the correlations in the input vs correla-
+tions in the output as a fairness measure.
+It follows that bias ampliﬁcation would notbe a good way tomeasure fairness when the ground truth is either unknown
+or does not correspond to desired classiﬁcation. In this
+section, we discuss two types of applications where bias
+ampliﬁcation should not necessarily be used out-of-the-box
+as a fairness metric.
+Sentence completion: no ground truth. Consider the ﬁll-
+in-the-blank NLP task, where there is no ground truth for
+how to ﬁll in a sentence. Given “The [blank] went on a
+walk”, a variety of words could be suitable. Therefore,
+to measure bias ampliﬁcation in this setting, we need to
+subjectively set the base correlations, i.e., P(Tt= 1jAa=
+1);P(Aa= 1jTt= 1) .
+To see the effect of adjusting base correlations, we test
+the bias ampliﬁcation between occupations and gender pro-
+nouns, conditioning on the pronoun and ﬁlling in the occu-
+pation and vice versa. In Tbl. 2, we report our measured
+bias ampliﬁcation results on the FitBERT (Fill in the blanks
+BERT) (Havens & Stal, 2019; Devlin et al., 2019) model
+using various sources as our base correlation of bias from
+which ampliﬁcation is measured. The same outputs from
+the model are used for each set of pronouns, and the in-
+dependent variable we manipulate is the source of base
+correlations: 1) equality amongst the pronouns, using two
+pronouns (he/she) 2) equality amongst the pronouns, using
+three pronouns (he/she/they) 3) co-occurrence counts from
+English Wikipedia (one of the datasets BERT was trained
+on), and 4) WinoBias (Zhao et al., 2018) with additional
+information supplemented from the 2016 U.S. Labor Force
+Statistics data. Additional details are in Appendix A.3.
+We ﬁnd that relative to U.S. Labor Force data on these
+particular occupations, FitBERT actually exhibits no bias
+ampliﬁcation. Yet it would be simplistic to conclude that
+FitBERT presents no fairness concerns with respect to gen-
+der and occupation. For one, it is evident from Fig. 5 that
+there is an overall bias towards “he” (this translates to a bias
+ampliﬁcation for some occupations and a bias reduction for
+others; the effects roughly cancel out in our bias ampliﬁca-
+tion metric when aggregated). More importantly, whether
+U.S. labor statistics are the right source of base correlations
+depends on the speciﬁc application of the model and the
+cultural context in which it is deployed. This is clear when
+noticing that the measured BiasAmpT!Ais much stronger
+when the gender distribution is expected to be uniform, in-
+stead of gender-biased Labor statistics.
+Risk prediction: future outcomes unknown. Next, we
+examine the criminal risk prediction setting. A common
+statistical task in this setting is predicting the likelihood a
+defendant will commit a crime if released pending trial. This
+setting has two important differences compared to computer
+vision detection tasks: 1) The training labels typically come
+from arrest records and suffer from problems like historical
+and selection bias (Suresh & Guttag, 2019; Olteanu et al.,
+Directional Bias Ampliﬁcation
+Figure 4. We investigate the consistency of various metrics by looking at 95% conﬁdence intervals as we manipulate two independent
+variables: model architecture (left three graphs), and majority to minority groups ratio (right graph). The top row (blue) is for the attribute
+ofbig nose , and bottom row (orange) is for young . For model architecture, across 5 runs, the accuracy measure of average precision
+retains a consistent ranking across models, but two different fairness measures (FPR difference and A!Tbias ampliﬁcation) have
+overlapping intervals. This does not allow us to draw conclusions about the differing fairness of these models. However, across-ratio
+differences in bias ampliﬁcation are signiﬁcant enough to allow us to draw conclusions about the differing levels of fairness.
+Figure 5. Each point represents an occupation’s probability at be-
+ing associated with the pronoun for a man. FitBERT perpetuates
+gender-occupation biases seen in the U.S. Labor Force, and addi-
+tionally over-favors the pronoun for men.
+2019; Green, 2020), and 2) the task is to predict future events
+and thus the outcome is not knowable at prediction time.
+Further, the risk of recidivism is not a static, immutable
+trait of a person. Given the input features that are used to
+represent individuals, one could imagine an individual with
+a set of features who does recidivate, and one who does
+not. In contrast, for a task like image classiﬁcation, two
+instances with the same pixel values will always have the
+same labels (if the ground truth labels are accurate).
+As a result of these setting differences, risk prediction tools
+may be considered unfair even if they exhibit no bias ampli-
+ﬁcation. Indeed, one might argue that a model that shows
+no bias ampliﬁcation is necessarily unfair as it perpetuates
+past biases reﬂected in the training data. Further, modeling
+risk as immutable misses the opportunity for intervention to
+change the risk (Barabas et al., 2018). Thus, matching the
+training correlations should not be the intended goal (Wick
+et al., 2019; Hebert-Johnson et al., 2018).
+To make this more concrete, in Fig. 6 we show the metrics
+ofBiasAmpA!Tand False Positive Rate (FPR) disparityBase Correlation
+Source (# pronouns)BiasAmpT!A BiasAmpA!T
+Uniform (2) .1368.0226 .0084.0054
+Uniform (3) .0914.0151 .0056.0036
+Wikipedia (2) .0372.0307 -.0002.0043
+2016 U.S. Labor
+Force (WinoBias) (2)-.1254.0026 -.0089.0054
+Table 2. BiasAmp!for different base correlation sources. The
+value-laden choice of base correlation source depends on the down-
+stream application.
+measured on COMPAS predictions (Angwin et al., 2016),
+only looking at two racial groups, for various values of the
+risk threshold. A false positive occurs when a defendant
+classiﬁed as high risk but does not recidivate; FPR disparity
+has been interpreted as measuring how unequally different
+groups suffer the costs of the model’s errors (Hardt et al.,
+2016). The ﬁgure shows that bias ampliﬁcation is close to 0
+for almost all thresholds. This is no surprise since the model
+was designed to be calibrated by group (Flores et al., 2016).
+However, for all realistic values of the threshold, there is a
+large FPR disparity. Thus, risk prediction is a setting where
+a lack of bias ampliﬁcation should not be used to conclude
+that a model is fair.
+Like any fairness metric, ours captures only one perspective,
+which is that of not amplifying already present biases. It
+does not require a correction for these biases. Settings that
+bias ampliﬁcation are more suited for include those with
+a known truth in the labels, where matching them would
+desired. For example, applicable contexts include certain
+social media bot detection tasks where the sensitive attribute
+is the region of origin, as bot detection methods may be
+biased against names from certain areas. More broadly, it
+Directional Bias Ampliﬁcation
+Figure 6. COMPAS risk predictions exhibit FPR disparities, but
+little bias ampliﬁcation. Bias ampliﬁcation measures only whether
+the model matches the (biased) training data, not the bias of the
+overall system.
+is crucial that we pick fairness metrics thoughtfully when
+deciding how to evaluate a model.
+6. Conclusion
+In this paper, we take a deep dive into the measure of bias
+ampliﬁcation. We introduce a new metric, BiasAmp!, that
+disentangles the directions of bias to provide more action-
+able insights when diagnosing models. Additionally, we
+analyze and discuss normative considerations to encourage
+exercising care when determining which fairness metrics are
+applicable, and what assumptions they are encoding. The
+mission of this paper is not to tout bias ampliﬁcation as the
+optimal fairness metric, but rather to give a comprehensive
+and critical study as to how it should be measured.
+Acknowledgements
+This material is based upon work supported by the Na-
+tional Science Foundation under Grant No. 1763642. We
+thank Sunnie S. Y . Kim, Karthik Narasimhan, Vikram Ra-
+maswamy, Brandon Stewart, and Felix Yu for feedback.
+We especially thank Arvind Narayanan for signiﬁcant com-
+ments and advice. We also thank the authors of Men Also
+Like Shopping (Zhao et al., 2017) and Women Also Snow-
+board (Hendricks et al., 2018) for uploading their model
+outputs and code online in a way that made it easily repro-
+ducible, and for being prompt and helpful in response to
+clariﬁcations.
+References
+Agarwal, V ., Shetty, R., and Fritz, M. Towards causal VQA:
+Revealing and reducing spurious correlations by invariant
+and covariant semantic editing. Conference on Computer
+Vision and Pattern Recognition (CVPR) , 2020.
+Angwin, J., Larson, J., Mattu, S., and Kirchner, L. Machine
+bias. Propublica , 2016.Barabas, C., Dinakar, K., Ito, J., Virza, M., and Zittrain,
+J. Interventions over predictions: Reframing the ethical
+debate for actuarial risk assessment. Fairness, Account-
+ability and Transparency in Machine Learning , 2018.
+Bearman, S., Korobov, N., and Thorne, A. The fabric of
+internalized sexism. Journal of Integrated Social Sciences
+1(1): 10-47 , 2009.
+Bennett, C. L., Gleason, C., Scheuerman, M. K., Bigham,
+J. P., Guo, A., and To, A. “it’s complicated”: Negoti-
+ating accessibility and (mis)representation in image de-
+scriptions of race, gender, and disability. Conference on
+Human Factors in Computing Systems (CHI) , 2021.
+Berk, R., Heidari, H., Jabbari, S., Kearns, M., and Roth, A.
+Fairness in criminal justice risk assessments: The state of
+the art. Sociological Methods and Research , 2017.
+Bhattacharya, J. and V ogt, W. B. Do instrumental variables
+belong in propensity scores? NBER Technical Working
+Papers 0343, National Bureau of Economic Research,
+Inc., 2007.
+Blodgett, S. L., Barocas, S., III, H. D., and Wallach, H.
+Language (technology) is power: A critical survey of
+“bias” in nlp. Association for Computational Linguistics
+(ACL) , 2020.
+Bolukbasi, T., Chang, K.-W., Zou, J., Saligrama, V ., and
+Kalai, A. Man is to computer programmer as woman is to
+homemaker? debiasing word embeddings. Advances in
+Neural Information Processing Systems (NeurIPS) , 2016.
+Breiman, L. Statistical modeling: The two cultures. Statisti-
+cal Science , 16:199–231, 2001.
+Buolamwini, J. and Gebru, T. Gender shades: Intersectional
+accuracy disparities in commercial gender classiﬁcation.
+Proceedings of Machine Learning Research , 81, 2018.
+Caliskan, A., Bryson, J. J., and Narayanan, A. Seman-
+tics derived automatically from language corpora contain
+human-like biases. Science , 2017.
+Chen, M. and Wu, M. Towards threshold invariant fair
+classiﬁcation. Conference on Uncertainty in Artiﬁcial
+Intelligence (UAI) , 2020.
+Choi, K., Grover, A., Singh, T., Shu, R., and Ermon,
+S. Fair generative modeling via weak supervision.
+arXiv:1910.12008 , 2020.
+Chouldechova, A. Fair prediction with disparate impact:
+A study of bias in recidivism prediction instrument. Big
+Data , 2016.
+Directional Bias Ampliﬁcation
+D’Amour, A., Heller, K., Moldovan, D., Adlam, B., Ali-
+panahi, B., Beutel, A., Chen, C., Deaton, J., Eisenstein,
+J., Hoffman, M. D., Hormozdiari, F., Houlsby, N., Hou,
+S., Jerfel, G., Karthikesalingam, A., Lucic, M., Ma, Y .,
+McLean, C., Mincu, D., Mitani, A., Montanari, A., Nado,
+Z., Natarajan, V ., Nielson, C., Osborne, T. F., Raman,
+R., Ramasamy, K., Sayres, R., Schrouff, J., Seneviratne,
+M., Sequeira, S., Suresh, H., Veitch, V ., Vladymyrov,
+M., Wang, X., Webster, K., Yadlowsky, S., Yun, T.,
+Zhai, X., and Sculley, D. Underspeciﬁcation presents
+challenges for credibility in modern machine learning.
+arXiv:2011.03395 , 2020.
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. BERT:
+Pre-training of deep bidirectional transformers for lan-
+guage understanding. Annual Conference of the North
+American Chapter of the Association for Computational
+Linguistics: Human Language Technologies (NAACL-
+HLT) , 2019.
+Dong, J. and Rudin, C. Variable importance clouds: A way
+to explore variable importance for the set of good models.
+arXiv:1901.03209 , 2019.
+Dwork, C., Hardt, M., Pitassi, T., Reingold, O., and Zemel,
+R. Fairness through awareness. Proceedings of the 3rd
+Innovations in Theoretical Computer Science Conference ,
+2012.
+Efron, B. Bootstrap methods: another look at the jackknife.
+InBreakthroughs in statistics , pp. 569–593. Springer,
+1992.
+Fisher, A., Rudin, C., and Dominici, F. All models are
+wrong, but many are useful: Learning a variable’s impor-
+tance by studying an entire class of prediction models
+simultaneously. Journal of Machine Learning Research ,
+20, 2019.
+Flores, A. W., Bechtel, K., and Lowenkamp, C. T. False
+positives, false negatives, and false analyses: A rejoin-
+der to ”machine bias: There’s software used across the
+country to predict future criminals. and it’s biased against
+blacks.”. Federal Probation Journal , 80, 2016.
+Foulds, J., Islam, R., Keya, K. N., and Pan, S. An intersec-
+tional deﬁnition of fairness. arXiv:1807.08362 , 2018.
+Friedler, S. A., Scheidegger, C., Venkatasubramanian, S.,
+Choudhary, S., Hamilton, E. P., and Roth, D. A compara-
+tive study of fairness-enhancing interventions in machine
+learning. Conference on Fairness, Accountability, and
+Transparency (FAccT) , 2019.
+Green, B. The false promise of risk assessments: Epis-
+temic reform and the limits of fairness. ACM Conference
+on Fairness, Accountability, and Transparency (ACM
+FAccT) , 2020.Grgic-Hlaca, N., Zafar, M. B., Gummadi, K. P., and Weller,
+A. The case for process fairness in learning: Feature
+selection for fair decision making. NeurIPS Symposium
+on Machine Learning and the Law , 2016.
+Hancox-Li, L. Robustness in machine learning explanations:
+Does it matter? Conference on Fairness, Accountability,
+and Transparency (FAccT) , 2020.
+Hardt, M., Price, E., and Srebro, N. Equality of opportunity
+in supervised learning. arXiv:1610.02413 , 2016.
+Havens, S. and Stal, A. Use BERT to ﬁll in
+the blanks, 2019. URL https://github.com/
+Qordobacode/fitbert .
+He, K., Zhang, X., Ren, S., and Sun, J. Deep residual
+learning for image recognition. European Conference on
+Computer Vision (ECCV) , 2016.
+Hebert-Johnson, U., Kim, M. P., Reingold, O., and Roth-
+blum, G. N. Multicalibration: Calibration for the
+(computationally-identiﬁable) masses. International Con-
+ference on Machine Learning (ICML) , 2018.
+Hendricks, L. A., Burns, K., Saenko, K., Darrell, T., and
+Rohrbach, A. Women also snowboard: Overcoming bias
+in captioning models. European Conference on Computer
+Vision (ECCV) , 2018.
+Hugsy. English adjectives. https:
+//gist.github.com/hugsy/
+8910dc78d208e40de42deb29e62df913 , 2017.
+Jain, N., Olmo, A., Sengupta, S., Manikonda, L., and Kamb-
+hampati, S. Imperfect imaganation: Implications of
+gans exacerbating biases on facial data augmentation and
+snapchat selﬁe lenses. arXiv:2001.09528 , 2020.
+Jia, S., Meng, T., Zhao, J., and Chang, K.-W. Mitigat-
+ing gender bias ampliﬁcation in distribution by posterior
+regularization. Annual Meeting of the Association for
+Computational Linguistics (ACL) , 2020.
+Keyes, O. The misgendering machines: Trans/HCI impli-
+cations of automatic gender recognition. Proceedings of
+the ACM on Human-Computer Interaction , 2018.
+Krizhevsky, A., Sutskever, I., and Hinton, G. E. Ima-
+genet classiﬁcation with deep convolutional neural net-
+works. Advances in Neural Information Processing Sys-
+tems (NeurIPS) , pp. 1097–1105, 2012.
+Kuang, S. and Davison, B. D. Semantic and context-aware
+linguistic model for bias detection. Proc. of the Natural
+Language Processing meets Journalism IJCAI-16 Work-
+shop , 2016.
+Directional Bias Ampliﬁcation
+Kusner, M. J., Loftus, J. R., Russell, C., and Silva, R. Coun-
+terfactual fairness. Advances in Neural Information Pro-
+cessing Systems (NeurIPS) , 2017.
+Larson, B. N. Gender as a variable in natural-language
+processing: Ethical considerations. Proceedings of the
+First ACL Workshop on Ethics in Natural Language Pro-
+cessing , 2017.
+Leino, K., Black, E., Fredrikson, M., Sen, S., and Datta, A.
+Feature-wise bias ampliﬁcation. International Confer-
+ence on Learning Representations (ICLR) , 2019.
+Liang, P. P., Li, I. M., Zheng, E., Lim, Y . C., Salakhutdi-
+nov, R., and Morency, L.-P. Towards debiasing sentence
+representations. Annual Meeting of the Association for
+Computational Linguistics (ACL) , 2020.
+Lin, T.-Y ., Maire, M., Belongie, S., Bourdev, L., Girshick,
+R., Hays, J., Perona, P., Ramanan, D., Zitnick, C. L., and
+Dollar, P. Microsoft COCO: Common objects in context.
+European Conference on Computer Vision (ECCV) , 2014.
+Liu, Z., Luo, P., Wang, X., and Tang, X. Deep learning face
+attributes in the wild. In Proceedings of International
+Conference on Computer Vision (ICCV) , December 2015.
+Lu, K., Mardziel, P., Wu, F., Amancharla, P., and Datta,
+A. Gender bias in neural natural language processing.
+arXiv:1807.11714 , 2019.
+Marx, C. T., du Pin Calmon, F., and Ustun, B. Predictive
+multiplicity in classiﬁcation. arXiv:1909.06677 , 2020.
+May, C., Wang, A., Bordia, S., Bowman, S. R., and
+Rudinger, R. On measuring social biases in sentence
+encoders. Annual Conference of the North American
+Chapter of the Association for Computational Linguistics
+(NACCL) , 2019.
+Mehrabi, N., Morstatter, F., Saxena, N., Lerman, K., and
+Galstyan, A. A survey on bias and fairness in machine
+learning. arXiv:1908.09635 , 2019.
+Middleton, J. A., Scott, M. A., Diakow, R., and Hill, J. L.
+Bias ampliﬁcation and bias unmasking. Political Analysis ,
+3:307–323, 2016.
+of Labor Statistics, U. B. Employed persons by detailed
+occupation, sex, race, and hispanic or latino ethnic-
+ity. 2016. URL https://www.bls.gov/cps/
+aa2016/cpsaat11.pdf .
+Olteanu, A., Castillo, C., Diaz, F., and Kiciman, E. Social
+data: Biases, methodological pitfalls, and ethical bound-
+aries. Frontiers in Big Data , 2019.Pawelczyk, M., Broelemann, K., and Kasneci, G. On coun-
+terfactual explanations under predictive multiplicity. Con-
+ference on Uncertainty in Artiﬁcial Intelligence (UAI) ,
+2020.
+Pearl, J. On a class of bias-amplifying variables that endan-
+ger effect estimates. Uncertainty in Artiﬁcial Intelligence ,
+2010.
+Pearl, J. Invited commentary: Understanding bias ampliﬁ-
+cation. American Journal of Epidemiology , 174, 2011.
+Qian, Y ., Muaz, U., Zhang, B., and Hyun, J. W. Reducing
+gender bias in word-level language models with a gender-
+equalizing loss function. ACL-SRW , 2019.
+Russakovsky, O., Deng, J., Su, H., Krause, J., Satheesh, S.,
+Ma, S., Huang, Z., Karpathy, A., Khosla, A., Bernstein,
+M., Berg, A. C., and Fei-Fei, L. ImageNet Large Scale
+Visual Recognition Challenge. International Journal of
+Computer Vision (IJCV) , 115(3):211–252, 2015. doi:
+10.1007/s11263-015-0816-y.
+Scheuerman, M. K., Wade, K., Lustig, C., and Brubaker,
+J. R. How we’ve taught algorithms to see identity: Con-
+structing race and gender in image databases for facial
+analysis. Proceedings of the ACM on Human-Computer
+Interaction , 2020.
+Simonyan, K. and Zisserman, A. Very deep convo-
+lutional networks for large-scale image recognition.
+arXiv:1409.1556 , 2014.
+Singh, K. K., Mahajan, D., Grauman, K., Lee, Y . J., Feiszli,
+M., and Ghadiyaram, D. Don’t judge an object by its con-
+text: Learning to overcome contextual bias. Conference
+on Computer Vision and Pattern Recognition (CVPR) ,
+2020.
+Stock, P. and Cisse, M. ConvNets and ImageNet beyond
+accuracy: Understanding mistakes and uncovering biases.
+European Conference on Computer Vision (ECCV) , 2018.
+Suresh, H. and Guttag, J. V . A framework for under-
+standing unintended consequences of machine learning.
+arXiv:1901.10002 , 2019.
+Tang, R., Du, M., Li, Y ., Liu, Z., and Hu, X. Mitigating
+gender bias in captioning systems. arXiv:2006.08315 ,
+2020.
+Wang, T., Zhao, J., Yatskar, M., Chang, K.-W., and Or-
+donez, V . Balanced datasets are not enough: Estimating
+and mitigating gender bias in deep image representations.
+International Conference on Computer Vision (ICCV) ,
+2019.
+Directional Bias Ampliﬁcation
+Wick, M., Panda, S., and Tristan, J.-B. Unlocking fairness:
+a trade-off revisited. Conference on Neural Information
+Processing Systems (NeurIPS) , 2019.
+Wooldridge, J. M. Should instrumental variables be used as
+matching variables? Research in Economics , 70:232–237,
+2016.
+Zhao, J., Wang, T., Yatskar, M., Ordonez, V ., and Chang,
+K.-W. Men also like shopping: Reducing gender bias
+ampliﬁcation using corpus-level constraints. Conference
+on Empirical Methods in Natural Language Processing
+(EMNLP) , 2017.
+Zhao, J., Wang, T., Yatskar, M., Ordonez, V ., and Chang,
+K.-W. Gender bias in coreference resolution: Evalua-
+tion and debiasing methods. North American Chapter of
+the Association for Computational Linguistics (NAACL) ,
+2018.
+Directional Bias Ampliﬁcation
+A. Appendix
+A.1. Additional Metric Details
+We provide additional details here about BiasAmp!, as deﬁned in Sec. 4.
+In practice the indicator variable, yat, is computed over the statistics of the training set, whereas everything else is computed
+over the test set. The reason behind this is that the direction of bias is determined by the existing biases in the training set.
+Comparisons of the values outputted by BiasAmp!should only be done relatively. In particular, within one of the directions
+at a time, either A!TorT!A, on one dataset. Comparing A!TtoT!Adirectly is not a signal as to which
+direction of ampliﬁcation is stronger.
+A.2. Details and Experiment from Variance in Estimator Bias
+For the models we trained in Sec. 5.2, we performed hyperparameter tuning on the validation set, and ended up using the
+following: ResNet18 had a learning rate of .0001, AlexNet of .0003, and VGG16 of .00014. All models were trained with
+stochastic gradient descent, a batch size of 64, and 10 epochs. We use the given train-validation-test split from the CelebA
+dataset.
+Our method for surveying prominent fairness papers is as follows: on Google Scholar we performed a search for papers
+containing the keywords of “fair”, “fairness”, or “bias” from the year 2015 onwards, sorted by relevance. We did this for the
+three conferences of 1) Conference on Neural Information Processing Systems (NeurIPS), 2) International Conference on
+Machine Learning (ICML), and 3) ACM Conference on Fairness, Accountability, and Transparency (FAccT). We picked
+these conferences because of their high reputability as machine learning conferences, and thus would serve as a good upper
+bound for reporting error bars on fairness evaluation metrics. We also looked at the International Conference on Learning
+Representations (ICLR), but the Google Scholar search turned up very few papers on fairness. From the three conferences
+we ended up querying, we took the ﬁrst 25 papers from each, pruning those that were either: 1) not related to fairness, or 2)
+not containing fairness metrics for which it error bars could be relevant (e.g., theoretical or philosophical papers). Among
+the 48 papers that were left of the 75, if there was at least one graph or table containing a fairness metric that did not appear
+to be fully deterministic, and no error bars were included (even if the number reported was a mean across multiple runs),
+this was marked to be a “non-error-bar” paper, of which 25 of the 48 papers looked into met this criteria.
+A.3. Details on Measuring Bias Ampliﬁcation in FitBERT
+Here we provide additional details behind the numbers presented in Tbl. 2 in Sec. 5.3.
+As noted, and done, by (Liang et al., 2020), a large and diverse corpus of sentences is needed to sample from the large
+variety of contexts. However, that is out of scope for this work, where we run FitBERT on 20 sentence templates of the
+form “[1) he/she/(they)] [2) is/was] a(n) [3) adjective] [4) occupation]”. By varying 2) and using the top 10 most frequent
+adjectives from a list of adjectives (Hugsy, 2017) that appear in the English Wikipedia dataset (one of the datasets BERT
+was trained on) that would be applicable as a descriptor for an occupation (pruning adjectives like e.g., “which”, “left”) for
+3), we end up with 20 template sentences. We then alternate conditioning on 1) (to calculate A !T) and 4) (to calculate
+T!A). The 10 adjectives we ended up wtih are: new, known, single, large, small, major, French, old, short, good. We use
+the output probabilities rather than discrete predictions in calculating P(^Aa= 1jTt= 1) andP(^Tt= 1jAa= 1) because
+there is no “right” answer in sentence completion, in contrast to object prediction, and so we want the output distribution.
+When calculating the amount of bias ampliﬁcation when the base rates are equal, we picked the direction of bias based on
+that provided by the WinoBias dataset. In practice, this can be thought of as setting the base correlation, P(Aa= 1jTt= 1)
+for a men-biased job like “cook” to be :5 +for “he” and :5 for “she” when there are two pronouns, and :33 +for “he”
+and:33 for “she” and “they”, where in practice we used = 1e 7. This ensures that the indicator variable, yatfrom Eq.
+2, is set in the direction fo the gender bias, but the magnitudes of atare not affected to a signiﬁcant degree.
+To generate a rough approximation of what training correlation rates could look like in this domain, we look to one of
+the datasets that BERT was trained on, the Wikipedia dataset. We do so by simply counting the cooccurrences of all the
+occupations along with gendered words such as “man”, “he”, “him”, etc. There are ﬂaws with this approach because
+in a sentence like “She went to see the doctor.”, the pronoun is in fact not referring to the gender of the person with the
+occupation. However, we leave a more accurate measurement of this to future work, as our aim for showing these results was
+Directional Bias Ampliﬁcation
+more for demonstrative purposes illustrating the manipulation of the correlation rate, rather than in rigorously measuring the
+training correlation rate.
+We use 32 rather than 40 occupations in WinoBias (Zhao et al., 2018), because when we went to the 2016 U.S. Labor Force
+Statistics data (of Labor Statistics, 2016) to collect the actual numbers of each gender and occupation in order to be able to
+calculateP(Tt= 1jAa= 1) , since WinoBias only had P(Aa= 1jTt= 1) , we found 8 occupations to be too ambiguous
+to be able to determine the actual numbers. For example, for “attendant”, there were many different attendant jobs listed,
+such as “ﬂight attendants” and “parking lot attendant”, so we opted rather to drop these jobs from the list of 40. The 8 from
+the original WinoBias dataset that we ignored are: supervisor, manager, mechanician, CEO, teacher, assistant, clerk, and
+attendant. The ﬁrst four are biased towards men, and the latter four towards women, so that we did not skew the distribution
+of jobs biased towards each gender.
+A.4. COCO Masking Experiment Broken Down by Object
+In Table 1 of Sec. 4 we perform an experiment whereby we measure the bias ampliﬁcation on COCO object detection
+based on the amount of masking we apply to the people in the images. We ﬁnd that BiasAmpA!Tdecreases when we apply
+masking, but BiasAmpT!Aincreases when we do so. To better inform mitigation techniques, it is oftentimes helpful to take
+a more granular look at which objects are actually amplifying the bias. In Table 3 we provide such a granular breakdown. If
+our goal is to target BiasAmpA!T, we might note that objects like tvshow decreasing bias ampliﬁcation when the person
+is masked, while dining table stays relatively stagnant.
+Directional Bias Ampliﬁcation
+Table 3. A breakdown of BiasAmpA!Tand BiasAmpT!Aby object for the masking experiment done on COCO in Table 1.
+ObjectOriginal Noisy Person Mask Full Person Mask
+A!TT!AA!TT!AA!TT!A
+teddy bear 0:130:04 1:230:32 0:130:04 2:270:34 0:090:04 1:930:43
+handbag 0:440:14 7:880:67 0:40:17 5:622:13 0:240:13 2:963:03
+fork 0:620:22 7:671:31 0:630:18 7:451:65 0:760:24 6:220:62
+cake 0:290:06 5:70:59 0:090:04 5:20:59 0:160:06 3:31:7
+bed 0:010:04 1:331:43 0:060:08 5:331:43 0:090:03 6:670:0
+umbrella 0:050:07 9:523:92 0:080:06 13:332:64 0:040:11 11:242:76
+spoon 0:060:06 2:912:78 0:030:06 10:914:83 0:040:03 15:274:11
+giraffe 0:210:13 5:321:51 0:20:05 4:052:46 0:020:04 4:951:34
+bowl 0:280:04 2:21:02 0:060:07 4:82:56 0:180:12 7:42:26
+knife 0:220:12 11:742:39 0:350:12 10:433:15 0:310:05 8:842:18
+wine glass 0:410:14 5:240:83 0:620:09 7:143:49 0:690:07 10:953:64
+dining table 0:750:14 4:531:02 0:760:14 3:182:12 0:740:17 4:581:38
+cat 0:070:04 2:412:05 0:190:05 10:02:42 0:170:02 20:01:81
+sink 0:180:15 4:292:4 0:110:07 5:032:6 0:120:1 3:191:5
+cup 0:30:09 12:363:42 0:150:08 12:01:32 0:120:03 14:422:94
+potted plant 0:210:18 6:365:1 0:340:07 0:02:82 0:320:08 4:552:52
+refrigerator 0:060:03 9:61:36 0:070:06 7:471:75 0:010:03 12:04:25
+microwave 0:010:02 3:55:3 0:010:03 13:013:32 0:030:03 6:09:05
+couch 1:350:16 0:251:24 0:940:23 1:621:06 1:210:16 0:150:8
+oven 0:070:09 7:671:73 0:330:12 10:673:0 0:030:13 13:121:49
+sandwich 0:980:15 8:930:92 2:60:18 15:232:78 2:460:4 15:671:74
+book 0:430:08 3:070:57 0:480:13 3:341:24 0:850:11 3:182:0
+bottle 0:050:11 7:731:54 0:130:14 8:333:87 0:060:06 11:521:65
+cell phone 0:090:13 3:61:92 0:050:15 13:720:89 0:10:12 18:722:36
+pizza 0:190:1 6:851:81 0:090:03 15:172:41 0:380:12 9:31:56
+banana 0:350:08 4:420:66 0:560:09 6:11:06 0:10:19 5:190:72
+toothbrush 0:470:11 2:422:63 0:550:13 4:325:14 0:50:12 11:854:43
+tennis
+racket 0:090:08 9:223:05 0:00:09 14:752:74 0:090:12 14:751:38
+chair 0:310:11 1:870:22 0:310:06 3:850:37 0:310:05 4:690:0
+dog 0:140:04 0:430:19 0:30:07 1:60:29 0:30:04 1:70:35
+donut 0:30:08 1:40:29 0:390:15 0:00:59 0:410:15 0:090:37
+suitcase 0:430:08 1:961:12 0:090:01 7:30:65 0:110:14 8:431:4
+laptop 0:270:07 4:583:57 0:060:04 7:676:33 0:10:06 17:395:52
+hot dog 1:480:12 7:632:72 1:510:07 9:371:75 1:860:14 9:163:03
+remote 0:330:02 9:142:73 0:150:09 11:032:59 0:150:07 18:623:12
+clock 0:770:16 4:483:05 0:620:08 9:613:02 0:880:11 11:443:78
+bench 0:020:05 11:493:61 0:060:06 14:684:73 0:040:06 16:62:61
+tv 0:350:09 5:164:59 0:270:12 14:192:58 0:210:09 18:063:03
+mouse 0:220:06 0:955:76 0:260:05 4:574:99 0:180:06 5:144:11
+horse 0:070:03 8:135:17 0:110:07 13:631:96 0:160:04 16:594:92
+ﬁre hydrant 0:210:07 4:712:98 0:150:07 1:764:64 0:180:06 5:06:19
+keyboard 0:010:08 1:643:4 0:080:08 17:384:51 0:020:08 31:156:74
+bus 0:020:04 11:332:15 0:170:07 9:03:53 0:10:04 3:06:62
+toilet 0:260:06 7:654:07 0:20:09 12:174:15 0:190:06 17:225:67
+person 0:040:1 1:474:54 0:10:07 4:125:25 0:030:08 3:534:65
+trafﬁc light 0:20:03 4:442:48 0:270:06 6:061:86 0:270:11 11:522:28
+sports ball 1:440:2 3:411:56 0:950:27 3:861:83 1:270:32 4:951:97
+bicycle 0:230:07 13:582:02 0:010:15 13:093:98 0:210:08 12:721:83
+car 0:20:2 3:71:49 0:570:1 0:742:2 0:320:1 0:372:66
+backpack 0:010:03 7:571:63 0:00:06 17:843:09 0:050:04 18:382:53
+Directional Bias Ampliﬁcation
+Table 3. Continued
+ObjectOriginal Noisy Person Mask Full Person Mask
+A!TT!AA!TT!AA!TT!A
+train 0:150:07 8:473:33 0:270:08 16:821:86 0:140:16 19:283:97
+kite 0:090:04 2:673:35 0:160:07 7:563:4 0:220:05 4:893:78
+cow 0:170:08 1:61:95 0:110:08 0:863:0 0:150:07 3:582:55
+skis 0:120:09 0:242:13 0:250:03 1:313:01 0:230:1 7:51:76
+truck 0:270:04 13:331:68 0:250:12 10:261:42 0:160:03 17:952:46
+elephant 0:580:15 9:091:25 0:240:08 4:292:94 0:630:06 1:693:13
+boat 0:030:05 2:81:79 0:020:07 0:02:48 0:050:05 3:23:06
+frisbee 0:090:17 1:361:18 0:140:22 0:72:45 0:790:17 6:882:28
+airplane 0:140:07 4:233:27 0:150:07 5:774:4 0:160:05 5:773:69
+motorcycle 0:060:04 6:353:94 0:010:06 9:042:42 0:120:04 1:736:64
+surfboard 0:020:05 3:834:79 0:060:07 1:741:36 0:080:06 2:434:83
+tie 0:160:06 3:292:1 0:080:07 3:533:45 0:230:04 4:714:47
+snowboard 0:40:13 10:052:1 0:530:16 9:641:0 0:410:22 7:91:7
+baseball bat 0:460:04 3:722:47 0:450:1 3:361:8 0:230:12 1:242:17
+baseball
+glove 0:030:05 27:064:12 0:160:04 34:91:29 0:10:03 36:470:84
+skateboard 0:280:03 11:373:51 0:340:08 10:983:86 0:350:11 5:883:77

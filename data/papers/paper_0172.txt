@@ -1,0 +1,1572 @@
+Title: Towards Understanding and Mitigating Social Biases in Language Models
+
+Towards Understanding and Mitigating Social Biases in Language Models
+Paul Pu Liang1Chiyu Wu1Louis-Philippe Morency1Ruslan Salakhutdinov1
+Abstract
+Warning: this paper contains model outputs that
+may be offensive or upsetting.
+As machine learning methods are deployed in real-
+world settings such as healthcare, legal systems,
+and social science, it is crucial to recognize how
+they shape social biases and stereotypes in these
+sensitive decision-making processes. Among such
+real-world deployments are large-scale pretrained
+language models (LMs) that can be potentially
+dangerous in manifesting undesirable represen-
+tational biases - harmful biases resulting from
+stereotyping that propagate negative generaliza-
+tions involving gender, race, religion, and other
+social constructs. As a step towards improving
+the fairness of LMs, we carefully deﬁne several
+sources of representational biases before propos-
+ing new benchmarks and metrics to measure them.
+With these tools, we propose steps towards miti-
+gating social biases during text generation. Our
+empirical results and human evaluation demon-
+strate effectiveness in mitigating bias while re-
+taining crucial contextual information for high-
+ﬁdelity text generation, thereby pushing forward
+the performance-fairness Pareto frontier.
+1. Introduction
+Machine learning tools for processing large datasets are in-
+creasingly deployed in real-world scenarios such as health-
+care (Velupillai et al., 2018), legal systems (Dale, 2019),
+and computational social science (Bamman et al., 2016).
+However, recent work has shown that discriminative mod-
+els including pretrained word and sentence embeddings
+reﬂect and propagate social biases present in training cor-
+pora (Bolukbasi et al., 2016; Caliskan et al., 2017; Lauscher
+and Glava ˇs, 2019; Swinger et al., 2019). Further usages of
+such approaches can amplify biases and unfairly discrim-
+inate against users, particularly those from disadvantaged
+social groups (Barocas and Selbst, 2016; Sun et al., 2019;
+1Carnegie Mellon University. Correspondence to: Paul Pu Liang
+<pliang@cs.cmu.edu >.
+Proceedings of the 38thInternational Conference on Machine
+Learning , PMLR 139, 2021. Copyright 2021 by the author(s).Zhao et al., 2017). More recently, language models (LMs)
+are increasingly used in real-world applications such as text
+generation (Radford et al., 2019), dialog systems (Zhang
+et al., 2020), recommendation systems (Shakespeare et al.,
+2020), and search engines (Baeza-Yates, 2016; Otterbacher
+et al., 2018). As a result, it becomes necessary to recognize
+how they potentially shape social biases and stereotypes.
+In this paper, we aim to provide a more formal understanding
+of social biases in LMs. In particular, we focus on represen-
+tational biases , which, following the taxonomy in Blodgett
+et al. (2020), are harmful biases resulting from stereotyping
+that propagate negative generalizations about particular so-
+cial groups, as well as differences in system performance
+for different social groups, text that misrepresents the dis-
+tribution of different social groups in the population, or
+language that is denigrating to particular social groups. A
+better understanding of these biases in text generation would
+subsequently allow us to design targeted methods to mitigate
+them. We begin by summarizing three inherent difﬁculties
+indeﬁning andmeasuring biases during text generation:
+P1 Granularity: In prior work studying biases in embed-
+dings, social biases are measured using a set of association
+tests between predeﬁned social constructs (e.g., gender and
+racial terms) and social professions (e.g., occupations, aca-
+demic ﬁelds). While it sufﬁces to measure such associations
+over a set of tests for discriminative purposes, the study of
+biases in text generation can be more nuanced - biases can
+potentially arise during the generation of any token (Nadeem
+et al., 2020), as well as from a more holistic, global interpre-
+tation of the generated sentence (Sheng et al., 2019).
+P2 Context: In addition to ensuring that generated content
+is unbiased, one must also make sure to respect the context.
+Consider the sentence “The man performing surgery on a
+patient is a [blank]” . While we want a fair LM that assigns
+equal probability to w=doctor thanw=nurse regardless
+of the gender described in the context, the LM should also
+preserve context associations between surgery anddoctor .
+P3 Diversity: Generated content should be unbiased across
+adiverse distribution of real-world contexts, which calls for
+stringent large-scale evaluation benchmarks and metrics.
+Our ﬁrst contribution is therefore to disentangle two sources
+of representational biases that may arise during languagearXiv:2106.13219v1  [cs.CL]  24 Jun 2021
+Towards Understanding and Mitigating Social Biases in Language Models
+Global biasThe man performing surgery is adoctor.nurse.The man performing surgery isprecisely leading the operation. The woman performing surgery iscarefully assisting the doctor. The woman performing surgery is aLocal biasThe man performing surgery is adoctor.Bias associationContext association
+(a)<latexit sha1_base64="QIQI7im4Lgx2QX84xSaMHBtiy4A=">AAAB83icbVBNSwMxEM3Wr1q/qh69BItQL2VXCuqt6MVjBfsB3aVk02wbmmSXZFYsS/+GFw+KePXPePPfmLZ70NYHA4/3ZpiZFyaCG3Ddb6ewtr6xuVXcLu3s7u0flA+P2iZONWUtGotYd0NimOCKtYCDYN1EMyJDwTrh+Hbmdx6ZNjxWDzBJWCDJUPGIUwJW8n1gT6BlViXn03654tbcOfAq8XJSQTma/fKXP4hpKpkCKogxPc9NIMiIBk4Fm5b81LCE0DEZsp6likhmgmx+8xSfWWWAo1jbUoDn6u+JjEhjJjK0nZLAyCx7M/E/r5dCdBVkXCUpMEUXi6JUYIjxLAA84JpREBNLCNXc3orpiGhCwcZUsiF4yy+vkvZFzavXru/rlcZNHkcRnaBTVEUeukQNdIeaqIUoStAzekVvTuq8OO/Ox6K14OQzx+gPnM8f96SRqA==</latexit>
+(b)<latexit sha1_base64="RtS6/0S+aTs2CR2/J4a9rsJIRwk=">AAAB83icbVBNSwMxEM3Wr1q/qh69BItQL2VXCuqt6MVjBfsB3aVk02wbmmSXZFYsS/+GFw+KePXPePPfmLZ70NYHA4/3ZpiZFyaCG3Ddb6ewtr6xuVXcLu3s7u0flA+P2iZONWUtGotYd0NimOCKtYCDYN1EMyJDwTrh+Hbmdx6ZNjxWDzBJWCDJUPGIUwJW8n1gT6BlVg3Pp/1yxa25c+BV4uWkgnI0++UvfxDTVDIFVBBjep6bQJARDZwKNi35qWEJoWMyZD1LFZHMBNn85ik+s8oAR7G2pQDP1d8TGZHGTGRoOyWBkVn2ZuJ/Xi+F6CrIuEpSYIouFkWpwBDjWQB4wDWjICaWEKq5vRXTEdGEgo2pZEPwll9eJe2LmlevXd/XK42bPI4iOkGnqIo8dIka6A41UQtRlKBn9IrenNR5cd6dj0VrwclnjtEfOJ8/+SqRqQ==</latexit>
+GPT-2
+Figure 1. (a) We disentangle sources of representational biases in text generation into ﬁne-grained local biases and high-level global biases.
+Local biases represent predictions at a particular time step that reﬂect undesirable associations with the context. Global biases result from
+representational differences across entire generated sentences spanning multiple phrases. (b) While it is desirable to mitigate bias, one
+must also take care to preserve contextual associations between the prompt (e.g. surgery ) and the next word (e.g. doctor ).
+modeling: ﬁne-grained local biases andhigh-level global
+biases (see Figure 1). Fine-grained local biases represent
+predictions generated at a particular time step that reﬂect
+undesirable associations with the context. For example, an
+LM that assigns a higher likelihood to the ﬁnal token in “he
+worked as a [doctor]” than “she worked as a [doctor]” .
+High-level global biases result from representational differ-
+ences across entire generated sentences spanning multiple
+phrases. For example, an LM that generates “the gay person
+was known for [his love of dancing, but he also did drugs]”
+(example from (Sheng et al., 2019)). We ﬁrst formally deﬁne
+these two sources of biases (addressing P1) and ways to sep-
+arate them from desirable context associations (addressing
+P2). With this in mind, we propose diverse benchmarks and
+metrics that test for both sources of bias (addressing P3).
+Using these new formulations, we empirically validate the
+existence of biases in pretrained LMs.
+As a step towards mitigating bias in LMs, our second con-
+tribution is a new method called AUTOREGRESSIVE INLP
+(A-INLP ) that is able to perform post-hoc debiasing of large
+pretrained LMs. The key to our approach lies in dynamically
+ﬁnding bias-sensitive tokens rather than relying on a prede-
+ﬁned set of bias-sensitive words that are common in existing
+literature (Bolukbasi et al., 2016). While a predeﬁned set
+may work for studying word embeddings, LMs must handle
+many possible diverse contexts and generated outputs. We
+present a way to expand beyond a set of tokens using the
+geometry of embeddings and a bias classiﬁer that general-
+izes to new contexts. Using these techniques in A-INLP
+shows effectiveness in mitigating bias over diverse input
+contexts and possible generation candidates through a set
+of experiments studying biases resulting from gender and
+religion. We also perform in-depth analysis into the various
+design decisions in measuring, detecting, and mitigating bi-
+ases which we hope will inspire work towards automatically
+identifying sensitive tokens for fairer NLP.
+2. Related Work
+Social biases in text generation: Recent work has focused
+on deﬁning and evaluating social bias (Nadeem et al., 2020;
+Sheng et al., 2019) as well as other notions of human-alignedvalues such as ethics (Hendrycks et al., 2021), social bias im-
+plications (Sap et al., 2020), and toxic speech (Gehman et al.,
+2020) in generated text. Our approach aims to supplement
+existing work by disentangling sources of bias and design-
+ing new target methods to mitigate them. We also evaluate
+our method on the benchmarks proposed in Nadeem et al.
+(2020) and Sheng et al. (2019). Existing approaches towards
+mitigating biases in generation currently require retrain-
+ing the models through adversarial trigger prompts (Sheng
+et al., 2020), data augmentation or collection (Dinan et al.,
+2020), and different objective functions (Qian et al., 2019;
+Huang et al., 2020). These approaches have also been ap-
+plied to image captioning (Hendricks et al., 2018), image
+retrieval (Otterbacher, 2018), and dialog (Liu et al., 2020).
+However, these approaches are not scalable to large pre-
+trained LMs (Radford et al., 2019) which are trained on
+massive amounts of text data over hundreds of machines
+for several weeks. As a result, it is difﬁcult to retrain a new
+LM whenever a new source of bias is uncovered from data.
+Therefore, we focus on efﬁcient post-processing approaches
+to mitigate bias without retraining.
+Social biases in text embeddings: A closely related line of
+work lies in measuring and mitigating biases in embedding
+spaces. For example, word embeddings are shown to re-
+ﬂect and propagate social biases in the form of undesirable
+associations that reinforce negative stereotypes about par-
+ticular social groups (Lauscher and Glava ˇs, 2019; Caliskan
+et al., 2017; Bolukbasi et al., 2016). Corresponding methods
+for debiasing these embeddings for both binary (Bolukbasi
+et al., 2016; Zhao et al., 2018) and multiclass (Manzini
+et al., 2019) attributes across gender, race, and religion have
+been devised. Recent work has also extended this analysis
+towards measuring (Tan and Celis, 2019; Guo and Caliskan,
+2020; Kurita et al., 2019) and mitigating (Liang et al., 2020;
+Ravfogel et al., 2020) bias in contextual embeddings such
+as ELMo (Peters et al., 2018), BERT (Devlin et al., 2019),
+and GPT (Radford et al., 2019) encoders. Many of these
+approaches involve extending the Word Embedding Associ-
+ation Test (WEAT) (Caliskan et al., 2017) metric to the sen-
+tences (SEAT) using context templates (May et al., 2019).
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 1. We summarize the benchmarks and metrics to measure local and global biases as well as LM performance during text generation.
+Diverse contexts found in naturally occurring text corpora test for both bias and context associations in rich real-world scenarios.
+Source Example Data Collection Evaluation metric
+Local biasHe worked as a [doctor].
+She worked as a [nurse].Templates (Sheng et al., 2019) KL(p(wt/divides.alt0c(1)
+t−1); p(wt/divides.alt0c(2)
+t−1))
+The man performing surgery is a [doctor].
+The woman performing surgery is a [nurse].+ Diverse text corpora H2(p(wt/divides.alt0c(1)
+t−1); p(wt/divides.alt0c(2)
+t−1))
+Global biasHe was known for [being strong and assertive].
+She was known for [being quiet and shy].Regard dataset (Sheng et al., 2019)
++ Diverse text corpora/divides.alt0g(s(1))−g(s(2))/divides.alt0
+Human evaluation
+PerformanceThe jew worked as an enterprising [businessman].
+The christian was regarded as an international
+hero who [saved a million lives in the 1940s.]Diverse text corporap(w∗/divides.alt0c(1)
+t−1)&p(w∗/divides.alt0c(2)
+t−1)
+KL(p(wt/divides.alt0ct−1); p∗
+(wt/divides.alt0ct−1))
+H2(p(wt/divides.alt0ct−1); p∗
+(wt/divides.alt0ct−1))
+Beyond representational biases: Several other sources of
+bias have also been shown to exist in machine learning
+models, such as allocational harms that arise when an auto-
+mated system allocates resources (e.g., credit) or opportuni-
+ties (e.g., jobs) unfairly to different social groups (Barocas
+et al., 2017), and questionable correlations between sys-
+tem behavior and features associated with particular social
+groups (Cho et al., 2019). These are also important per-
+spectives of bias that we leave as future work. We refer the
+reader to Blodgett et al. (2020) for a detailed taxonomy of
+the existing literature in analyzing social biases in NLP.
+3. Deﬁning Sources of Biases in LMs
+We begin with a standard deﬁnition of language modeling:
+given some context cand a target vocabulary Vconsisting
+of a discrete set of word tokens, a model pwith parameters
+aims to predict a distribution over the next candidates V
+over multiple time steps until a maximum step Tis reached:
+p(wt/divides.alt0ct−1)=p(wt/divides.alt0w0;w1;:::;wt−1)∀t≤T: (1)
+In practice,p(wt/divides.alt0ct−1)is implemented via two functions:
+anembedding functioneover the vocabulary V(either pre-
+trained word embeddings or trainable embeddings), and
+anencoding functionfover the context ct−1(e.g., an
+RNN (Rumelhart et al., 1985) or Transformer (Vaswani
+et al., 2017)). The probability of a given next token wtis
+then equivalent to a softmax over distances between the
+token embedding e(wt)and context embedding f(ct−1):
+p(wt/divides.alt0w1;w2;:::;wt−1)=exp(e(wt)/uni22BAf(ct−1))
+∑w∈Vexp(e(w)/uni22BAf(ct−1)):
+(2)
+When using a Transformer LM such as GPT- 2, one
+can deﬁne the encoded context f(ct−1)to consist of
+the key-value pairs from the past, i.e., f(ct−1)=
+[(K(1)
+t−1;V(1)
+t−1);:::;(K(l)
+t−1;V(l)
+t−1)]where(K(i)
+t−1;V(i)
+t−1)corre-
+sponds to the key-value pairs from the i-th Transformer
+layer generated from time steps 0tot−1(see (Dathathri
+et al., 2019) for more details). We use p∗
+to denote the
+original pretrained LM.As a step towards deﬁning bias in text generation, we ﬁrst
+disentangle ﬁne-grained local and high-level global sources
+of representational bias before designing a new benchmark
+and metrics for measuring these biases. We focus our expo-
+sition on the biases across binary gender1groups but our
+approach easily generalizes to multiclass social groups.
+3.1. Fine-grained Local Biases
+Fine-grained local biases represent predictions generated at
+a particular time step that reﬂect undesirable associations
+with the context. For example, an LM that assigns a higher
+likelihood to the ﬁnal token in “he worked as a [doctor]”
+than “she worked as a [doctor]” .
+Formally, consider the generation of word wtgiven a context
+c(1)
+t−1describing the ﬁrst social group (e.g., male individual).
+Change the context to c(2)
+t−1such that it describes the second
+social group (e.g., female individual), and vice-versa. This
+can be done via simple word replacement from a prede-
+ﬁned set of gender pairs (Bolukbasi et al., 2016). A model’s
+generation at time tis said to be locally biased if:
+p(wt/divides.alt0c(1)
+t−1)≠p(wt/divides.alt0c(2)
+t−1): (3)
+In other words, if the distribution over the next tokens differs
+signiﬁcantly given a counterfactual edit in the context with
+respect to the gendered term. To measure local biases across
+the vocabulary, we use a suitable f-divergence between the
+probability distributions predicted by the LM conditioned
+on both counterfactual contexts:
+Df(p(wt/divides.alt0c(1)
+t−1);p(wt/divides.alt0c(2)
+t−1)): (4)
+Since the probability of a speciﬁc token wtis directly propor-
+tional to the cosine distance between that token’s embedding
+e(wt)and the context embedding f(ct−1)(by equation 2),
+computing the f-divergence has a nice interpretation of sum-
+marizing the difference in pairwise distances between all
+1We recognize that gender is non-binary and there are many
+ethical principles in the design, evaluation, and reporting of results
+in studying gender as a variable in NLP (Larson, 2017).
+Towards Understanding and Mitigating Social Biases in Language Models
+tokens and both contexts, weighted by the likelihood of that
+token. This further generalizes WEAT (Caliskan et al., 2017)
+or SEAT (May et al., 2019) tests by comparing across all
+tokens while at the same time weighting more likely tokens
+higher in bias computation, instead of only considering a
+predeﬁned set of bias attributes (e.g., gendered terms and
+occupations). In practice, we use the KL divergence and the
+Hellinger distance to measure this difference.
+3.2. High-level Global Biases
+High-level global biases result from representational differ-
+ences across entire generated sentences spanning multiple
+phrases. For example, an LM that generates “the gay per-
+son was known for [his love of dancing, but he also did
+drugs]” (example from (Sheng et al., 2019)). While the
+generation at each time step exhibits local biases, the entire
+generated sentence also exhibits biases through a holistic,
+global interpretation. The key difference lies in the fact that
+local biases primarily inspect the associations per word and
+primarily measure associations in generated nouns (e.g., oc-
+cupations). On the other hand, global biases take a more
+holistic view that considers the semantics of the generated
+sentence, thereby measuring negative associations across
+entire phrases as well as their constituent verbs, adjectives,
+and other parts of speech.
+Again, consider a given context c(1)
+t−1describing a male indi-
+vidual. Change the context to c(2)
+t−1such that it describes a
+female individual rather than male, and vice-versa. Inspired
+by Sheng et al. (2019) and Huang et al. (2020), we allow
+the LM to generate the complete sentence s(1)ands(2)re-
+spectively before measuring differences in sentiment and
+regard of the resulting sentence using a pretrained classiﬁer
+g(⋅).Sentiment scores capture differences in overall lan-
+guage polarity (Pang and Lee, 2008), while regard measures
+language polarity and social perceptions of a demographic
+(see Sheng et al. (2019) for differences). As a result, sen-
+timent and regard measure representational biases in the
+semantics of entire phrases rather than individual words. A
+model’s generation at time tis said to be globally biased if:
+g(s(1))≠g(s(2)): (5)
+In other words, if sentiment and regard estimates differ
+signiﬁcantly given a counterfactual edit in the context with
+respect to the gendered term. To measure for the difference,
+we take the absolute difference /divides.alt0g(s(1))−g(s(2))/divides.alt0.
+3.3. Benchmarks for Evaluating Biases
+Given these metrics, we now describe several existing and
+newly collected data sources for measuring both local and
+global biases, as well as their tradeoffs with language mod-
+eling performance.
+Balancing biases with prediction: Suppose you are given
+a sentence “The man performing surgery on a patient is a[blank]” . A biased LM will likely assign higher probability
+tow=doctor thanw=nurse by virtue of the context
+describing a male individual. However, note that there are 2
+associations going on:
+1. between “man” and“doctor” , which is the result of a
+biased association in the language model, and
+2. between “surgery” and“doctor” , which is the result of a
+(perfectly ok) context association in the language model.
+Therefore, to accurately benchmark LMs for both fairness
+and performance, we use two sets of metrics to accurately
+estimate bias association while allowing for context as-
+sociation. To estimate for bias association, we measure
+whetherp(wt/divides.alt0c(1)
+t−1)≈p(wt/divides.alt0c(2)
+t−1)across the entire dis-
+tribution of next tokens at time t(i.e., local bias) as well
+as whether g(s(1))≈g(s(2))for entire generated sen-
+tences (i.e., global bias). To estimate for context association,
+we measure whether p(w∗/divides.alt0c(1)
+t−1)andp(w∗/divides.alt0c(2)
+t−1)for the
+ground truth word w∗are both high implying that the LM
+still assigns high probability to the correct next token by
+capturing context associations.
+Leveraging diverse contexts: To accurately benchmark
+LMs for both bias and context associations, it is also impor-
+tant to use diverse contexts beyond simple templates used in
+prior work. Speciﬁcally, the Sentence Encoder Association
+Test (May et al., 2019), StereoSet (Nadeem et al., 2020)),
+and templates in Sheng et al. (2019) are all based on com-
+bining bias terms (e.g., gender and race terms) and attributes
+(e.g., professions) with simple placeholder templates (e.g.,
+“The woman worked as” ,“The man was known for” ). Di-
+verse contexts found in naturally occurring text corpora
+contain important context associations to accurately bench-
+mark whether the new LM can still accurately generate
+realistic text, while also ensuring that the biases in the new
+LM are tested in rich real-world contexts. To achieve this,
+we collect a large set of 16;338diverse contexts from 5real-
+world text corpora spanning WIKITEXT-2(Merity et al.,
+2017), SST (Socher et al., 2013), REDDIT ,MELD (Poria
+et al., 2019), and POM (Park et al., 2014) which cover both
+spoken and written English language across formal and in-
+formal settings and a variety of topics (Wikipedia, reviews,
+politics, news, and TV dialog). We summarize these con-
+texts and metrics in Table 1. From 948;573sentences across
+5datasets, we found 15;162contexts for gender and 1;176
+for religion which constitute our diverse context dataset.
+Please refer to Appendix B for details.
+4. Mitigating Biases
+Given the existence of local and global biases in LMs, our
+approach towards mitigating them lies in 1) learning a set of
+bias-sensitive tokens, and 2) mitigating bias of these sensi-
+tive tokens via our newly proposed autoregressive iterative
+nullspace projection algorithm (see Figure 2).
+Towards Understanding and Mitigating Social Biases in Language Models
+Algorithm 1 AUTOREGRESSIVE INLP algorithm for mitigating social biases in pretrained LMs.
+1:Given: pre-trained LM p∗
+.
+2:Learn bias-sensitive tokens Sby projection onto bias subspace.
+3:Learn context bias classiﬁer with parameter Wand obtain nullspace Pvia multiple steps of nullspace projection.
+4:fort=1;:::;T do
+5:V′=topkp∗
+(⋅/divides.alt0ct−1)∩S // Find likely next tokens that are bias-sensitive
+6: ^p(wt/divides.alt0ct−1)=exp/parenleft.alt1e(wt)/uni22BAPf(ct−1)/parenright.alt1
+∑w∈Vexp(e(w)/uni22BAPf(ct−1))// Computed debiased LM distribution
+7:t=∑w∈V′p∗
+(w/divides.alt0ct−1)×q(w)
+∑w∈V′p∗
+(w/divides.alt0ct−1)// Compute debiasing level
+8:p(wt/divides.alt0ct−1)=t^p(wt/divides.alt0ct−1)+(1−t)p∗
+(wt/divides.alt0ct−1)// Obtain new weighted LM
+9:wt∼p(wt/divides.alt0ct−1) // Sample next token
+10:end for
+11:return generated tokens w1;:::;wT.
+Themanworkedas
+amale context  female context  (2) Nullspace projection(1) Identify bias-sensitive tokens
+GPT-2A-INLP(male bias)(male bias)(female bias)(female bias)scientistnurseartistdoctor
+scientistnursedoctorartist……
+Figure 2. Our approach for mitigating biases in language models
+relies on 2 steps: (1) identifying sources of local and global biases
+during text generation (section 4.1), and (2) mitigating bias via
+sequential iterative nullspace projection in order to obtain a more
+uniform distribution over possibly sensitive tokens (section 4.2).
+4.1. Finding Biases Through Sensitive Tokens
+Prior work studying representational biases uses a set of
+predeﬁned social attributes (e.g., occupations, academic
+ﬁelds) to measure undesirable associations (Caliskan et al.,
+2017). We refer to such attributes as bias-sensitive words :
+words that are at risk of capturing undesirable associations
+with respect to gendered terms. Finding bias-sensitive words
+is therefore crucial to mitigating local bias at the word-level.
+We propose to use a learning-based approach that can de-
+tect new bias-sensitive words to ensure fair generation. We
+ﬁrst identify the bias subspace by starting with several deﬁ-
+nitional bias pairs from Bolukbasi et al. (2016), such as
+“he” and“she” ,“father” and“mother” for gender, and
+“jew” ,“christian” ,“muslim” for religion. We embed each
+bias-deﬁning word using GloVe (Pennington et al., 2014)
+and take the SVD of differences between each pair of vec-
+tors to obtain a low-dimensional bias subspace (Bolukbasi
+et al., 2016). These top principal components summarize the
+main directions capturing gender and religion. We project all
+possible candidate generation tokens onto our bias subspace,and the tokens with high projection values are regarded
+as bias sensitive tokens. This approach uses information
+about the geometry of token embeddings to infer new bias-
+sensitive tokens Sbeyond those present in the deﬁnitional
+token set. We perform an in-depth analysis of these auto-
+matically found tokens in §5.1.
+4.2. Mitigating Bias via Nullspace Projection
+Our method is inspired by iterative nullspace projection
+(INLP) as proposed by (Ravfogel et al., 2020) to debias
+word embeddings. Given a set of word embeddings xi∈X
+and a set of corresponding protected attributes zi∈Z(e.g.,
+gender), INLP aims to ﬁnd a linear guarding function hthat
+removes the linear dependence between XandZ. To do so,
+INLP ﬁrst trains a linear classiﬁer with parameter Wto best
+predictzfromxbefore projecting xonto the nullspace of
+W, denoted as P, which serves the purpose of removing
+all information used by Wto predict the protected attribute.
+The guarding function h(x)=Pxgives an embedding that
+removes dependence between xandz(see Ravfogel et al.
+(2020) for details).
+AUTOREGRESSIVE INLP (A-INLP ) extends INLP for
+autoregressive text generation. We assume that we have
+found a set of bias-sensitive tokens Sfrom §4.1, as well
+as a nullspace Pobtained from a trained bias classiﬁer
+given LM contexts (e.g., gender/religion classiﬁer given
+(partial) sentences). In §5.2, we evaluate several design
+choices regarding the data and models required to train
+such a bias classiﬁer.
+At every time step t, we apply INLP to the context em-
+beddingf(ct−1)to ensure that generation of next tokens is
+invariant to gender in the context:
+^p(wt/divides.alt0ct−1)=exp(e(wt)/uni22BAPf(ct−1))
+∑w∈Vexp(e(w)/uni22BAPf(ct−1)):(6)
+Controlling the trade-off between performance and fair-
+ness: We set a hyper-parameter that determines how much
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 2. Examples of harmful bias-sensitive tokens automatically
+detected for gender and religion social classes. Some extremely
+sensitive words have been ﬁltered out, see full list in Appendix D.1.
+Male Female
+captain, sir, president, war,
+gangster, offensive, macho, jock,
+studly, football, henchmen,
+commander, king, greatestsassy, pregnant, diva,
+seductress, madwomen, midwife,
+socialite, glamour, supermodel,
+alluring, vivacious, mistress
+Christianity Islam
+counterfeit, supernatural, skeptics,
+incredulity, charisma, cathedral,
+metaphysical, teleological, faith,
+irresistible, devotionals, fableterrorists, jihad, terror,
+afghanistan, extremists, murder,
+civilians, fear, war, hatred,
+cries, enemies, lies, rights, hate
+to use our debiased LM. The ﬁnal distributions over next
+tokens we output is a weighted average using :
+p(wt/divides.alt0ct−1)=^p(wt/divides.alt0ct−1)+(1−)p∗
+(wt/divides.alt0ct−1)(7)
+wherep∗
+denotes logits of the original LM and ^prepresents
+our debiased LM. =0recovers the original LM predic-
+tions (no debiasing) and =1would fully apply INLP at
+all time steps (full debiasing).
+We further propose an approach to automatically learn tat
+time steptthat summarizes how many of the likely gener-
+ated tokens will be bias-sensitive. A large number of bias-
+sensitive tokens should lead to a large tand vice-versa. To
+computet, we consider the subset of next tokens V′⊆V
+that are 1) likely to be generated by the language model,
+and 2) at risk of displaying bias. To satisfy both criteria, we
+chooseV′=topkp∗
+(⋅/divides.alt0ct−1)∩Swhere the topkfunction
+ranks the predicted LM distribution p∗
+(⋅/divides.alt0ct−1)and chooses
+thekmost likely candidate tokens (thereby satisfying 1),
+followed by an intersection with bias-sensitive tokens S
+(thereby satisfying 2). For each of these potential next to-
+kensw∈V′, we compute 1) q(w), the projection onto
+our bias subspace which reﬂects the degree of bias, and 2)
+p∗
+(w/divides.alt0ct−1)the original LM likelihood. We set
+t=∑w∈V′p∗
+(w/divides.alt0ct−1)×q(w)
+∑w∈V′p∗
+(w/divides.alt0ct−1)(8)
+which computes a normalized value in [0;1]summarizing
+how likely the next tokens will exhibit bias. We summarize
+A-INLP in Algorithm 1 and note some implementation de-
+tails and speedups in Appendix C.1. Note that our approach
+can also be instantiated with other token-level debiasing
+methods beyond INLP, such as subspace debiasing (Boluk-
+basi et al., 2016; Manzini et al., 2019; Liang et al., 2020)
+which we test in our experiments as well.
+5. Experiments
+To test whether we are able to efﬁciently characterize and
+mitigate social biases in LMs, we experiment on the GPT-
+2LM trained in English (Radford et al., 2019). We ﬁrstTable 3. We ﬁnd that training with simple and diverse contexts
+supplemented with sub-sequences gives a bias classiﬁer that gener-
+alizes best to the diverse possible contexts input to LMs.
+Training data Simple Diverse Sub-sequences
+Simple 91:453:6 52 :7
+Simple + Diverse 87:8 61 :2 60 :4
+Simple + Diverse + Sub-sequences 88:063:7 62 :5
+analyze several intermediate objectives of identifying bias-
+sensitive tokens and training bias classiﬁers before testing
+the ability of A-INLP in mitigating bias from pretrained
+GPT- 2. Experimental details are in Appendix C and full
+results are in Appendix D. We release our code at https:
+//github.com/pliang279/LM_bias .
+5.1. Results on Identifying Bias-sensitive Tokens
+How well do our automatically detected bias-sensitive to-
+kens in LMs align with human perception of social biases in
+generated text? We ranked words by their projection values
+onto the bias subspace and show examples of the found
+bias-sensitive tokens (largest projection values) for gender
+and religious terms in Table 2 ( some of the found tokens
+are extremely offensive and we have deferred them to
+Appendix D.1 ). Visually, many of these words very nega-
+tively stereotype certain genders and religions (especially
+for the female gender and Muslim religion). To perform a
+more careful empirical analysis, we sampled the top 100
+bias-sensitive tokens for each social group and asked 5inde-
+pendent human annotators to judge whether the found token
+was indeed stereotyped negatively against that social group.
+For the Islamic religion, 32% of the top-ranked words were
+judged as showing severely negative bias (words such as
+“terror” and“terrorism” ). We show more details and results
+in Appendix D.1.
+5.2. Results on Learning a Bias Classiﬁer
+Next, we analyze how several design decisions affect the
+performance of our trained bias classiﬁer.
+Data: We ﬁrst build a dataset for the bias classiﬁer. To
+improve the diversity of the training data, we collect both
+simple contexts from the templates in Sheng et al. (2019)
+and diverse context from real-world corpus described in
+§3.3. We use our learned bias subspace to ﬁnd a set of bias
+sensitive tokens, and contextualize these bias sensitive to-
+kens into bias sensitive contexts using the approach in Liang
+et al. (2020). For simple contexts, we replaced the biased
+token in the original templates to obtain new contexts. For
+diverse contexts, we collect sentences containing biased to-
+kens within a single class. To match partial input contexts we
+encounter when testing bias in GPT- 2, we also supplement
+our full-sentence contexts with their partial subsequences.
+Method: After collecting this dataset, we train a linear SVM
+Towards Understanding and Mitigating Social Biases in Language Models
+Figure 3. Bias metrics on gender (top 4) and religion (bottom 4) contexts. A-INLP TUNEcontrols the trade-off between performance
+and fairness which can be automatically balanced using A-INLP LEARN. A- SUBSPACE is another effective version of our approach.
+with`2penalty and squared hinge loss as our bias classiﬁer.
+Results: We found that the classiﬁer trained only on simple
+contexts cannot generalize to diverse contexts. When we
+add more diverse contexts from real-world corpora, our clas-
+siﬁer generalizes better to both simple and diverse contexts
+(see Table 3). Finally, we ﬁnd that adding subsequences
+also helps in accurately ﬁnding bias in partial input contexts
+given to GPT- 2. For religion, we ﬁnd the number of sen-
+tences containing religion tokens in real-world corpora is
+relatively small and most sentences are much longer, which
+results in slightly lower accuracy of the trained religion
+classiﬁer (see more details in Appendix D.2).
+5.3. Results on Mitigating Bias
+How well does our proposed A-INLP approach work
+in mitigating social biases in text generation? We apply
+our approach on the pretrained GPT- 2model in Hugging
+Face (Wolf et al., 2020) and compare with both currently
+established and newly proposed benchmarks and metrics.
+Datasets and metrics: We perform experiments on 3
+datasets spanning recently proposed work as well as our
+proposed benchmarks:
+1. Simple contexts as proposed by Sheng et al. (2019) allow
+us to test LMs with certain context templates describing
+gender, race, religion, and other social constructs. We mea-
+sure both local and global bias using these contexts. For
+global bias, we use a pretrained regard classiﬁer (Sheng
+et al., 2019; 2020) as well as human judgment.
+2. Diverse contexts which are our proposed extension to
+better measure fairness and LM performance in diverse real-
+world contexts. We again measure both local and global bias
+using these diverse contexts.
+3. StereoSet (Nadeem et al., 2020) is a recently proposedTable 4. Global regard differences on gender bias. A-INLP dis-
+plays less bias as compared to GPT- 2especially on negative regard.
+Context Model Positive (↓)Neural (↓)Negative (↓)
+RespectGPT- 2 0 :026 0 :134 0 :160
+A-INLP 0:004 0 :000 0 :003
+OccupationGPT- 2 0:004 0:088 0 :084
+A-INLP 0:012 0:046 0 :034
+dataset of simple contexts with human annotations for vari-
+ous possible next word completions that range from unbi-
+ased to biased (showing stereotypes). StereoSet is suitable
+for measuring biases at both local (approximately intra-
+sentence bias) and global (approximately inter-sentence
+bias) levels, while at the same time providing ground truth
+text completions to judge language modeling performance.
+Their metrics include language modeling score (LM), stereo-
+type score (SS), and overall idealized CAT score (ICAT).
+Baselines: We compare to the following methods:
+1.GPT- 2:Original pretrained GPT- 2language model (Rad-
+ford et al., 2019).
+2.INLP: Direct application of INLP when generating every
+token (Ravfogel et al., 2020).
+3.A-INLP TUNE: A-INLP with hyper-parameter search
+overto obtain a single best over all time-steps.
+4.A-INLP LEARN: A-INLP with auto-selection of t
+across time steps learned from bias-sensitive tokens (§4.2).
+5.A-SUBSPACE :Instead of using INLP for debiasing, we
+also experimented with autoregressive token-level subspace
+debiasing at every time step (Bolukbasi et al., 2016).
+Analysis of local and global biases: In Figure 3, we show
+trade-off plots of performance vs fairness as measured
+across local and global metrics with both simple and diverse
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 5. Example sentences generated by GPT- 2and after debiasing with A-INLP .A-INLP generates text that refers less to stereotypes
+while retaining clarity and realistic content. Some extremely sensitive sentences have been ﬁltered out, see full list in Appendix D.6.
+GPT- 2 A-INLP
+The woman was thought as having a long-term mental disorder,
+and was also the only one who identiﬁed herself as bisexual.The woman was regarded as a saint by her Catholic
+community, and the church recognised it in 1925.
+The man was known for attracting outrage at a middle school
+in Starwalt when he solicited young girls on a secret date.The man started working as an actor
+and learned the ropes of news.
+The muslim was known for his extremist activities and
+acts of terrorism, as well as several ﬁne crimes.The muslim was known for his complexity-
+he speaks ﬂuently, reads both cultures and wrote beautifully
+The christian was described as gay ‘pastor’
+from Japan. He had come to the UKThe christian was described as bellowing
+out screams and shouting together from hallowed halls.
+The jew was regarded as a threat to British values.
+He became Britain’s most hated speaker.The jew was regarded as ardent gardener who
+loved ﬂoral essences of fermented soy ﬂavour and alcohol.
+gender and religion contexts. We begin by noting that GPT-
+2exhibits the best performance while being the most unfair
+with respect to different social groups. By applying A-INLP
+TUNEwith different levels of debiasing as controlled by
+, we are able to draw a trade-off curve with gradually im-
+proving fairness metrics at the cost of performance. It is
+promising that for many plots, the initial improvement in
+fairness happens at a small expense in performance (steep
+upwards slope) which implies that initial debiasing can be
+achieved without hurting the quality of generated text. Fi-
+nally, at the largest level of debiasing ( =1), we recover
+theINLP baseline which achieves the best fairness but at
+the expense of language modeling performance.
+For global bias, we also observe that A-INLP LEARN
+using bias-sensitive tokens consistently outperforms other
+approaches on performance and fairness, thereby pushing
+the Pareto front outwards. We also show numerical perfor-
+mance in Table 4 and ﬁnd that our debiased LM effectively
+equalizes the global regard scores (i.e., equal proportion
+of completed sentences judged as positive or negative re-
+gard for both male and female contexts), with it especially
+effective in equalizing negative scoring sentences.
+Finally, we also note some observations regarding A-
+SUBSPACE instantiated with token-level subspace debiasing
+rather than INLP. From Figure 3, we see that this point
+makes little difference to LM performance while achieving
+better fairness performance, which makes subspace debias-
+ing another effective version of our approach.
+Ablation studies: To study the design decisions underpin-
+ning our approach, we conduct ablation studies and summa-
+rize our observations (full results in Appendix D.4):
+1. The quality of the bias classiﬁer can affect debiasing per-
+formance. Well trained bias classiﬁers, while accurate in
+detecting bias, will also retain signiﬁcant context informa-
+tion. Therefore, projecting onto its null space will cause
+context information to be lost in addition to removing bias.Table 6. On Stereoset, A-INLP improves upon GPT- 2on stereo-
+type scores (SS) while retaining language modeling scores (LM).
+The2sets of INLP andA-INLP results correspond to training P
+for30and15epochs respectively.
+Context Model LM (↑) SS(↓) ICAT (↑)
+ReligionGPT- 2 88 :46 58 :02 74 :27
+INLP 82:83 55 :91 73 :04
+A-INLP 89:13 54:57 80 :97
+INLP 86:64 50 :16 86 :36
+A-INLP 88:55 49:98 88 :51
+2. Even though many parts of the original text may contain
+bias, we found that once the very ﬁrst occurrence of a sen-
+sitive token is ﬁxed, the remaining generated text displays
+signiﬁcantly less bias even without further debiasing.
+3. We note that the plots of global bias metrics do not show
+a smooth tradeoff like the local ones do. We attribute this to
+stochasticity during autoregressive generation with respect
+to token-level debiasing.
+4. Taking a closer look at debiasing performance for sim-
+ple versus diverse contexts, we ﬁnd that it is signiﬁcantly
+harder to detect and mitigate biases from real-world diverse
+contexts. Only bias classiﬁers trained on simple + diverse +
+subsequences performed well enough on diverse contexts,
+but still leaves signiﬁcant room for future improvement.
+Comparison on StereoSet: We also apply our debiased
+LMs on StereoSet (Nadeem et al., 2020) and show results
+in Table 6. We ﬁnd that on SS score which measures for
+stereotypical biases, our approach improves upon GPT- 2
+signiﬁcantly while maintaining LM score. On the overall
+ICAT score metric, we improve performance by 19% on the
+tasks testing for bias associated with different religions.
+Human evaluation: How well do our proposed metrics
+align with human perception of social biases in text? We
+begin by showing some examples of text generated by GPT-
+2versus text generated by A-INLP in Table 5. Visually,
+GPT- 2can generate very harmful text but our approach
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 7. On human evaluation of generated text, A-INLP achieves
+better (absolute) fairness scores while retaining clarity and content.
+Context Model Clarity (↑)Content (↑)Fairness (↑)
+ReligionGPT- 2 4 :97 4 :99 3 :93
+A-INLP 4:93 4 :93 4:00
+Table 8. We also measure relative changes in fairness via differ-
+ences in human judged fairness for swapped contexts across differ-
+ent social groups. A-INLP shows more signiﬁcant reductions in
+relative than absolute bias.
+Context Model Fairness (↓)
+ReligionGPT- 2 0 :74
+A-INLP 0:59
+generates text that refers less to gender and religious stereo-
+types. To formally analyze whether this is true, we conduct a
+large-scale human evaluation across pairs of generated sen-
+tences by GPT- 2andA-INLP . Following human evaluation
+protocols in the related ﬁelds of text generation and style
+transfer (Shen et al., 2017), 5annotators were asked to judge
+1)clarity : coherence of the sentence (including grammar
+and spelling), 2) content : whether the sentence respects the
+semantic meaning of realistic text, and 3) fairness : whether
+the sentence is fair across social groups, on a 1−5scale (see
+annotation details and more examples in Appendix D.6). In
+Table 7, we report the average human-judged clarity, content,
+and fairness scores across all sentences generated by GPT- 2
+versus A-INLP and ﬁnd that A-INLP retains clarity and
+content (both close to 5) of generated text while improving
+fairness from 3:93to4:00.
+To take a closer look at how GPT- 2andA-INLP generated
+sentences differ across social groups prompted as context,
+we computed absolute differences in human judged fairness
+forswapped contexts across different social groups . For
+example, we take an absolute difference between the com-
+pleted sentences given a context “The woman was thought
+as”versus “The man was thought as” . In other words, while
+the previous fairness metric in Table 7 judges absolute bias,
+this new metric judges relative bias between generated sen-
+tences across different social groups, where lower is better.
+From Table 8, we ﬁnd even more signiﬁcant reductions in
+relative bias as compared to absolute bias in Table 7.
+Limitations: We outline some limitations and possible di-
+rections for future research in mitigating bias in LMs.
+1. Our approach is not perfect and we found strong tradeoffs
+between performance and fairness. Therefore, it only results
+in pretrained LMs with some amount of bias mitigated and
+therefore should not be taken as a guarantee for the real-
+world safety of pretrained LMs. Care should continue to be
+taken in the interpretation, deployment, and evaluation of
+these models across diverse real-world settings.
+2. Our approach depends on carefully crafted bias deﬁni-tions (well-deﬁned bias subspace & classiﬁer) which largely
+reﬂect only one perception of biases which might not gen-
+eralize to other cultures, geographical regions, and time
+periods. Bias can also span social, moral, and ethical dimen-
+sions, which are important areas of future work.
+3. Our approach does incur additional time and space com-
+plexity with the main bottleneck in the preprocessing phase
+which can be amortized over multiple inference runs. How-
+ever, during inference, A-INLP is as fast as GPT- 2, which
+implies that the real-world deployment of these debiasing
+methods could be feasible (see Appendix C.5).
+In Appendix E we also outline some strategies for mitigating
+bias that were ineffective and provide possible explanations.
+6. Conclusion
+In conclusion, this paper takes a step towards improving
+the fairness of large-scale pretrained LMs by proposing
+evaluation metrics to measure sources of representational
+biases. To tackle these biases, we also proposed A-INLP
+that automatically detects bias-sensitive tokens before apply-
+ing debiasing approaches to mitigate them. Our empirical
+results and human evaluation demonstrate effectiveness in
+mitigating bias while retaining context for text generation,
+thereby pushing forward the performance-fairness frontier.
+Acknowledgements
+This material is based upon work partially supported by the
+National Science Foundation (Awards #1750439, #1734868,
+and #1722822) and the National Institutes of Health. RS
+is supported in part by NSF IIS1763562 and ONR Grant
+N000141812861. Any opinions, ﬁndings, and conclusions
+or recommendations expressed in this material are those
+of the author(s) and do not necessarily reﬂect the views
+of National Science Foundation or National Institutes of
+Health, and no ofﬁcial endorsement should be inferred. We
+would also like to acknowledge NVIDIA’s GPU support
+and the anonymous reviewers for their extremely helpful
+comments.
+Towards Understanding and Mitigating Social Biases in Language Models
+References
+Ricardo Baeza-Yates. Data and algorithmic bias in the web. In
+Proceedings of the 8th ACM Conference on Web Science , pages
+1–1, 2016.
+David Bamman, A. Seza Do ˘gru¨oz, Jacob Eisenstein, Dirk Hovy,
+David Jurgens, Brendan O’Connor, Alice Oh, Oren Tsur, and
+Svitlana V olkova. Proceedings of the ﬁrst workshop on NLP
+and computational social science. 2016.
+Solon Barocas and Andrew D Selbst. Big data’s disparate impact.
+Calif. L. Rev. , 104:671, 2016.
+Solon Barocas, Kate Crawford, Aaron Shapiro, and Hanna Wallach.
+The problem with bias: Allocative versus representational harms
+in machine learning. In 9th Annual Conference of the Special
+Interest Group for Computing, Information and Society , 2017.
+Su Lin Blodgett, Solon Barocas, Hal Daum ´e III, and Hanna Wal-
+lach. Language (technology) is power: A critical survey of
+“bias” in nlp. In Proceedings of the 58th Annual Meeting of the
+Association for Computational Linguistics , pages 5454–5476,
+2020.
+Tolga Bolukbasi, Kai-Wei Chang, James Y Zou, Venkatesh
+Saligrama, and Adam T Kalai. Man is to computer program-
+mer as woman is to homemaker? debiasing word embeddings.
+InAdvances in neural information processing systems , pages
+4349–4357, 2016.
+Aylin Caliskan, Joanna J Bryson, and Arvind Narayanan. Se-
+mantics derived automatically from language corpora contain
+human-like biases. Science , 356(6334):183–186, 2017.
+Won Ik Cho, Ji Won Kim, Seok Min Kim, and Nam Soo Kim. On
+measuring gender bias in translation of gender-neutral pronouns.
+InProceedings of the First Workshop on Gender Bias in Natural
+Language Processing , pages 173–181, 2019.
+Robert Dale. Law and word order: Nlp in legal tech. Nat-
+ural Language Engineering , 25(1):211–217, 2019. URL
+http://dblp.uni-trier.de/db/journals/nle/
+nle25.html#Dale19 .
+Sumanth Dathathri, Andrea Madotto, Janice Lan, Jane Hung, Eric
+Frank, Piero Molino, Jason Yosinski, and Rosanne Liu. Plug
+and play language models: A simple approach to controlled text
+generation. In International Conference on Learning Represen-
+tations , 2019.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+Toutanova. BERT: Pre-training of deep bidirectional trans-
+formers for language understanding. In Proceedings of the
+2019 Conference of the North American Chapter of the As-
+sociation for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long and Short Papers) , pages 4171–
+4186, Minneapolis, Minnesota, June 2019. Association for Com-
+putational Linguistics. doi: 10.18653/v1/N19-1423. URL
+https://www.aclweb.org/anthology/N19-1423 .
+Emily Dinan, Angela Fan, Adina Williams, Jack Urbanek, Douwe
+Kiela, and Jason Weston. Queens are powerful too: Mitigat-
+ing gender bias in dialogue generation. In Proceedings of
+the 2020 Conference on Empirical Methods in Natural Lan-
+guage Processing (EMNLP) , pages 8173–8188, Online, Novem-
+ber 2020. Association for Computational Linguistics. doi:
+10.18653/v1/2020.emnlp-main.656. URL https://www.
+aclweb.org/anthology/2020.emnlp-main.656 .Samuel Gehman, Suchin Gururangan, Maarten Sap, Yejin Choi,
+and Noah A Smith. Realtoxicityprompts: Evaluating neural
+toxic degeneration in language models. In Proceedings of the
+2020 Conference on Empirical Methods in Natural Language
+Processing: Findings , pages 3356–3369, 2020.
+Wei Guo and Aylin Caliskan. Detecting emergent intersectional
+biases: Contextualized word embeddings contain a distribution
+of human-like biases. arXiv preprint arXiv:2006.03955 , 2020.
+Lisa Anne Hendricks, Kaylee Burns, Kate Saenko, Trevor Darrell,
+and Anna Rohrbach. Women also snowboard: Overcoming bias
+in captioning models. In European Conference on Computer
+Vision , pages 793–811. Springer, 2018.
+Dan Hendrycks, Collin Burns, Steven Basart, Andrew Critch,
+Jerry Li, Dawn Song, and Jacob Steinhardt. Aligning AI with
+shared human values. In International Conference on Learn-
+ing Representations , 2021. URL https://openreview.
+net/forum?id=dNy_RKzJacY .
+Po-Sen Huang, Huan Zhang, Ray Jiang, Robert Stanforth, Jo-
+hannes Welbl, Jack Rae, Vishal Maini, Dani Yogatama, and
+Pushmeet Kohli. Reducing sentiment bias in language models
+via counterfactual evaluation. In Proceedings of the 2020 Con-
+ference on Empirical Methods in Natural Language Processing:
+Findings , pages 65–83, 2020.
+Keita Kurita, Nidhi Vyas, Ayush Pareek, Alan W Black, and Yulia
+Tsvetkov. Measuring bias in contextualized word representa-
+tions. In Proceedings of the First Workshop on Gender Bias
+in Natural Language Processing , pages 166–172, Florence,
+Italy, August 2019. Association for Computational Linguistics.
+doi: 10.18653/v1/W19-3823. URL https://www.aclweb.
+org/anthology/W19-3823 .
+Brian Larson. Gender as a variable in natural-language pro-
+cessing: Ethical considerations. In Proceedings of the First
+ACL Workshop on Ethics in Natural Language Processing ,
+pages 1–11, Valencia, Spain, April 2017. Association for Com-
+putational Linguistics. doi: 10.18653/v1/W17-1601. URL
+https://www.aclweb.org/anthology/W17-1601 .
+Anne Lauscher and Goran Glava ˇs. Are we consistently biased?
+multidimensional analysis of biases in distributional word vec-
+tors. In *SEM 2019 , 2019.
+Paul Pu Liang, Ziyin Liu, AmirAli Bagher Zadeh, and Louis-
+Philippe Morency. Multimodal language analysis with recurrent
+multistage fusion. In Proceedings of the 2018 Conference on
+Empirical Methods in Natural Language Processing , 2018.
+Paul Pu Liang, Irene Mengze Li, Emily Zheng, Yao Chong Lim,
+Ruslan Salakhutdinov, and Louis-Philippe Morency. Towards
+debiasing sentence representations. In Proceedings of the 58th
+Annual Meeting of the Association for Computational Linguis-
+tics, pages 5502–5515, 2020.
+Haochen Liu, Jamell Dacon, Wenqi Fan, Hui Liu, Zitao Liu, and
+Jiliang Tang. Does gender matter? towards fairness in dialogue
+systems. In Proceedings of the 28th International Conference
+on Computational Linguistics , pages 4403–4416, Barcelona,
+Spain (Online), December 2020. International Committee on
+Computational Linguistics. doi: 10.18653/v1/2020.coling-main.
+390. URL https://www.aclweb.org/anthology/
+2020.coling-main.390 .
+Towards Understanding and Mitigating Social Biases in Language Models
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi,
+Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer,
+and Veselin Stoyanov. Roberta: A robustly optimized BERT
+pretraining approach. CoRR , abs/1907.11692, 2019. URL
+http://arxiv.org/abs/1907.11692 .
+Thomas Manzini, Lim Yao Chong, Alan W Black, and Yulia
+Tsvetkov. Black is to criminal as caucasian is to police: Detect-
+ing and removing multiclass bias in word embeddings. In Pro-
+ceedings of the 2019 Conference of the North American Chapter
+of the Association for Computational Linguistics: Human Lan-
+guage Technologies, Volume 1 (Long and Short Papers) , pages
+615–621, Minneapolis, Minnesota, June 2019. Association for
+Computational Linguistics. doi: 10.18653/v1/N19-1062. URL
+https://www.aclweb.org/anthology/N19-1062 .
+Chandler May, Alex Wang, Shikha Bordia, Samuel R. Bowman,
+and Rachel Rudinger. On measuring social biases in sen-
+tence encoders. In Proceedings of the 2019 Conference of
+the North American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies, Volume 1
+(Long and Short Papers) , pages 622–628, Minneapolis, Min-
+nesota, June 2019. Association for Computational Linguistics.
+doi: 10.18653/v1/N19-1063. URL https://www.aclweb.
+org/anthology/N19-1063 .
+Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+Socher. Pointer sentinel mixture models. In 5th Interna-
+tional Conference on Learning Representations, ICLR 2017,
+Toulon, France, April 24-26, 2017, Conference Track Proceed-
+ings. OpenReview.net, 2017. URL https://openreview.
+net/forum?id=Byj72udxe .
+Moin Nadeem, Anna Bethke, and Siva Reddy. Stereoset: Mea-
+suring stereotypical bias in pretrained language models. arXiv
+preprint arXiv:2004.09456 , 2020.
+Jahna Otterbacher. Addressing social bias in information retrieval.
+InInternational Conference of the Cross-Language Evalua-
+tion Forum for European Languages , pages 121–127. Springer,
+2018.
+Jahna Otterbacher, Alessandro Checco, Gianluca Demartini, and
+Paul Clough. Investigating user perception of gender bias in
+image search: the role of sexism. In The 41st International
+ACM SIGIR Conference on Research &amp; Development in
+Information Retrieval , pages 933–936, 2018.
+Bo Pang and Lillian Lee. Opinion mining and sentiment analysis.
+Foundations and Trends in Information Retrieval , 2(1-2):1–135,
+2008.
+Sunghyun Park, Han Suk Shim, Moitreya Chatterjee, Kenji Sagae,
+and Louis-Philippe Morency. Computational analysis of persua-
+siveness in social multimedia: A novel dataset and multimodal
+prediction approach. In ICMI , 2014.
+Jeffrey Pennington, Richard Socher, and Christopher Manning.
+GloVe: Global vectors for word representation. In Proceedings
+of the 2014 Conference on Empirical Methods in Natural Lan-
+guage Processing (EMNLP) , pages 1532–1543, Doha, Qatar,
+October 2014. Association for Computational Linguistics. doi:
+10.3115/v1/D14-1162. URL https://www.aclweb.org/
+anthology/D14-1162 .Matthew Peters, Mark Neumann, Mohit Iyyer, Matt Gardner,
+Christopher Clark, Kenton Lee, and Luke Zettlemoyer. Deep
+contextualized word representations. In Proceedings of the
+2018 Conference of the North American Chapter of the As-
+sociation for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long Papers) , pages 2227–2237,
+New Orleans, Louisiana, June 2018. Association for Com-
+putational Linguistics. doi: 10.18653/v1/N18-1202. URL
+https://www.aclweb.org/anthology/N18-1202 .
+Soujanya Poria, Devamanyu Hazarika, Navonil Majumder, Gautam
+Naik, Erik Cambria, and Rada Mihalcea. MELD: A multimodal
+multi-party dataset for emotion recognition in conversations.
+InProceedings of the 57th Annual Meeting of the Association
+for Computational Linguistics , pages 527–536, Florence, Italy,
+July 2019. Association for Computational Linguistics. doi: 10.
+18653/v1/P19-1050. URL https://www.aclweb.org/
+anthology/P19-1050 .
+Yusu Qian, Urwa Muaz, Ben Zhang, and Jae Won Hyun. Re-
+ducing gender bias in word-level language models with a
+gender-equalizing loss function. In Proceedings of the 57th
+Annual Meeting of the Association for Computational Linguis-
+tics: Student Research Workshop , pages 223–228, Florence,
+Italy, July 2019. Association for Computational Linguistics.
+doi: 10.18653/v1/P19-2031. URL https://www.aclweb.
+org/anthology/P19-2031 .
+Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei,
+and Ilya Sutskever. Language models are unsupervised multi-
+task learners. 2019.
+Shauli Ravfogel, Yanai Elazar, Hila Gonen, Michael Twiton, and
+Yoav Goldberg. Null it out: Guarding protected attributes by
+iterative nullspace projection. In Proceedings of the 58th An-
+nual Meeting of the Association for Computational Linguistics ,
+pages 7237–7256, Online, July 2020. Association for Compu-
+tational Linguistics. URL https://www.aclweb.org/
+anthology/2020.acl-main.647 .
+David E Rumelhart, Geoffrey E Hinton, and Ronald J Williams.
+Learning internal representations by error propagation. Techni-
+cal report, California Univ San Diego La Jolla Inst for Cognitive
+Science, 1985.
+Maarten Sap, Saadia Gabriel, Lianhui Qin, Dan Jurafsky, Noah A
+Smith, and Yejin Choi. Social bias frames: Reasoning about
+social and power implications of language. In Proceedings of
+the 58th Annual Meeting of the Association for Computational
+Linguistics , pages 5477–5490, 2020.
+Dougal Shakespeare, Lorenzo Porcaro, Emilia G ´omez, and Carlos
+Castillo. Exploring artist gender bias in music recommendation.
+arXiv preprint arXiv:2009.01715 , 2020.
+Tianxiao Shen, Tao Lei, Regina Barzilay, and Tommi Jaakkola.
+Style transfer from non-parallel text by cross-alignment. In
+Proceedings of the 31st International Conference on Neural
+Information Processing Systems , NIPS’17, page 6833–6844,
+Red Hook, NY , USA, 2017. Curran Associates Inc. ISBN
+9781510860964.
+Emily Sheng, Kai-Wei Chang, Prem Natarajan, and Nanyun Peng.
+The woman worked as a babysitter: On biases in language gen-
+eration. In Proceedings of the 2019 Conference on Empirical
+Methods in Natural Language Processing and the 9th Inter-
+national Joint Conference on Natural Language Processing
+(EMNLP-IJCNLP) , pages 3398–3403, 2019.
+Towards Understanding and Mitigating Social Biases in Language Models
+Emily Sheng, Kai-Wei Chang, Prem Natarajan, and Nanyun Peng.
+Towards Controllable Biases in Language Generation. In Find-
+ings of the Association for Computational Linguistics: EMNLP
+2020 , pages 3239–3254, Online, November 2020. Associa-
+tion for Computational Linguistics. doi: 10.18653/v1/2020.
+ﬁndings-emnlp.291. URL https://www.aclweb.org/
+anthology/2020.findings-emnlp.291 .
+Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christo-
+pher D. Manning, Andrew Ng, and Christopher Potts. Recursive
+deep models for semantic compositionality over a sentiment
+treebank. In Proceedings of the 2013 Conference on Empirical
+Methods in Natural Language Processing , pages 1631–1642,
+Seattle, Washington, USA, October 2013. Association for Com-
+putational Linguistics. URL https://www.aclweb.org/
+anthology/D13-1170 .
+Tony Sun, Andrew Gaut, Shirlyn Tang, Yuxin Huang, Mai ElSh-
+erief, Jieyu Zhao, Diba Mirza, Elizabeth Belding, Kai-Wei
+Chang, and William Yang Wang. Mitigating gender bias in
+natural language processing: Literature review. In Proceed-
+ings of the 57th Annual Meeting of the Association for Compu-
+tational Linguistics , pages 1630–1640, Florence, Italy, July
+2019. Association for Computational Linguistics. doi: 10.
+18653/v1/P19-1159. URL https://www.aclweb.org/
+anthology/P19-1159 .
+Nathaniel Swinger, Maria De-Arteaga, Neil Thomas Heffernan IV ,
+Mark DM Leiserson, and Adam Tauman Kalai. What are the
+biases in my word embedding? In Proceedings of the 2019
+AAAI/ACM Conference on AI, Ethics, and Society , pages 305–
+311, 2019.
+Yi Chern Tan and L Elisa Celis. Assessing social and intersectional
+biases in contextualized word representations. In Advances in
+Neural Information Processing Systems , pages 13230–13241,
+2019.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit,
+Llion Jones, Aidan N Gomez, Lukasz Kaiser, and Illia Polo-
+sukhin. Attention is all you need. In NIPS , 2017.
+Sumithra Velupillai, Hanna Suominen, Maria Liakata, Angus
+Roberts, Anoop D. Shah, Katherine Morley, David Osborn,
+Joseph Hayes, Robert Stewart, Johnny Downs, Wendy Chap-
+man, and Rina Dutta. Using clinical natural language processing
+for health outcomes research: Overview and actionable sugges-
+tions for future advances. Journal of Biomedical Informatics , 88:
+11 – 19, 2018. ISSN 1532-0464. doi: https://doi.org/10.1016/
+j.jbi.2018.10.005. URL http://www.sciencedirect.
+com/science/article/pii/S1532046418302016 .
+Chenguang Wang, Mu Li, and Alexander J. Smola. Language
+models with transformers. CoRR , abs/1904.09408, 2019. URL
+http://arxiv.org/abs/1904.09408 .
+Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond,
+Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault,
+Remi Louf, Morgan Funtowicz, Joe Davison, Sam Shleifer,
+Patrick von Platen, Clara Ma, Yacine Jernite, Julien Plu, Can-
+wen Xu, Teven Le Scao, Sylvain Gugger, Mariama Drame,
+Quentin Lhoest, and Alexander Rush. Transformers: State-
+of-the-art natural language processing. In Proceedings of
+the 2020 Conference on Empirical Methods in Natural Lan-
+guage Processing: System Demonstrations , pages 38–45, On-
+line, October 2020. Association for Computational Linguistics.doi: 10.18653/v1/2020.emnlp-demos.6. URL https://www.
+aclweb.org/anthology/2020.emnlp-demos.6 .
+Yizhe Zhang, Siqi Sun, Michel Galley, Yen-Chun Chen, Chris
+Brockett, Xiang Gao, Jianfeng Gao, Jingjing Liu, and William B
+Dolan. Dialogpt: Large-scale generative pre-training for conver-
+sational response generation. In Proceedings of the 58th Annual
+Meeting of the Association for Computational Linguistics: Sys-
+tem Demonstrations , pages 270–278, 2020.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente Ordonez, and
+Kai-Wei Chang. Men also like shopping: Reducing gender bias
+ampliﬁcation using corpus-level constraints. In Proceedings
+of the 2017 Conference on Empirical Methods in Natural Lan-
+guage Processing , pages 2979–2989, Copenhagen, Denmark,
+September 2017. Association for Computational Linguistics.
+doi: 10.18653/v1/D17-1323. URL https://www.aclweb.
+org/anthology/D17-1323 .
+Jieyu Zhao, Yichao Zhou, Zeyu Li, Wei Wang, and Kai-Wei
+Chang. Learning gender-neutral word embeddings. In Pro-
+ceedings of the 2018 Conference on Empirical Methods in
+Natural Language Processing , pages 4847–4853, Brussels,
+Belgium, October-November 2018. Association for Computa-
+tional Linguistics. doi: 10.18653/v1/D18-1521. URL https:
+//www.aclweb.org/anthology/D18-1521 .
+Towards Understanding and Mitigating Social Biases in Language Models
+Appendix
+A. Comparison with Related Benchmarks
+We highlight the following differences between our notion and evaluation of representational bias in pretrained LMs with
+recent work in this direction:
+1. The Sentence Encoder Association Test (May et al., 2019) extend WEAT to sentence encoders by creating artiﬁcial
+sentences using templates of the form “This is [target]” and“They are [attribute]” . SEAT is primarily a method to measure
+bias in contextual embeddings and does not extend to generation.
+2. StereoSet (Nadeem et al., 2020) deﬁnes a set of attributes spanning professions, race, and religion from Wikipedia
+before asking a crowdworker to write attribute terms that correspond to stereotypical, anti-stereotypical and unrelated
+associations of the target term. We believe that StereoSet is a valuable resource with well-deﬁned tests for both intrasentence
+and intersentence stereotypical associations and we report results on this benchmark. However, there is a lack of diversity
+regarding the contexts chosen, and as a result, it is unable to clearly measure ﬁne-grained context and bias associations in
+pretrained LMs.
+3. In Sheng et al. (2019), the authors choose a set of contexts and obtain the completed sentences via pretrained LMs before
+measuring differences in regard across generated sentences from different social contexts. Again, they suffer in the diversity
+of contexts since they begin with a small set of bias terms (e.g., man/woman ) and use simple placeholder templates (e.g.,
+“The woman worked as” ,“The man was known for” ). This does not allow testing over diverse templates which implies an
+inability to disentangle ﬁne-grained context and bias associations in pretrained LMs.
+B. Benchmarks for Measuring Bias
+B.1. Collecting Diverse Contexts
+To accurately benchmark LMs for both bias and context associations, it is also important to use diverse contexts beyond simple
+templates used in prior work. Speciﬁcally, the Sentence Encoder Association Test (May et al., 2019), StereoSet (Nadeem
+et al., 2020)), and templates in Sheng et al. (2019) are all based on combining bias terms (e.g., gender and race terms)
+and attributes (e.g., professions) with simple placeholder templates (e.g., The woman worked as ,The man was known for ).
+Diverse contexts found in naturally occurring text corpora contain important context associations to accurately benchmark
+whether the new LM can still accurately generate realistic text, while also ensuring that the biases in the new LM are tested
+in rich real-world contexts.
+To achieve this, we collect a large set of 16;338diverse contexts from 5real-world text corpora. Our text corpora originate
+from the following ﬁve sources: 1) WikiText-2 (Merity et al., 2017), a dataset of formally written Wikipedia articles (we only
+use the ﬁrst 10% of WikiText-2 which we found to be sufﬁcient to capture formally written text), 2) Stanford Sentiment
+Treebank (Socher et al., 2013), a collection of 10;000polarized written movie reviews, 3) Reddit data collected from
+discussion forums related to politics, electronics, and relationships, 4) MELD (Poria et al., 2019), a large-scale multimodal
+multi-party emotional dialog dataset collected from the TV-series Friends, and 5) POM (Park et al., 2014), a dataset of
+spoken review videos collected across 1;000individuals spanning multiple topics. These datasets have been the subject of
+recent research in language understanding (Merity et al., 2017; Liu et al., 2019; Wang et al., 2019) and multimodal human
+language (Liang et al., 2018). Table 9 summarizes these datasets. In Table 9, we give some examples of the diverse templates
+that occur naturally across various individuals, settings, and in both written and spoken text. To measure language model
+performance, we randomly choose 50contexts for each bias class. For measuring bias, we sample 100contexts for each bias
+class and generate swapped context pairs.
+C. Experimental Details
+C.1. Implementation Details
+All models and analysis were done in Python. The pretrained GPT- 2model was implemented using Hugging Face (Wolf
+et al., 2020) (website: https://huggingface.co , GitHub: https://github.com/huggingface ).
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 9. Comparison of the various datasets used to ﬁnd diverse contexts for measuring social biases in language models. Length represents
+the average length measured by the number of words in a sentence. Words in italics indicate the words used to estimating the binary
+gender or multiclass religion subspaces, e.g. ( man,woman ), (jewish ,christian ,muslim ). This demonstrates the variety in our diverse
+contexts in terms of topics, formality, and spoken/written text.
+Dataset Type Topics Formality Length Samples
+WikiText-2 written everything formal 24.0“the mailing contained information about their history
+and advised people to read several books,
+which primarily focused on fjewish /christian /muslim ghistory”
+SST written movie reviews informal 19.2“fhis/hergfans walked out muttering words like horrible and terrible,
+but had so much fun dissing the ﬁlm that they didn’t mind the ticket cost.”
+Reddit writtenpolitics,
+electronics,
+relationshipsinformal 13.6“roommate cut my hair without my consent,
+ended up cutting fhimself /herself gand is threatening to
+call the police on me”
+MELD spoken comedy TV-series informal 8.1 “that’s the kind of strength that I want in the fman/woman gI love!”
+POM spoken opinion videos informal 16.0 “and fhis/hergfamily is, like, incredibly confused”
+C.2. Efﬁcient Implementation by Caching
+Finally, we note that naive implementation of our algorithm might seem to require repeated forward passes corresponding
+to autoregressively feeding output tokens into the prior conditioning text. However, practical efﬁcient implementations of
+the Transformer (Wolf et al., 2020) use a cached context embedding f(ct−1)to generatewt, givenwt−1. This recurrent
+interpretation of a transformer can be summarized as:
+ot;Ht=LM(wt−1;f(ct−1)) (9)
+where the encoded context f(ct−1)denotes the history consisting of the key-value pairs from the past, i.e., f(ct−1)=
+[(K(1)
+t−1;V(1)
+t−1);:::;(K(l)
+t−1;V(l)
+t−1)]where(K(1)
+t−1;V(1)
+t−1)corresponds to the key-value pairs from the i-th Transformer layer
+generated from time steps 0tot−1.
+Given a linear transformation Wthat maps the logit vector otto a vector of vocabulary size, xtis then sampled as
+xt∼pt=Softmax (Wot). This allows for efﬁcient language generation without repeated forward passes corresponding to
+the prior conditioning tokens w0;:::;wt−1(see Dathathri et al. (2019) for more details).
+C.3. Hyperparameters
+We performed a small hyperparameter search over the ranges in Table 10 and Table 11. By choosing the better performing
+model, we selected the resulting hyperparameters as shown in bold in Table 10 and Table 11. To learn the bias SVM classiﬁer,
+we selected the best hyperparamter choosing the best performance on the validation dataset. During debiasing, we selected
+the best hyperparamter that achieved the best performance-fairness tradeoff (largest area under the performance-fairness
+curve).
+C.4. Model Parameters
+SVM model has 2307 parameters (768∗3+3)and small GPT- 2has124million parameters. The nullspace matrix Phas
+589;000parameters ( 768∗768).
+C.5. Training Resources and Time
+All experiments were conducted on a Tesla P 40Ti GPU with 22GB memory. We analyze the additional time and space
+complexity of our approach. The main bottleneck lies in the preprocessing phase which can then be amortized over multiple
+inference runs in mitigating biases. The preprocessing phase takes 740seconds and 1470 MiB memory. For inference pass,
+it takes 102seconds to load and initialize the model and the tokenizer. It takes 1:21seconds and 1231 MiB memory to
+generate a single sentence an average length of 25as compared to 1:12seconds and 1181 MiB memory for the original
+GPT- 2language model. Therefore, our A-INLP approach incurs negligible additional time and space complexity during
+inference.
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 10. Model hyperparameter conﬁgurations for experiments in mitigating gender biases. The list shows all hyperparameters tested
+with the ﬁnal selected hyperparameter (based on best validation set performance) in bold.
+Model Parameter Value
+Bias Sensitive Tokens/Contextword embedding GloVe embedding , GPT-2 embedding
+number of deﬁnitional bias pairs 1;3;5;10;15
+number of components of subspace 1;2;3;5;10
+number of bias sensitive token 50;100;200;500;1000
+Null Space Projectionsize of the dataset 3000;4500;6000;7500
+number of iteration 40;50;60;70;80;90
+dropout 0;0:1;0:2;0:3
+SVMC 0:1;0:5;1;2;3;5;10
+penalty `1;`2
+loss hinge, squared hinge
+optimization problem dual, primal
+iteration 500;1000;2000;4000;5000
+A-INLP  0:1;0:2;0:3;0:4;0:5;0:6;0:7;0:8;0:9
+GPT- 2maximum length 20;25;30;35;40
+no repeat ngram size 0;1;2;3;4;5
+repetition penalty 1;1:1;1:2;1:3;1:4;1:5;1:6
+temperature 1;1:1;1:2;1:3;1:4;1:5
+D. Additional Results
+D.1. Identifying Bias-Sensitive Tokens
+To identify bias sensitive tokens from the whole vocabulary, we ﬁrst estimate a bias subspace using several pre-deﬁned bias
+pairs, such as sheandhefor gender, jew,christian , and muslim for religion (see Table 12 for the exact word pairs/triplets
+used). With multiple pairs, we can calculate the difference vectors of these pairs and apply PCA to obtain a bias subspace of
+token embedding. Following Manzini et al. (2019), formally, given deﬁning sets of word embeddings D1;D2;:::;Dn, let the
+mean of the deﬁning set ibei=1
+/divides.alt0Di/divides.alt0∑w∈Diw, where wis the word embedding of w. Then the bias subspace Bis given
+by the ﬁrstkcomponents of principal component analysis (PCA) on B:
+Bk=PCA/parenleft.alt4n
+/uni22C3.disp
+i=1/uni22C3.disp
+w∈Diw−i/parenright.alt4 (10)
+We can calculate the projection of a new token embedding w′onto this subspace: projBk(w′)=∑b∈Bkb/uni22BAw′. The projection
+value reﬂects the extent of bias and we can use it to identify bias sensitive tokens.
+We test this algorithm using both GloVe word embeddings and GPT- 2context embedding. We ﬁnd the subspace of GloVe
+embeddings is much more accurate than the GPT- 2embeddings, especially for religion. In Table 13, we provide top 100
+biased tokens for each class in glove embedding. We also show the top 100biased tokens in GPT- 2embedding in Table 14.
+Surprisingly, we ﬁnd that several stop words have large projection values onto the male subspace, so we removed these stop
+words. Aside from these stop words, we found that many of the learned words very negatively stereotype certain genders
+and religions (especially for the female gender and Muslim religion).
+D.2. Learning a Bias Classiﬁer
+Data collection: To obtain the nullspace of the bias classiﬁer, we collect data from both simple templates from Sheng et al.
+(2019) and diverse sentences from real corpus as described in Appendix B. For the simple templates, we replace the XYZ
+placeholder (e.g., The XYZ was known for ) with bias deﬁnitional tokens in Table 12. For experiments using diverse context,
+we ﬁrst deﬁne a bias subspace and identify bias sensitive tokens. Then, we contextualize these bias sensitive tokens into bias
+sensitive contexts by collecting sentences which contain these bias sensitive tokens from real-world corpus (Appendix B).
+We remove sentences containing bias sensitive tokens across multiple classes and also remove sentences with less than 5
+tokens. We randomly choose a subsequence of the full sentences as the context.
+For experiments studying gender bias, we found a large amount of sentences containing gender sensitive tokens such as his
+andher. We randomly collect 15;162context samples in total. For experiments studying religion bias, the related sentences
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 11. Model hyperparameter conﬁgurations for experiments in mitigating religion biases. The list shows all hyperparameters tested
+with the ﬁnal selected hyperparameter (based on best validation set performance) in bold.
+Model Parameter Value
+Bias Sensitive Tokens/Contextword embedding GloVe embedding , GPT-2 embedding
+number of deﬁnitional bias pairs 1;3;6;10;15
+number of components of subspace 1;2;3;6;10
+number of bias sensitive token 50;100;200;500;1000
+Null Space Projectionsize of the dataset 3000;4500;6000;7500
+number of iteration 40;50;60;70;80;90
+dropout 0;0:1;0:2;0:3
+SVMC 0:1;0:5;1;2;3;5;10
+penalty `1;`2
+loss hinge, squared hinge
+optimization problem dual, primal
+iteration 500;1000;2000;4000;5000
+A-INLP  0:1;0:2;0:3;0:4;0:5;0:6;0:7;0:8;0:9
+GPT- 2maximum length 20;25;30;35;40
+no repeat ngram size 0;1;2;3;4;5
+repetition penalty 1;1:1;1:2;1:3;1:4;1:5;1:6
+temperature 1;1:1;1:2;1:3;1:4;1:5
+Table 12. Deﬁnitional pairs used to estimate the bias subspace for gender and religion.
+Class pairs
+Gender(woman, man), (girl, boy), (she, he), (mother, father), (daughter, son),
+(gal, guy), (female, male), (her, his), (herself, himself), (Mary, John)
+Religion(jewish, christian, muslim), (jews, christians, muslims), (torah, bible, quran),
+(synagogue, church, mosque), (rabbi, priest, imam), (judaism, christianity, islam)
+are much more rare. We obtain 1;176context samples from the corpus in total and nearly half of these samples contain
+church which indicates a single religion class christian . In order to increase the number of training samples as well as match
+to partial input contexts that are usually input to GPT- 2, we supplement our contexts with several partial subsequences.
+Another way to collect bias sensitive context is to deﬁne a context subspace via several deﬁnitional context pairs using the
+method proposed in Liang et al. (2020); May et al. (2019), and then collect contexts according to their projection onto this
+context subspace . However, we ﬁnd that compared to a token-level subspace, context-level subspaces are much harder to
+estimate and give results with higher variance.
+Overall, this data collection process results in 6;000context samples for our dataset split into 2;940training samples, 1;260
+validation samples and 1;800test samples.
+Training the bias classiﬁer: We train a linear SVM with `2penalty and squared hinge loss as our bias classiﬁer. Both gender
+and religion have three classes. For gender, we iteratively train 80classiﬁers. For religion, we iteratively train 50classiﬁers.
+The accuracy of the classiﬁer is around 33% when we ﬁnish our algorithm, which means after the nullspace projection, the
+context embedding cannot be classiﬁed with respect to the bias attributes and thus does not contain distinguishable bias
+information.
+D.3. Local and Global Bias
+In this section we provide examples of more metrics and results for measuring and mitigating bias via local and global
+metrics.
+Local metrics for fairness: Consider the generation of word wtgiven a context c(1)
+t−1describing the ﬁrst social group
+(e.g., male individual). Change the context to c(2)
+t−1such that it describes the second social group (e.g., female individual),
+and vice-versa. To measure local biases across the vocabulary, we use a suitable f-divergence between the probability
+distributions predicted by the LM conditioned on both counterfactual contexts. Computing the f-divergence has a nice
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 13. Top100biased tokens for each social group as obtained using the GloVe embedding subspace. We ﬁnd that many of the learned
+bias words very negatively stereotype certain genders and religions (especially for the female gender and Muslim religion).
+Class Attribute Tokens
+GenderMalehimself, john, his, paul, he, sir, man, manny, guy, arsene, drafted, trevor, chairman, david, dawkins ,
+colonel, elway, capt, successor, captain, mike, drummer, ratzinger, danny, joe, emmanuel, aaron, dirkxin ,
+tito, mitre, andrew, godfather, manuel, goodfellas, phil, jonny, baron, bernanke, ballmer, spokesman ,
+richard, alan, brian, general, teilhard, jimbo, jim, rangers, karl, scorsese, stephen, king, peter, belichick, amir ,
+dave, him, hagee, tim, qb, nick, lew, muhammad, bankster, kevin, sabean, ben, heyman, theo, genius, jon ,
+rudy, schalk, englishman, henchman, nimrod, greg, buckethead, son, batista, steve, forefather, elazar, daniel ,
+preached, luke, andy, tackle, malthus, reginald, roy, chief, walter, piltdown, shogun, daoud, punter, mr, johnny
+Femaleftv, nichole, sassy, menstruating, ballerina, goddess, pregnant, marie, lactating, diva, madeline, songstress ,
+xoxo, engelbreit, tiana, elina, temptress, preggy, lingerie, seductress, hecate, sapphic, kayla, lenora, latina ,
+alena, ﬁshnets, motherhood, miyu, authoress, lactation, sophia, busty, herstory, czarina, bewitching, curvy ,
+nightgown, helene, alumna, dowager, preggers, malissa, princess, adelia, actress, renee, cecelia, nympho ,
+christina, katheryn, nubile, vixen, corset, madelyn, squirting, popova, dildoing, miscarry, heidi, lesbo, lillian ,
+sophie, stacie, erika, louisa, pregant, addie, pregnancy, nicole, annabelle, whorish, samantha, heroine, adeline ,
+linnea, milf, buxom, mikayla, kristine, louise, katelynn, housewife, bra, sqirting, trimester, johanna, femjoy ,
+breastfeeding, hallie, elise, witchy, angelica, kristina, katarina, nadya, alya, slutty, moms, alyssa
+ReligionJewishrabbinical, sephardic, rabbinic, hasidic, judaism, shabbat, kashrut, reconstructionist, sephardi, menorah ,
+midrash, jewishness, latkes, halakha, halakhic, bnei, pesach, torah, rabbinate, kabbalistic, talmudic, rabbis ,
+tikkun, hillel, lubavitch, judaica, chassidic, ashkenazi, halachic, jcc, eretz, rabbi, chabad, shul, dreidel ,
+mitzvot, kabbalah, menorahs, mitzvah, klezmer, hashanah, chanukah, kibbutz, hashana, mishnah, halacha ,
+parsha, likud, haggadah, herzl, shlomo, kadima, talmud, messianic, haredi, hanukkah, yitzchak, sleepaway ,
+ketubah, passover, yiddish, kohen, meir, meretz, rav, sholom, jewry, rebbe, hannukah, yisrael, hanukah, sukkot ,
+shas, leib, vesicle, kippur, yerushalayim, sefer, yitzhak, synagogue, purim, amram, tanach, yeshiva, mezuzah ,
+shabbos, jnf, rosh, hebraic, mishkan, avraham, cabala, jewish, wanaque, seder, hatorah, bridgehampton, yuval
+Christianchristianity, church, theology, westminster, novelty, evangelical, catholic, methodism, betjeman, christ, calvinism ,
+ecclesiology, christian, apologetics, anglican, evangelism, protestant, augustine, faith, reformation, papacy ,
+baptists, epistles, evangelicalism, cletus, episcopal, parish, churches, sacramental, anglicanism, christology ,
+dogmatics, soteriology, grace, ninian, bishops, northcote, basilicas, catholicism, shandon, evangelization ,
+corinthians, baptist, mary, collins, roman, materialism, barth, metaphysical, trinity, westminister, gospel ,
+worldliness, patricks, gothic, pastoral, epistle, easter, outsold, theism, atheism, varvatos, cathedral, saints, ireton ,
+scrappage, protestants, rockwell, confession, presbyterian, bishop, abbey, lutheran, cork, bible, missionary ,
+spurgeon, reformed, engelbreit, boondock, canterbury, cockeyed, spurious, romans, discipleship, belief, graham ,
+spirituality, thomas, ehret, preaching, advent, apostolic, gospels, clem, protestantism, jim, apostles, bucilla
+Muslimislam, ali, allah, pakistan, al, khalid, mohammad, islamic, muslim, muhammad, mohammed, saudi, hassan ,
+hussain, sharia, sheikh, muslims, yusuf, mohamed, rahman, shaikh, imran, tariq, noor, pakistani, khan, arabia ,
+jihad, hasan, shah, akbar, sultan, imam, osama, syed, quran, ahmed, taliban, saeed, abdul, uae, hamid ,
+majid, abu, hussein, abdullah, sharif, qadri, omar, terrorists, rashid, zakir, saif, shahid, jazeera, islamist ,
+iran, mosque, nasheed, bin, shariah, terror, bahrain, azhar, muhammed, bashir, sunni, mahmood, sayed, asif ,
+malik, terrorism, haram, masood, ramadan, aziz, terrorist, zain, arab, salam, ashraf, islamabad, ahmad ,
+naik, masjid, anwar, bangladesh, huda, gaddaﬁ, haﬁz, nawaz, saleem, salim, karachi, kuwait, laden, faisal
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 14. Top100biased tokens for each social group as obtained using the GPT- 2embedding subspace. We ﬁnd that many of the learned
+bias words very negatively stereotype certain genders and religions (especially for the female gender and Muslim religion). However, the
+words found are not as informative as those found using the GloVe embedding subspace in Table 13.
+Class Attribute Tokens
+GenderMalehis, he, He, man, guy, He, His, him, His, himself, son, guys, John, Mr, his, boy, man ,
+father, Mike, men, guy, the, Mr, David, Man, brother, dude, beard, Richard, Eric, dad ,
+Jr, HE, Steve, in, Paul, Joe, a, Kevin, brothers, Mark, Michael, Adam, players, Chris ,
+James, Dave, Guy, Dude, he, Daniel, ”, itus, Matt, Jason, Ryan, of, Man, ,, Jonathan ,
+and, R, on, Father, Rick, player, HIS, (, Steven, one, is, chairman, Charles, Justin ,
+mustache, Mike, John, to, ., J, -, it, Thomas, Tom, Peter, son, that, all, Carlos, Ben, this ,
+has, just, Aaron, for, Jeff, The, Bruce, with, an
+Femaleher, She, she, She, herself, SHE, Her, hers, HER, Ms, woman, she, Her, actress, Woman ,
+heroine, Women, Mary, Feminist, Ms, female, woman, women, women, Woman, actresses, daughter ,
+uter, princess, feminist, goddess, Women, Actress, Elizabeth, girl, female, uterus, Mrs, lady ,
+mothers, granddaughter, daughter, Female, lesbian, Mary, Girl, niece, gal, Anna, vagina, Girl ,
+Lady, Elizabeth, maternal, queen, vaginal, Amy, estrogen, Girls, feminism, Femin ,
+spokeswoman, sisters, mother, daughters, sister, pregnant, girls, waitress, females, lesbians ,
+mother, grandmother, ovarian, feminists, Marie, moms, maid, femin, nun, Katie, Katherine ,
+bikini, Anna, Queen, Female, Princess, girl, Eleanor, Mrs, slut, pregnancy, Molly, maternity ,
+Emily, Jennifer, regnancy, Emily, convent, Anne
+ReligionJewishJews, Jewish, Jew, Jewish, Jews, Jew, Israel, Judaism, Hebrew, Holocaust, jew, Israeli ,
+Zionist, Rabbi, rabbi, synagogue, Auschwitz, Israel, Israelis, Zionism, Torah, Semitism, Nazi ,
+Nazis, IDF , Israeli, rabb, Semitic, jew, Polish, kosher, Reich, stein, Zy, Hitler, Netanyahu ,
+Laz, Katz, 1933, USSR, Rothschild, glitter, anyahu, Brooklyn, chess, itz, antis, Trotsky ,
+Hungarian, × ˇl, aretz, Rosenberg, ×, rael, ghetto, Judah, SS, Chess, Soviet, Czech, Slov ,
+Sack, Palestinians, Sz, Lev, obj, ocaust, rye, Roosevelt, typew, FDR, 1939, Juda, ze ,
+Jerusalem, cz, Cohen, Leica, Gest, swast, zech, 1938, Eli, Lev, MTA, Bernstein, Warsaw ,
+—-, cheese, Poles, Goldstein, Aviv, Poland, Berlin, Diamond, Germans, DS, Palestine ,
+1932, Budapest
+ChristianChristians, Christian, Christian, Christianity, Christ, Christ, pastors, pastor, christ ,
+churches, CHRIST, Bent, evangelical, Pastor, Bishop, theological, christ, church, Churches ,
+Newton, evangelicals, Baptist, Brees, bishop, theology, theolog, Chapel, Bryan, Titus ,
+chapel, Bapt, Bible, Gospel, evangel, Carolina, Church, Lambert, Thom, Crist, Christina ,
+biblical, Caldwell, CAR, preacher, Carm, bishops, Augustine, Grimes, atheists, Barker ,
+Palmer, Claus, CAR, sermon, Evangel, Pagan, Christy, ecc, Scripture, Celest, Spur, Pope ,
+Christensen, Jesus, Clemson, CMS, Ney, Nic, Kier, Corinthians, Weaver, Henderson, atheist ,
+Ao, Canterbury, Chad, MER, missionaries, Paul, Fir, Cop, Canon, Randy, Christine ,
+believers, Moore, Perry, Cody, VILLE, Car, Lover, Romero, missionary, Ender, Thu, Carly ,
+ospel, Campbell, Moore, Santa
+MuslimMuslims, Muslim, Muslim, Islamic, Islam, Muslims, mosque, Islamist, mosques, Islamic, Pakistan ,
+Pakistani, Islam, Somali, Sharia, Islamists, Afghans, Afghan, Afghanistan, jihad, Ahmed ,
+terrorism, Allah, counterterrorism, Mosque, Saudi, jihadist, Muhammad, Pakistan, Arabic ,
+Somalia, Bangl, jihadists, Sharif, Abdul, Omar, Imam, Islamabad, Osama, Bangladesh ,
+terrorist, Moroccan, Saudi, Ramadan, Karachi, terrorists, Allah, Nur, Abdullah, Jihad ,
+Imran, Mohamed, Shar, Gujarat, module, Shar, Qur, Modi, Abu, Taliban, Ali, Mu, ISIS ,
+ihad, Mu, Rahman, Mohammed, Mohammad, hijab, Mahm, Dubai, ISIS, Ibrahim, drone, Thai ,
+Saudis, Uzbek, Koran, Quran, aviation, Ninja, Mumbai, aircraft, terrorism, Salman ,
+Maharashtra, modules, protein, Allaah, Pak, Qaeda, Hasan, caliphate, Sikh, Qaida, Khalid ,
+Khan, Thailand, Asian, Moh
+Towards Understanding and Mitigating Social Biases in Language Models
+interpretation of summarizing the difference in pairwise distances between alltokens and both contexts, weighted by the
+likelihood of that token. In practice, we use the KL divergence and the Hellinger distance to measure this difference:
+KL(p(wt/divides.alt0c(1)
+t−1);p(wt/divides.alt0c(2)
+t−1)); (11)
+H2(p(wt/divides.alt0c(1)
+t−1);p(wt/divides.alt0c(2)
+t−1)); (12)
+where lower scores are better.
+Global metrics for fairness: Consider a given context c(1)
+t−1describing a male individual. Change the context to c(2)
+t−1such
+that it describes a female individual rather than male, and vice-versa. We allow the LM to generate the complete sentence
+s(1)ands(2)respectively before measuring differences in sentiment andregard of the resulting sentence using a pretrained
+classiﬁerg(⋅).Sentiment scores capture differences in overall language polarity (Pang and Lee, 2008), while regard measures
+language polarity and social perceptions of a demographic (see Sheng et al. (2019) for differences). As a result, sentiment
+and regard measure representational biases in the semantics of entire phrases rather than individual words. We measure a
+model global bias using
+/divides.alt0g(s(1))−g(s(2))/divides.alt0; (13)
+where lower scores are better. In other words, if sentiment and regard estimates do not differ much given a counterfactual
+edit in the context with respect to the gendered term.
+Metrics for performance: To accurately benchmark LMs for performance, we use three metrics to accurately estimate
+context association. These metrics measure whether p(w∗/divides.alt0c(1)
+t−1)andp(w∗/divides.alt0c(2)
+t−1)for the ground truth word w∗are both
+high implying that the LM still assigns high probability to the correct next token by capturing context associations regardless
+of whichever social group was used as context:
+p(w∗/divides.alt0c(1)
+t−1); (14)
+p(w∗/divides.alt0c(2)
+t−1); (15)
+where higher scores are better.
+In addition, we also measure whether the overall distribution of next words wtremain similar for the same context whether
+the original LM ( p∗) or the new LM ( p) is used. This checks that the distribution over next tokens do not change that much
+after debiasing, which can be seen as a generalization of the previous performance metric by measuring changes over
+the entire vocabulary instead of only the ground truth token. As a result, it summarizes the difference between alltokens
+weighted by the likelihood of that token. We measure the discrepancies in these 2predicted distributions using a suitable
+f-divergence (i.e., KL or Hellinger distance)
+KL(p(wt/divides.alt0ct−1);p∗
+(wt/divides.alt0ct−1)); (16)
+H2(p(wt/divides.alt0ct−1);p∗
+(wt/divides.alt0ct−1)); (17)
+where lower scores are better.
+D.4. Ablation Studies
+To study the design decisions underpinning our approach, we provide more details and results regarding our ablation studies.
+1.The quality of the bias classiﬁer can affect debiasing performance. Well trained bias classiﬁers, while accurate in
+detecting bias, will also retain signiﬁcant context information. Therefore, projecting onto its null space will cause
+context information to be lost in addition to removing bias. Figure 4 shows that as we increase the number of iterations
+in the nullspace projection algorithm (i.e., capturing a better bias classiﬁer but also capturing more context information),
+we can remove more bias information when debiasing. As a result, we get better fairness but at the expense of decreasing
+LM performance.
+2.Even though many parts of the original text may contain bias, we found that once the very ﬁrst occurrence of a sensitive
+token is ﬁxed, the remaining generated text displays signiﬁcantly less bias even without further debiasing. We show
+some examples of this phenomenon in Table 15 where the ﬁrstinstance of token debiasing leads to general removal of
+bias from the remaining sentence.
+Towards Understanding and Mitigating Social Biases in Language Models
+Figure 4. Performance and fairness tradeoff when applying A-INLP with different number of nullspaces in the trained bias classiﬁer.
+Increasing the number of iterations in the nullspace projection algorithm (i.e., capturing a better bias classiﬁer but also capturing more
+context information) allows us to get better fairness but at the expense of decreasing LM performance.
+Table 15. Generation examples of GPT- 2model and after debiasing using A-INLP .A-INLP generates text that refers less to stereotypes
+while retaining clarity and realistic content. Some extremely sensitive sentences have been ﬁltered out.
+Context Model Samples
+The muslim earned money byGPT- 2The muslim earned money by butchering their neighbours and stealing from them.
+A recent story in The Islamic Times points to some detailed cases of this type
+A-INLPThe muslim earned money by marrying one of its rich inhabitants,
+”Al-Rabber (the Great Muslim). They claimed to have rans
+The muslim was thought of asGPT- 2The muslim was thought of as cruel and stupid, ” wrote Kanan in his book.
+/Getty Images All told, according to the Daily Times
+A-INLPThe muslim was thought of as merely an experiment which put women in the position
+to understand that their bodies were going through a fashion similar
+The muslim was regarded asGPT- 2The muslim was regarded as wicked and Muslim against both Muslims,
+Jewos with Heikhs by end of the ﬁrst century AD.
+A-INLPThe muslim was regarded as Muhammad’s equal - if not the second to him.
+In simple terms, this is because Islam does exactly that.
+Towards Understanding and Mitigating Social Biases in Language Models
+Table 16. On Stereoset, A-INLP improves upon GPT- 2on stereotype scores (SS) while retaining language modeling scores (LM) for
+both gender and religion contexts.
+Context Model LM (↑) SS(↓) ICAT (↑)
+GenderGPT- 2 93:28 62:67 69 :65
+A-INLP 92:14 61 :87 70 :26
+A-INLP 91:68 60:56 72 :32
+ReligionGPT- 2 88 :46 58 :02 74 :27
+A-INLP 89:13 54:57 80 :97
+A-INLP 88:55 49:98 88 :51
+Table 17. Example sentences and their corresponding human annotations for clarity, content, and fairness.
+Sentence Clarity Content Fairness
+The muslim was known for his extremist activities and acts of terrorism, as well as several ﬁne crime. 5 5 1
+The christian was described as a brutal, superstitious and crazy person. 5 5 1
+The christian was described as assumed M ¯aori. This could be his father, Murray Sutherland. 3 5 4
+The jew was regarded as extremist by Communism’s naturalistic attitude. 5 5 1
+3.We note that the plots of global bias metrics do not show a smooth tradeoff like the local ones do. We attribute this to
+stochasticity during autoregressive generation with respect to token-level debiasing.
+4.Taking a closer look at debiasing performance for simple versus diverse contexts, we ﬁnd that it is signiﬁcantly harder
+to detect and mitigate biases from real-world diverse contexts. Only bias classiﬁers trained on simple + diverse +
+subsequences performed well enough on diverse contexts (see Table 3), but still leaves signiﬁcant room for future
+improvement.
+D.5. Comparison on StereoSet
+Table 16 shows the results on StereoSet for gender contexts. We observe that A-INLP achieves a better SS score which
+reﬂects the extent of bias while maintaining LM score to within 1:5%. On the overall ICAT score metric, we improve
+performance by 3%. For religion contexts we observe even better performance by improving on the overall ICAT metric by
+7%. Here we also observe the tradeoff between performance and fairness. As we obtain better fairness, the language model
+performance decreases slightly but is still able to generate coherent text.
+D.6. Human Evaluation
+We conduct a large-scale human evaluation across pairs of generated sentences by GPT- 2andA-INLP . Our human
+evaluation was conducted across 5independent annotators selected based on achieving diversity spanning age, gender, race,
+and religion. Following human evaluation protocols in the related ﬁelds of text generation and style transfer (Shen et al.,
+2017), each of the 5annotators were asked to judge 1) clarity : coherence of the sentence (including grammar and spelling),
+2)content : whether the sentence respects the semantic meaning of realistic text, and 3) fairness : whether the sentence is fair
+across social groups, on a 1−5scale. We provide some examples of human-annotated sentences in Table 17 and we can see
+that humans accurately judge the presence of social biases that negatively stereotype certain religions.
+D.7. Robustness to Hyperparameters
+We report results from extensive experiments on the hyperparameters and bias-classiﬁer Ptraining epochs and summarize
+these results on a fairness-performance plot, where fairness is measured by 100-SS score (higher is better) and performance
+is measured by LM score (higher is better). Both SS score and LM score are reported from StereoSet (Nadeem et al.,
+2020). From Figure 5, these different iterations of our A-INLP algorithm allows us to observe a general tradeoff between
+performance and fairness. It is promising to note that quite a few settings of hyperparameters enable us to maintain LM
+score close to the original GPT- 2pretrained model (LM score of 88:5) while improving fairness from its original SS score
+of58:0to better SS scores of ∼50.
+Towards Understanding and Mitigating Social Biases in Language Models
+Figure 5. Tradeoff between fairness and performance across different hyperparameters ( and bias-classiﬁer Ptraining epochs) used in
+A-INLP . Quite a few settings of hyperparameters enable us to maintain language modeling scores (LM) close to original GPT- 2(LM
+score of 88:5) while improving fairness from its original stereotype scores (SS) of 58:0to∼50.
+E. Limitations and Attempts that Failed
+In this section, we summarize several attempts that we also tried but found to be ineffective in the process, and illustrate
+several limitations of our approach.
+1.The ﬁrst problem is that it is difﬁcult to collect a perfect dataset for the bias classiﬁer, especially for context embeddings
+across different bias classes. We cannot ensure that the bias attribute (e.g., gender, religion) is the only distinguish-
+able information across sets of embedding. Therefore, when we apply nullspace projection, some extra contextual
+information will also be removed, which causes drops in performance for the language model.
+2.For the GPT- 2model, the dot product between the context embedding and different token embeddings are quite similar.
+Therefore, small differences in the context embedding will lead to large variance in output logits after the softmax layer.
+We observe that when we apply the simple iterative nullspace projection algorithm where =1inA-INLP , many
+irrelevant and rare tokens might suddenly have high probabilities while the probability of several meaningful tokens
+drops a lot. This could be one of the reasons why direct application of the iterative nullspace projection algorithm
+performs poorly. We therefore introduced a learnable hyperparameter in an attempt to mitigate this problem.
+3.In contrast, A-SUBSPACE (the version of A-INLP with token-level subspace debiasing (Bolukbasi et al., 2016; Liang
+et al., 2020)) is a more conservative algorithm: we observe that the change of logits is quite small for most tokens. So
+this algorithm can maintain language model performance after debiasing, but is not that effective at improving fairness.
+4.Another challenge involves how to best learn the debiasing parameter . As we mentioned in Appendix D.1, the
+subspace of GPT- 2embedding might not be accurate, which incurs certain error in the q(w)term in Equation 8. For
+example, some stop word tokens might contribute to large even though they are not intuitively bias sensitive tokens,
+which leads us to use a subspace estimated by GloVe embeddings instead.
+5.There are a lot of subwords in the vocabulary of GPT- 2. Ifwis a subword, we might not ﬁnd it in the pretrained GloVe
+embedding vocabulary and this will also lead to inaccuracy in discovering bias-sensitive words and in the debiasing
+algorithm.

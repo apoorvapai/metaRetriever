@@ -1,0 +1,1085 @@
+Title: I love your chain mail! Making knights smile in a fantasy game world: Open-domain goal-oriented dialogue agents
+
+I love your chain mail! Making knights smile in a fantasy game world:
+Open-domain goal-oriented dialogue agents
+Shrimai Prabhumoye1 2Margaret Li2Jack Urbanek2Emily Dinan2Douwe Kiela2Jason Weston2
+Arthur Szlam2
+Abstract
+Dialogue research tends to distinguish between
+chit-chat and goal-oriented tasks. While the for-
+mer is arguably more naturalistic and has a wider
+use of language, the latter has clearer metrics and
+a straightforward learning signal. Humans effort-
+lessly combine the two, for example engaging in
+chit-chat with the goal of exchanging information
+or eliciting a speciﬁc response. Here, we bridge
+the divide between these two domains in the set-
+ting of a rich multi-player text-based fantasy en-
+vironment where agents and humans engage in
+both actions and dialogue. Speciﬁcally, we train
+a goal-oriented model with reinforcement learn-
+ing against an imitation-learned “chit-chat” model
+with two approaches: the policy either learns to
+pick a topic or learns to pick an utterance given
+the top-Kutterances from the chit-chat model.
+We show that both models outperform an inverse
+model baseline and can converse naturally with
+their dialogue partner in order to achieve goals.
+1. Introduction
+In the literature on artiﬁcial dialogue agents, a distinction
+is often made between “goal-oriented” dialogue, where an
+agent is tasked with ﬁlling slots or otherwise obtaining or
+disseminating speciﬁed information from the user to help
+complete a task, and open-domain “chit-chat”, where an
+agent should imitate human small talk. Modeling goal-
+oriented dialogue can have advantages over chit-chat im-
+itation as it gives clearer metrics of success and perhaps
+more meaningful learning signals; but goal-oriented dia-
+logue data is often more specialized, covering only a narrow
+slice of natural language. Current goal-oriented datasets
+study settings like booking restaurants or airline tickets, or
+*Equal contribution1Language Technologies Institute,
+Carnegie Mellon University, Pittsburgh, PA, USA2Faceboook
+AI Research, NY , USA. Correspondence to: Shrimai Prabhumoye
+<sprabhum@cs.cmu.edu >.obtaining weather information, as standalone tasks (Raux
+et al., 2005; Henderson et al., 2014; Bordes et al., 2017;
+El Asri et al., 2017; Budzianowski et al., 2018). Chit-chat
+agents, by contrast, might focus on coarse statistical regu-
+larities of dialogue data without accurately modeling the
+underlying “meaning”; but the data often covers a much
+wider space of natural language. For example, Twitter or
+Reddit chit-chat tasks (Li et al., 2016a; Yang et al., 2018;
+Mazar ´e et al., 2018) cover a huge spectrum of language
+and diverse topics. Chit-chat and goal-oriented dialogue are
+not mutually exclusive: when humans engage in chit-chat,
+their aim is to exchange information, or to elicit speciﬁc re-
+sponses from their partners. Modeling such goals, however,
+is made difﬁcult by the fact that it requires large amounts of
+world knowledge, and that goals in real life are implicit.
+In this work, we introduce a family of tasks that bridge
+the divide between goal-oriented and chit-chat dialogue,
+combining clearer metrics and learning signals on the one
+hand, with the richness and complexity of situated but open-
+domain natural language on the other. The tasks are set
+in a multi-player text-based fantasy environment (Urbanek
+et al., 2019) with grounded actions and reference objects.
+Given a particular character to play in a particular scenario
+(location, set of objects and other characters to interact with),
+an agent should conduct open-ended dialogue with the aim
+of persuading their dialogue partner to execute a speciﬁed
+action. The action could be an emote (smile, laugh, ponder,
+etc), or a game action (wear chain mail, drink mead, put
+glass on table, etc). The richness of the environment means
+that there are a huge set of possible tasks and scenarios in
+which to achieve a wide range of actions. We plan to make
+our entire setup, code and models publicly available.
+We train a variety of baseline models to complete the task.
+We compare agents trained to imitate human actions given
+a goal (an “inverse model”) to two different RL approaches:
+optimizing actions with latent discrete variables (topics),
+or via rewarding actions sampled from the model (via the
+top-Koutputs). We show that both types of RL agent are
+able to learn effectively, outperforming the inverse model ap-
+proach or the chit-chat imitation baseline, and can converse
+naturally with their dialogue partner to achieve goals.arXiv:2002.02878v2  [cs.AI]  10 Feb 2020
+Open-domain goal-oriented dialogue agents
+In short, our main contributions are: a new family of tasks
+that combines goal-oriented dialogue and chit-chat in a rich,
+fully realized environment, and the results and analysis of
+scalable RL algorithms and behavioral-cloning models (and
+simple heuristic methods) on these tasks.
+2. LIGHT Game Environment
+We work in the LIGHT game environment (Urbanek et al.,
+2019), which is a multi-user text-based game. Characters
+can speak to each other via free text, send emote actions
+likeapplaud ,nod orpout (22 emote types in total), and
+take actions to move to different locations and interact with
+objects (e.g. get cutlery ,put cutlery in drawer , etc.), see
+Appendix B for a full list of game actions.
+The game engine itself is formally deﬁned as a graph, where
+each location, object and character is a node, and they are
+connected by labeled edges, for example contained-in ,path-
+toorhas-property . Actions in the game result in changes in
+state of the graph. To a player (agent) a local view of the
+graph can be seen expressed as text, as are the game actions
+and changes of state. This text then naturally interleaves
+with the dialogue utterances of the speakers as well to form
+an input context sequence from which a character can base
+their subsequent actions. See Appendix Figure 3 for an
+example episode of interactions between two humans in a
+given environment.
+To make the world and its textual descriptions, LIGHT con-
+sists of a large set of human-written game locations, char-
+acters, and objects, all based within a fantasy medieval set-
+ting. Their names, descriptions and properties were crowd-
+sourced, yielding a total of 663 locations, 1755 characters,
+and 3462 objects. They range from beaches with crabs and
+seaweed to crypts with archaeologists and cofﬁns, yielding
+an extremely rich environment for agents to learn within.
+Crowdworkers were then asked to play the role of charac-
+ters within the game. This involved them making utterances,
+game actions and emotes, while interacting with each other
+(in pairs). The resulting gameplay data consists of 10,777
+episodes with an average of 18.3 actions each of rich human
+play. These are split into train (8538), validation (500) and
+test (1739) portions, the latter being split into new episodes
+in existing settings (test seen, 1000) and completely new
+settings (test unseen, 739). Players were not given speciﬁc
+goals, but instead asked to play the role convincingly of the
+character given, during play some of them effectively de-
+ﬁned their own goals during the interactions, see Appendix
+Figure 3. Existing work (Urbanek et al., 2019) does not
+consider using this data to learn goal-based tasks, but in-
+stead has only used this for chit-chat and action imitation
+learning.3. Tasks
+The tasks we introduce in this work involve achieving open-
+domain goals during interaction between two agents in a
+given LIGHT scenario. One of the agents, which we will
+call the “environment agent” and write in symbols as Menv,
+together with the game engine, effectively functions as
+an environment for the other agent, which we will write
+Mplayer . We assume that the environment agent is ﬁxed; in
+this work it will be a model trained via behavioral cloning
+from human-human interaction data. Mplayer must con-
+duct open-ended dialogue such that a given goal action is
+executed in the future by the environment agent.
+More formally: the two agents MenvandMplayer are
+given their views of the scenario ( DenvandDplayer respec-
+tively). These consist of the setting name, scenario descrip-
+tion, character names, and their own persona, all described
+as a sequence of text (see Fig 1). Note that each agent
+can only access their own persona but not the persona of
+the partner with whom they are conversing, but they do
+know the name of their partner. Denote by tthe time-step
+of the environment, Uplayer
+t andUenv
+tthe utterances of the
+agentsMplayer andMenvrespectively, and denote by Aenv
+t
+the environment actions by Menv. Hence the interaction
+sequence looks like
+St= [Uplayer
+0;(Uenv
+0;Aenv
+0);Uplayer
+1;(Uenv
+1;Aenv
+1);
+:::;Uplayer
+n;(Uenv
+n;Aenv
+n)]:(1)
+The agentMplayer is additionally given a persuasion goal
+gto achieve. That is, the objective of Mplayer is forMenv
+to take the action g. An episode ends when Aenv
+t==gor
+whennbecomes larger than a set number of turns.
+Goals We experiment separately with two different types
+of goals: game actions and emote actions. We use the
+same train, valid, test (seen and unseen) split of the original
+human-human LIGHT episodes, assign roles Mplayer and
+Menvrandomly, and randomly pick an action by Menv
+that occurs in the episode as the goal. We can then present
+the corresponding setting to our agents in order to form a
+new interaction, but within the same scenario and with a
+goal that was naturally desirable and achievable within that
+setting.
+In our experiments, Mplayer only speaks, it does not per-
+form game or emote actions. This was chosen in order to
+study grounded dialogue between agents; it guarantees that
+the player cannot force the goal to be reached by performing
+actions itself. It has to produce appropriate utterances URL
+such thatMenveventually takes the action g.
+Observations The state observation Ot =
+(Dplayer;St 1;g)at timetgiven to a model consists
+Open-domain goal-oriented dialogue agents
+Figure 1. Example interaction in the described task setup (single turn). Here the RL agent Mplayer would receive a reward as the
+environment agentMenvtook the desired action g.
+of the agent’s setting description ( Dplayer), the utterance
+and action history up to that time step ( St 1), and the
+agent’s goal ( g). Our models for Mplayer consumeOt
+as a ﬂattened sequence of tokens, and return a dialogue
+utterance Uplayer
+t. Each structured component is represented
+in the ﬂattened sequenced separated by a special token
+denoting the types, e.g. names, settings, etc., see Fig. 1.
+3.1. Reinforcement learning formulation
+Our task set-up can be easily framed as a Markov decision
+process. Because the entire history and goal is given to
+Mplayer , the environment is Markovian. For the reward,
+we can give a terminal reward of +1 only if the goal gis
+achieved and 0 otherwise, i.e, it is +1 if the environment
+agent takes the goal action g. The episode ends after nsteps.
+In our experiments we consider n= 1andn= 3.
+When we formulate our tasks as a reinforcement learning
+problem, we will also refer to Mplayer as the “RL agent”.
+4. Models
+In this section we describe the models for Menvand
+Mplayer . In this work these are retrieval models, using
+the LIGHT dialogue training corpus as candidates (111k
+utterances). We leave generative models to future work.
+Base agent architecture For all our models we adopt the
+same base architecture, which is a 12-layer bidirectional
+transformer (Vaswani et al., 2017) pre-trained on a large
+dialogue corpus (Reddit, 174M examples), and then ﬁne-
+tuned on our task. To score retrieval candidates, we use
+abi-encoder as in (Humeau et al., 2019; Urbanek et al.,
+2019). That is, two transformers are used, one to encodethe context, and another to encode a candidate response,
+and a dot product between the ﬁrst output vector of each
+scores the match. To produce a dialogue utterance, we
+take the utterance with the largest score from the training
+set candidates (111k in this case). The same procedure is
+followed for actions and emotes. For actions, the candidates
+are the set of admissible actions at that game state, which
+are provided by the game engine, for example get apple is
+only available in the candidate set if it is a valid action (an
+apple is present in the room). For emotes, all 22 candidates
+are always available. To train the model, a cross entropy
+loss is used. Similar to Mazar ´e et al. (2018), during training
+we consider the other elements of the batch as negatives.
+Environment agent The environment agent is the base
+agent described above, and stays ﬁxed over episodes where
+an RL agent is trained. This helps guarantee our RL models
+stick to using the semantics of natural language (English)
+rather than so-called language drift of learning a new emer-
+gent language on the same tokens (Lee et al., 2019).
+RL agents We design two RL approaches for our tasks -
+learn to pick the right latent discrete variables (topics) that
+lead to goal-achieving utterances Uplayer
+i; or learn to pick
+the correct Uplayer
+i from the top Kcandidates. These are
+described in more detail in Sections 4.2 and 4.3. We also
+discuss a baseline “inverse” model trained via behavioral
+cloning on the human-human data.
+4.1. Inverse model
+We consider an inverse model, trained to imitate human
+actions given a goal, as both a baseline for comparing to
+RL models, and for producing weights from which we can
+Open-domain goal-oriented dialogue agents
+ﬁne-tune. The inverse model consists of a bi-encoder, as
+described above, which takes as input an observation Ot,
+and outputs an utterance. We train it by extracting from the
+human-human game logs training set (which does not have
+goals) every instance where a game action occurs at time t
+inSt, that is where
+St= [(Uplayer
+1;Aplayer
+1);(Uenv
+1;Aenv
+1);:::;
+(Uplayer
+t;Aplayer
+t);(Uenv
+t;Aenv
+t)];(2)
+and where Aenv
+tis not null (no action that turn); note, Aplayer
+i
+for0< itorAenv
+ifor0< i < t might be null. We
+then construct a training example for the inverse model with
+observation (Dplayer;g=Aenv
+t;St 1). i.e. setting the goal
+gto beAenv
+t, and with the desired action to be taken by the
+agent as Uplayer
+t. Here we use the subscripts “player” and
+“env” just to mark the relative positions in the sequence, as
+all actions and utterances come from the human logs. Note
+also that unlike the RL agents we train, the human in the
+player agent “position” can take game actions.
+We can thus train this model in a supervised manner using
+a cross entropy loss as described before. This model does
+not learn a policy interactively, and hence might not learn
+to plan or strategize optimally for goal completion. The
+data distribution it is trained on is different than the data
+distribution seen by the RL agents. However, it serves as
+a strong baseline. Further, when training our RL agents,
+we initialize their weights to the weights of this model, and
+then ﬁne-tune from that point.
+4.2. Latent Discrete Variable (Topic) Model
+Optimizing all the parameters of a large transformer archi-
+tecture by RL is both incredibly costly in data efﬁciency
+and computing time, and is also known to have the problem
+of language drift (Lee et al., 2019) – that is, there is no
+guarantee after training with self-chat that the models will
+output recognizable natural language utterances. A solution
+to both problems is to train most of the parameters of the
+model with human-human language data, and then to either
+disentangle or only optimize some of the parameters with
+model self-chat (Yarats & Lewis, 2017).
+Here, we propose a straight-forward model for that purpose.
+We assume an RL agent that consists of two components.
+The ﬁrst component FC(O) =PC(Ts(O))maps from an
+observation to a discrete variable with Cpossible values. It
+consists of a chain of two functions: a transformer Tsthat
+takes in the observation, and outputs a state representation ~s,
+and a policy chooser c=P(~s)2(1;:::;C )which takes in
+the state representation and outputs the value of the discrete
+latent variable.
+The second component Tu(O;c)is an additional trans-former that takes as input the observation as well as the out-
+put of the ﬁrst component, and outputs a dialogue utterance.
+The entire model is thus the chain u=Tu(O;PC(Ts(O))).
+We make this explicit decomposition so that we can train
+only part of the model with RL; note that the “action” trained
+via RL is choosing c, not outputting the ﬁnal utterance.
+Initial topics We ﬁrst pre-train the transformer Tsusing
+the inverse model described in Section 4.1, which produces
+a vectorial representation of a given observation. We then
+runK-means over the vectorial representations of all ob-
+servations from the training set to provide the mapping to
+one ofCvalues, which represent dialogue topics, which
+we use as our initial function PC(~s). These two functions
+together give us our initialization of FC. Table 1 shows the
+cluster ID and the topic denoted by that cluster along with
+the most representative sentences (closest to the center) for
+that cluster for a model trained with 50topics. As we can
+see, the clusters learnt can be coherent about a topic. We
+use the set of topics as a set of actions Afor our RL setup.
+FromctoAGiven our initial choice of FC, we can also
+pre-trainTu. We simply take our initial human-human
+training data, and for each observation append the topic
+computed by Fcto it. This allows our model to be able to
+generate an action (utterance) conditional on both an input
+and a topic. We can now train a policy by RL that optimizes
+the topic at any given point in the episode.
+Policy training We keep the pre-trained portions of the
+modelTuandTsﬁxed and during ﬁne-tuning only opti-
+mizePC. The cluster chooser PCis redeﬁned (from the
+initialK-means) to be an MLP network consisting of 2
+layers. A discrete action is sampled from a categorical
+probability distribution over the possible topics, given by
+ctCategorical (h2
+t), where h2
+t=tanh(W2tanh(W1st+
+b1) +b2).
+The state vector stalso encodes the goal gand thus, the
+policy is conditioned on the goal gof the agent. Hence, the
+policy can learn strategies that will result in picking actions
+at each time step tthat will help the agent to achieve its
+goalg. As our RL agent can only choose topics, it cannnot
+redeﬁne easily the meaning of words to cause language drift.
+We use the Advantage Actor-Critic implementation A2C
+(Kostrikov, 2018) to train the policy and the value function
+in both this and the subsequently described Top- Kmodel.
+4.3. Top-Kmodel
+The Top-Kmodel, related to (Dulac-Arnold et al., 2015),
+is another approach to keeping the number of trainable pa-
+rameters small. As above it keeps close to the base retrieval
+model to avoid drift. It ﬁrst uses the inverse model to get a
+context embedding ~sfrom the observation, and a list of K
+Open-domain goal-oriented dialogue agents
+CID Topic Representative Sentences
+19 animal sounds ‘Meow! Purr!’, ‘Bah-Buk! Tasty!’, ‘Woof! Very!’, ‘Bock! Bock!’
+12 ﬁnd the cost ‘I would love some fruit. What are your prices?’, ‘They are beautiful.
+How much do the cost?’, ‘It ﬂows easily, how much are you selling it for?’
+28 prayer, ‘Then your poor life is a sign from God for you to join us in the churchand serve him!’, ‘If you say so priest.
+God From now I will pray every night for wealth and good food!’, ‘Continue to love, worship, and serve Him.’
+45 ask favor ‘Yes but do you mind doing me a favor?’, ‘Since I have helped you, could you do me a favor?’,
+‘If I offer to solve your problem, what will you personally do for me in return?’
+Table 1. Clusters learnt from the dialogue utterances (Clusters = 50). ‘CID’ denotes the cluster ID.
+candidate utterance embeddings v1;:::vKcorresponding to
+utterancesu1;:::u K. These are the encodings by the inverse
+model of the Kutterances it considers most likely given the
+context and goal.
+We form scores ti= (A~s+b)Tvi, and obtain a probability
+distribution over these Kcandidates for our policy:
+(uijcontext ) =softmax (t0;:::;t K)(i): (3)
+Here the trainable parameters of the RL agent are the map
+Aand biasesb.
+Alternatively, we can train a small (2-layer) Transformer
+modelTwthat takes as input the set f~s;v1;:::vKg. Instead
+of a softmax over dot products tias in (3), we use the
+attention weights in the last layer of Twabove ~sagainst
+the candidates as the distribution over the candidates for
+sampling an utterance. In this case, the weights of Tware
+the trainable parameters of the RL agent. We call the former
+model a policy “bi-encoder” (Top- K-Bi in tables) and the
+latter simply Top- K.
+5. Related work
+Chit-chat dialogue There is an increasing body of work
+in the domain of chit-chat, where the primary approaches be-
+ing currently tried are end-to-end neural approaches. They
+are typically large pre-trained and then ﬁne-tuned transform-
+ers, either generative or retrieval. Retrieval models work
+best, or match generative models, on a number of tasks
+(Zhang et al., 2018; Dinan et al., 2018; Li et al., 2019). Our
+work shares a commonality with these approaches in that
+the original LIGHT dialogue data we use has no speciﬁed
+goals, and humans chit-chat together (and act). Thus, the
+conversations cover a rich number of diverse topics. In Ur-
+banek et al. (2019) models were trained in a similar fashion
+to chit-chat task models, and we adopt similar architectures
+here, but instead adapt them to learn to pursue goals.
+Goal-oriented dialogue Traditional goal-oriented dia-
+logue has focused on narrow tasks that would typically
+be useful for a dialogue-based assistant, for example
+restaurant (Henderson et al., 2014), taxi, train, and hotel
+(Budzianowski et al., 2018) or trip (El Asri et al., 2017)booking. Hence, each task typically focuses on a narrow
+slice of natural language and world knowledge for a spe-
+cialized domain. Earlier work focused on labeled state
+representations, slot ﬁlling mechanisms and dialogue man-
+agers (Rieser & Lemon, 2011), and more recent work has
+shifted to an end-to-end approach (Bordes et al., 2017), in
+line with chit-chat models, but still the two sets of tasks are
+rarely considered together, or by using the same methods.
+Recently, Tang et al. (2019) used coarse-grained keywords
+as targets for open-domain chit-chat but in this work the
+target can be achieved when either the human or the agent
+uses the keyword in the response.
+RL for dialogue The classical goal-oriented dialogue lit-
+erature studies RL extensively (Singh et al., 2000). Typi-
+cally, they used RL to improve dialogue managers, which
+manage transitions between dialogue states (Singh et al.,
+2002; Pietquin et al., 2011; Rieser & Lemon, 2011; Gasic
+et al., 2013; Fatemi et al., 2016). Recent works have focused
+more on end-to-end learning. Some works have focused
+on self-play type mechanisms for end-to-end reinforcement
+learning, where the reward is derived from the goal. A re-
+lated approach to ours is the negotiation task of Lewis et al.
+(2017); Yarats & Lewis (2017), which requires two agents
+to swap 3 item types (hats, balls, books) where the value of
+the items is different for the two agents, and derives their
+personal reward. In contrast, our setup encompasses a rich
+world of settings and characters – with 3462 object types,
+and a corresponding large number of actions. This is re-
+ﬂected in the vocabulary size itself ( 32,000 versus2,000
+in the negotiation tasks). Other notable uses of RL in dia-
+logue include within visual question answering (Das et al.,
+2017), in the domain of chit-chat where RL has been used
+to decrease repetitive and generic responses through the the
+use of self-play (Li et al., 2016b), and through human-bot
+conversation (Sankar & Ravi, 2019).
+RL for language and games RL is used extensively for
+learning to play games, one of the most well known ex-
+amples being AlphaGo (Silver et al., 2016). Since then,
+language in games has started to be more deeply explored,
+for example in graphical games such as Minecraft (Oh et al.,
+2017), Real-time strategy war games (Hu et al., 2019), or in
+Open-domain goal-oriented dialogue agents
+Test Seen Test Unseen
+(n= 1) ( n= 3) ( n= 1) ( n= 3)
+Model Goal Type Reward Reward Turns Reward Reward Turns
+Random Utterance game act 0.183 0.349 2.54 0.161 0.344 2.57
+Inverse model (no goal) game act 0.185 0.345 2.55 0.160 0.345 2.57
+Inverse model game act 0.223 0.414 2.42 0.193 0.410 2.48
+Top-KRL game act 0.402 0.537 2.18 0.331 0.449 2.35
+Top-K-BE RL game act 0.327 0.491 2.26 0.278 0.442 2.34
+Topic RL game act 0.359 0.561 2.15 0.313 0.496 2.26
+Top-KRL (1-step 3x) game act - 0.526 2.14 - 0.475 2.26
+Topic RL (1-step 3x) game act - 0.493 2.22 - 0.479 2.29
+Random Utterance emote 0.086 0.200 2.79 0.061 0.185 2.81
+Inverse model (no goal) emote 0.072 0.219 2.77 0.075 0.212 2.78
+Inverse model emote 0.089 0.262 2.72 0.088 0.266 2.74
+Top-KRL emote 0.166 0.400 2.55 0.131 0.349 2.59
+Top-K-BE RL emote 0.219 0.485 2.46 0.171 0.436 2.53
+Topic RL emote 0.247 0.482 2.43 0.208 0.427 2.49
+Top-KRL (1-step 3x) emote - 0.336 2.58 - 0.293 2.65
+Topic RL (1-step 3x) emote - 0.406 2.42 - 0.348 2.50
+Table 2. Results on the test seen and unseen environments for our models.
+Figure 2. Topic RL model training for n= 1andn= 3step goals for game actions (left) and emotes (right), comparing to the inverse
+model baselines. Darker lines indicate smoothed plots. Training using 8V100 machines took 2 weeks (1 step),5 weeks (3 step).
+text adventure games (Narasimhan et al., 2015; C ˆot´e et al.,
+2018). The latter are related to our setting. However, those
+approaches use RL to optimize the set of actions given feed-
+back in a single-player rather than multi-player game, so the
+text only refers to the environment, and there is no dialogue
+or actions from other agents. Our work focuses on the latter.
+6. Experiments
+We compare our various models on the game action and
+emote action tasks. We experiment with differing number
+of stepsnallowed to complete the goal, n= 1andn= 3.
+Apart from the models described in Sec. 4, we design
+two naive baselines to check the sanity of our environmentmodels. The Random Utterance model picks a random
+utterance from the set of all candidates and returns that
+response to the environment. We also report results for the
+inverse model which does not get a goal to achieve. Our
+main results for both seen and unseen test environments ( x2)
+are given in Table 2. We report the average reward and for
+n= 3the average number of turns before completion. The
+results show clear improvements for our Topic RL ( x4.2) and
+Top-K RL (x4.3) compared to the inverse model and other
+baselines for each n, for both game actions and emotes.
+We show the training curves for Topic RL in Fig. 2, report-
+ing rewards averaged over the batch (512 for n= 1, and
+128 forn= 3). They show relatively smooth improvements
+over time, with clear gains over the baseline. As a sanity
+Open-domain goal-oriented dialogue agents
+Self: guard Partner: archer Self: swimmer Partner: turtles
+Persona: I guard the castle. I guard the king. Persona: I am a huge fan of deep sea exploration,
+I would kill to protect the royal family but I take any chance I can get to go for a swim...
+Setting: The armory, Inside Tower. Setting: Bank, Swamp
+The near top of the tower 6 feet before the very top. This is a grassy area that surrounds much of the swamp.
+Where the watchers keep their eye... It’s a plain ﬁeld with some trees nearby along...
+Uplayer
+0 This is the armory! Uplayer
+0 Just keep taking good care of your beautiful little
+The king keeps the best weapons here. turtle family! Your species is quite unique and I love
+Take a look - to see you about when I go for a swim.
+Uenv
+0 Hello, I need to get into the palace to see the Uenv
+0 Well, thank you for that. Do you happen to know
+king. I think he might like to see these weapons. where my other turtle friend is? You haven’t captured
+any turtles have you?
+Aenv
+0 get weapon Aenv
+0 hug swimmer
+Self: townsperson Partner: villager Self: songbird Partner: wasp
+Persona: We are the people who live in this town. Persona: I ﬂy high and bring beautiful music to the people.
+We are common, and there are many... I soar high and low going where the ...
+Setting: The Lagoon, Lake Setting: Meadow, Countryside
+The Lagoon is a dark and mysterious place Large clear outdoor meadow. Flowers of blue and
+during the night hours. A lot of moss and lily... white appearing in bunches here and there. The ...
+Uplayer
+0 It is cold up here. Would you like my coat Uplayer
+0 Get out of here, wasp!
+Uenv
+0 Oh yes please if I may. My shoe has become sodden Uenv
+0 You? Fly away from me? You’re in my forest, bird.
+from running to the market I should love to dry it a bit. I control this land.
+Aenv
+0 remove Cloak Aenv
+0 hit a songbird
+Table 3. Example 1-step episodes where after the Topic RL agent’s utterance Uplayer
+0 the environment agent’s response action Aenv
+0was
+equal to the RL agent’s goal g. Our RL agent both makes natural utterances given the situation, and that elicit the desired goal.
+Train
+(n= 1) ( n= 3)
+Model Goal Reward Reward Turns
+Top-KRL act 0.677 0.752 1.72
+Topic RL act 0.539 0.752 1.87
+Top-KRL (1-st. 3x) act - 0.737 1.62
+Topic RL (1-st. 3x) act - 0.660 1.87
+Top-KRL emote 0.498 0.668 2.13
+Topic RL emote 0.483 0.612 2.22
+Top-KRL (1st. 3x) emote - 0.587 1.96
+Topic RL (1-st. 3x) emote - 0.570 1.99
+Table 4. Results on the training environment for our models.
+check we also tried, after training, to replace the Topic RL
+policy with random topic prediction, which yielded poor
+results, e.g. 0.217 reward for n= 1test seen game actions.
+Our model is clearly learning appropriate topic acts.
+Example successful episodes We show examples of suc-
+cessful utterances, achieving goal actions in Fig. 3 for a
+diverse range of scenarios, actions and language. For ex-
+ample, for the guard’s goal to encourage the archer to get
+weapon the Topic RL model utters “This is the armory! The
+king keeps the best weapons here. Take a look”, which ends
+up leading to the desired action in the subsequent turn. More
+examples (for n= 3) are given in Appendix D.Analysis of utterance choice To understand the seman-
+tics the models are learning that ground language to actions,
+we visualize the top scoring utterances, averaged over their
+probabilities on the 1-step test set, broken down by verb
+type. We observe a clear improvement in semantic connec-
+tion for the Topic RL model over the inverse model. For
+example utterances such as “Have a taste of this” are highly
+scoring for drink goals, “hmmnnnn.. this sure smells nice”
+foreatgoals, “Ew you vile beast, do not touch me! I will
+have you removed” for hitgoals, and “How I love being
+pampered by you, sweetheart” for huggoals. Given there
+are111,000 possible utterances in our setting, the model
+has clearly learned meaningful representations. Detailed
+results are given in Appendix Tables 9 and 10 for the inverse
+model and Topic RL model respectively.
+Train vs. test performance We compare training perfor-
+mance of our models in Table 4. We see the same trends
+that models that performed better on test ﬁt better on train
+(e.g. Top-Kvs. Topic RL on 1-step tasks). Nevertheless,
+we do observe signiﬁcant overﬁtting can occur, indicating
+that future work could explore either models that improve
+through better generalization, or by exploiting more training
+data – for example by self-play with more goals, rather than
+just using goals from human logs, as we have done here.
+Open-domain goal-oriented dialogue agents
+1-Step 1-Step 3x 3-Step
+Verb Count Topic Top- K Topic Top- K Topic Top- K
+get 213 27.70 28.17 37.56 43.66 44.13 40.85
+hit 172 43.02 46.51 63.95 66.86 63.95 75.58
+hug 178 61.26 69.82 72.52 81.53 85.13 85.56
+give 136 33.09 41.91 50.00 54.41 56.62 48.53
+remove 127 9.45 13.39 22.83 22.83 27.56 26.77
+steal 55 47.27 50.91 63.64 63.64 80.00 54.55
+drop 27 0.00 0.00 18.52 18.52 7.41 7.41
+put 25 0.00 0.00 8.00 12.00 4.00 4.00
+eat 10 30.00 10.00 70.00 20.00 60.00 40.00
+wear 10 0.00 0.00 20.00 30.00 20.00 10.00
+drink 3 33.33 33.33 33.33 33.33 33.33 33.33
+Table 5. Verb success in percentage on 1000 test seen episodes. The 3-step model performs best for high and medium frequency verbs.
+1-Step 1-Step 3x 3-Step
+Topic Top- K Top-K-Bi Topic Top- K Top-K-Bi Topic Top- K Top-K-Bi
+1-step achievable 0.452 0.505 0.407 0.616 0.647 0.587 0.686 0.664 0.620
+1-step unachievable 0.000 0.005 0.005 0.044 0.058 0.044 0.068 0.049 0.078
+Table 6. Test seen breakdown by difﬁculty (1-step achievable or not). The 3-step models outperform the 1-step 3x models on both sets.
+Model capacity We evaluate different values of Kor
+numbers of topics for Top- Kand Topic RL. Full results
+are given in Appendix Table 7. They show that increasing
+the capacity of both models improves performance up to
+200 clusters or K= 200 , after which performance saturates.
+However,K= 200 (56.1%) is substantially better than
+K= 50 (47.7%) on the 3-step task, for example.
+Performance breakdown by goal We show the break-
+down of test performance by goal type in Table 5 (splitting
+by verb type) and Appendix Table 8 (splitting by emote
+type). The results show that the easiest tasks are common
+actions with clear differentiation such as hug(85% success)
+andhit(75%). Actions like get,drop,give which are more
+confusable have somewhat lower numbers, with more rare
+actions (e.g. wear) faring worse.
+Performance breakdown by difﬁculty We can break
+down the test results into difﬁculty by considering in the
+3-step task, which examples are 1-step achievable given
+the model’s possible actions under the policy (i.e. the pos-
+sible Top-Kutterances or Topic RL cluster choices), and
+reporting results separately. The results are given in Table 6.
+They show that non 1-step achievable goals are much harder,
+representing a signiﬁcant challenge to future systems.
+1-step 3x baseline To investigate further the quality of
+our 3-step task models, we consider an additional baseline
+of taking a 1-step task trained model (Topic RL or Top- K)
+and applying it on the 3-step task, which it has not been
+optimized for. The results in Table 2 show test results areinferior for this approach. Breaking down further by goal
+type (Table 5 and Appendix Table 8) shows that there are
+large improvements for the 3-step model on goals which
+are more often expressed in the data. Table 6 shows that 3-
+step models outperform the 1-step 3x models on both 1-step
+achievable and the harder 1-step unachievable goals. Train-
+ing performance (Table 4) further validates these results.
+3-step task repeats We analyze the number of repeated ut-
+terances in an episode. The Topic RL model repeats at least
+one utterance 25.8% of the time, with 15.59% utterances
+overall repeated. The 1-step 3x baseline in comparison re-
+peats 37.3% at least once, and 22.94% on average. We note
+that repeating an utterance may possibly bring the desired
+goal in some cases, just as in real life.
+7. Conclusion
+In this paper, we investigate agents that can interact (speak
+or act) and can achieve goals in a rich world with diverse lan-
+guage, bridging the gap between chit-chat and goal-oriented
+dialogue. We achieve this by deﬁning a task for an agent,
+where the goal is for the other player to execute a particular
+action. We explore two reinforcement learning approaches
+to solve this task, and compare them against a strong inverse
+model baseline. We show that these approaches effectively
+learn dialogue strategies that lead to successful completion
+of goals, while producing natural chat.
+Future work should develop improved agents that learn to
+act and speak in natural language at scale in our proposed
+open-domain task environment. This setup is exciting be-
+Open-domain goal-oriented dialogue agents
+cause it can be further generalized to richer and richer goal
+(game) states as we develop models capable of them.
+References
+Bordes, A., Boureau, Y .-L., and Weston, J. Learning end-to-
+end goal-oriented dialog. In Proceedings of the Interna-
+tional Conference on Learning Representations (ICLR) ,
+2017.
+Budzianowski, P., Wen, T.-H., Tseng, B.-H., Casanueva, I.,
+Ultes, S., Ramadan, O., and Ga ˇsi´c, M. Multiwoz-a large-
+scale multi-domain wizard-of-oz dataset for task-oriented
+dialogue modelling. arXiv preprint arXiv:1810.00278 ,
+2018.
+Cˆot´e, M.-A., K ´ad´ar,´A., Yuan, X., Kybartas, B., Barnes, T.,
+Fine, E., Moore, J., Hausknecht, M., Asri, L. E., Adada,
+M., et al. Textworld: A learning environment for text-
+based games. arXiv preprint arXiv:1806.11532 , 2018.
+Das, A., Kottur, S., Moura, J. M., Lee, S., and Batra, D.
+Learning cooperative visual dialog agents with deep rein-
+forcement learning. In Proceedings of the IEEE Interna-
+tional Conference on Computer Vision , pp. 2951–2960,
+2017.
+Dinan, E., Roller, S., Shuster, K., Fan, A., Auli, M., and
+Weston, J. Wizard of wikipedia: Knowledge-powered
+conversational agents. arXiv preprint arXiv:1811.01241 ,
+2018.
+Dulac-Arnold, G., Evans, R., van Hasselt, H., Sunehag, P.,
+Lillicrap, T., Hunt, J., Mann, T., Weber, T., Degris, T., and
+Coppin, B. Deep reinforcement learning in large discrete
+action spaces. arXiv preprint arXiv:1512.07679 , 2015.
+El Asri, L., Schulz, H., Sharma, S., Zumer, J., Harris, J.,
+Fine, E., Mehrotra, R., and Suleman, K. Frames: a
+corpus for adding memory to goal-oriented dialogue sys-
+tems. In Proceedings of the 18th Annual SIGdial Meeting
+on Discourse and Dialogue , pp. 207–219, Saarbr ¨ucken,
+Germany, August 2017. Association for Computational
+Linguistics.
+Fatemi, M., Asri, L. E., Schulz, H., He, J., and Suleman,
+K. Policy networks with two-stage training for dialogue
+systems. arXiv preprint arXiv:1606.03152 , 2016.
+Gasic, M., Breslin, C., Henderson, M., Kim, D., Szummer,
+M., Thomson, B., Tsiakoulis, P., and Young, S. Pomdp-
+based dialogue manager adaptation to extended domains.
+InProceedings of the SIGDIAL 2013 Conference , pp.
+214–222, 2013.
+Henderson, M., Thomson, B., and Williams, J. D. The
+second dialog state tracking challenge. In Proceedings ofthe 15th Annual Meeting of the Special Interest Group on
+Discourse and Dialogue (SIGDIAL) , pp. 263–272, 2014.
+Hu, H., Yarats, D., Gong, Q., Tian, Y ., and Lewis, M.
+Hierarchical decision making by generating and fol-
+lowing natural language instructions. arXiv preprint
+arXiv:1906.00744 , 2019.
+Humeau, S., Shuster, K., Lachaux, M.-A., and Weston, J.
+Real-time inference in multi-sentence tasks with deep pre-
+trained transformers. arXiv preprint arXiv:1905.01969 ,
+2019.
+Kostrikov, I. Pytorch implementations
+of reinforcement learning algorithms.
+https://github.com/ikostrikov/
+pytorch-a2c-ppo-acktr-gail , 2018.
+Lee, J., Cho, K., and Kiela, D. Countering language drift
+via visual grounding. arXiv preprint arXiv:1909.04499 ,
+2019.
+Lewis, M., Yarats, D., Dauphin, Y . N., Parikh, D., and Batra,
+D. Deal or no deal? end-to-end learning for negotiation
+dialogues. arXiv preprint arXiv:1706.05125 , 2017.
+Li, J., Galley, M., Brockett, C., Spithourakis, G. P., Gao,
+J., and Dolan, B. A persona-based neural conversation
+model. arXiv preprint arXiv:1603.06155 , 2016a.
+Li, J., Monroe, W., Ritter, A., Galley, M., Gao, J., and
+Jurafsky, D. Deep reinforcement learning for dialogue
+generation. arXiv preprint arXiv:1606.01541 , 2016b.
+Li, M., Weston, J., and Roller, S. Acute-eval: Improved dia-
+logue evaluation with optimized questions and multi-turn
+comparisons. arXiv preprint arXiv:1909.03087 , 2019.
+Mazar ´e, P.-E., Humeau, S., Raison, M., and Bordes, A.
+Training millions of personalized dialogue agents. arXiv
+preprint arXiv:1809.01984 , 2018.
+Narasimhan, K., Kulkarni, T., and Barzilay, R. Language
+understanding for text-based games using deep reinforce-
+ment learning. arXiv preprint arXiv:1506.08941 , 2015.
+Oh, J., Singh, S., Lee, H., and Kohli, P. Zero-shot task
+generalization with multi-task deep reinforcement learn-
+ing. In Proceedings of the 34th International Conference
+on Machine Learning-Volume 70 , pp. 2661–2670. JMLR.
+org, 2017.
+Pietquin, O., Geist, M., Chandramohan, S., and Frezza-Buet,
+H. Sample-efﬁcient batch reinforcement learning for dia-
+logue management optimization. ACM Transactions on
+Speech and Language Processing (TSLP) , 7(3):7, 2011.
+Open-domain goal-oriented dialogue agents
+Raux, A., Langner, B., Bohus, D., Black, A. W., and Eske-
+nazi, M. Let’s go public! taking a spoken dialog system to
+the real world. In Ninth European conference on speech
+communication and technology , 2005.
+Rieser, V . and Lemon, O. Reinforcement learning for adap-
+tive dialogue systems: a data-driven methodology for
+dialogue management and natural language generation .
+Springer Science & Business Media, 2011.
+Sankar, C. and Ravi, S. Deep reinforcement learning for
+modeling chit-chat dialog with discrete attributes. arXiv
+preprint arXiv:1907.02848 , 2019.
+Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L.,
+Van Den Driessche, G., Schrittwieser, J., Antonoglou, I.,
+Panneershelvam, V ., Lanctot, M., et al. Mastering the
+game of go with deep neural networks and tree search.
+nature , 529(7587):484, 2016.
+Singh, S., Litman, D., Kearns, M., and Walker, M. Optimiz-
+ing dialogue management with reinforcement learning:
+Experiments with the njfun system. Journal of Artiﬁcial
+Intelligence Research , 16:105–133, 2002.
+Singh, S. P., Kearns, M. J., Litman, D. J., and Walker, M. A.
+Reinforcement learning for spoken dialogue systems. In
+Advances in Neural Information Processing Systems , pp.
+956–962, 2000.
+Tang, J., Zhao, T., Xiong, C., Liang, X., Xing, E., and Hu,
+Z. Target-guided open-domain conversation. In Proceed-
+ings of the 57th Annual Meeting of the Association for
+Computational Linguistics , pp. 5624–5634, 2019.
+Urbanek, J., Fan, A., Karamcheti, S., Jain, S., Humeau, S.,
+Dinan, E., Rockt ¨aschel, T., Kiela, D., Szlam, A., and
+Weston, J. Learning to speak and act in a fantasy text
+adventure game. arXiv preprint arXiv:1903.03094 , 2019.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Atten-
+tion is all you need. In Advances in Neural Information
+Processing Systems , pp. 5998–6008, 2017.
+Yang, Y ., Yuan, S., Cer, D., Kong, S.-y., Constant, N., Pilar,
+P., Ge, H., Sung, Y .-H., Strope, B., and Kurzweil, R.
+Learning semantic textual similarity from conversations.
+arXiv preprint arXiv:1804.07754 , 2018.
+Yarats, D. and Lewis, M. Hierarchical text generation
+and planning for strategic dialogue. arXiv preprint
+arXiv:1712.05846 , 2017.
+Zhang, S., Dinan, E., Urbanek, J., Szlam, A., Kiela, D., and
+Weston, J. Personalizing dialogue agents: I have a dog,
+do you have pets too? arXiv preprint arXiv:1801.07243 ,
+2018.
+Open-domain goal-oriented dialogue agents
+A. Additional Results
+Test Seen Test Unseen
+(n= 1) (n= 3) (n= 1) (n= 3)
+Model Goal Type # Clusters Reward Reward Turns Reward Reward Turns
+Topic RL game act 50 0.324 0.477 2.31 0.277 0.470 2.24
+Topic RL game act 100 0.348 0.523 2.21 0.282 0.488 2.28
+Topic RL game act 200 0.359 0.561 2.15 0.313 0.496 2.26
+Topic RL game act 500 0.362 0.505 2.23 0.307 0.46 2.35
+Topic RL game act 1000 0.372 0.510 2.20 0.333 0.464 2.32
+Top-KRL game act 50 0.329 0.503 2.24 0.261 0.439 2.39
+Top-KRL game act 100 0.370 0.521 2.12 0.292 0.468 2.33
+Top-KRL game act 200 0.402 0.537 2.18 0.331 0.449 2.35
+Top-KRL game act 500 0.402 - - 0.299 - -
+Top-KRL game act 1000 0.426 - - 0.337 - -
+Table 7. Results with different numbers of clusters (Topic RL) or candidates (Top- KRL). Some experiments were not completed because
+of resource limitations.
+1-Step 1-Step 3x 3-Step
+Emote Count Topic Top- K Topic Top- K Topic Top- K
+laugh 109 20.18 11.01 32.11 20.18 44.04 26.61
+smile 106 31.13 13.21 58.49 37.74 61.32 44.34
+ponder 94 31.91 2.13 44.68 7.45 59.57 24.47
+frown 85 18.82 9.41 29.41 21.18 34.12 24.71
+nod 75 40.00 21.33 58.67 52.00 84.00 56.00
+sigh 67 55.22 4.48 82.09 14.93 85.07 11.94
+grin 63 4.76 1.59 25.40 12.70 33.33 26.98
+gasp 57 21.05 0.00 33.33 0.00 33.33 3.51
+shrug 47 29.79 6.38 51.06 48.94 59.57 48.94
+stare 41 7.32 4.88 26.83 17.07 26.83 9.76
+scream 40 17.50 20.00 25.00 25.00 42.50 30.00
+cry 32 12.50 28.13 18.75 50.00 43.75 56.25
+growl 27 40.74 37.04 48.15 40.74 33.33 40.74
+blush 26 3.85 19.23 11.54 50.00 19.23 53.85
+dance 24 37.50 29.17 62.50 33.33 62.50 33.33
+applaud 23 17.39 0.00 43.48 21.74 21.74 21.74
+wave 19 21.05 21.05 36.84 21.05 10.53 26.32
+groan 17 5.88 0.00 17.65 11.76 11.76 5.88
+nudge 16 0.00 0.00 0.00 6.25 0.00 12.50
+wink 15 13.33 20.00 13.33 33.33 13.33 53.33
+yawn 11 0.00 0.00 0.00 18.18 27.27 27.27
+pout 6 0.00 33.33 16.67 66.67 16.67 16.67
+Table 8. Emote success in percentage on 1000 test seen episodes. The 3-step model performs best for high and medium frequency verbs.
+Open-domain goal-oriented dialogue agents
+Verb count Top utterances
+get 213 ’Why hello there, I haven;t seen you in awhile.’, ”Oh hello, I didn’t expect to ﬁnd anyone else here.”, ”Well
+hello there, wasn’t expecting to see you here.”, ’Wow! What a ﬁne place this is.’, ”Oh, hello! I didn’t see you
+all here.”, ’Well hello there! I did not expect to see anyone here.’, ”Isn’t this place so wonderful!?”, ’I need
+some light.’, ’So how is buisiness going?’, ’”Ah, what a long day we have ahead of us!”’
+put 25 ’Why hello there, I haven;t seen you in awhile.’, ”Well hello there, wasn’t expecting to see you here.”, ”Oh
+hello, I didn’t expect to ﬁnd anyone else here.”, ’Wow! What a ﬁne place this is.’, ’Eerie. I must light a candle.
+And say a prayer’, ”Oh, hello! I didn’t see you all here.”, ’Well hello there! I did not expect to see anyone
+here.’, ”Isn’t this place so wonderful!?”, ’Greetings! How are my subjects doing this ﬁne day?’, ’Good morning.
+Someone needs to tend to this rickety rectory. I almost fell through the ﬂoor.’
+drink 3 ’Eerie. I must light a candle. And say a prayer’, ’It is a wonderful day to drink! Time to get my drunk on!’, ’I
+need another drink.’, ”Greetings m’lord! Cold day isn’t it?”, ’I am person just trying to enjoy the ambiance of
+this room’, ’I need some light.’, ’It appears you need some guidance.’, ’Hello person! How are you on this ﬁne
+evening?’, ’Good evening good evening sir! Can I help you?’, ”Well hello there, wasn’t expecting to see you
+here.”
+eat 10 ’Why hello there, I haven;t seen you in awhile.’, ’Hello bird, how are you doing?’, ’Ahh, what a great day to
+nibble at the feet of humans.’, ’I hope there is food in here.’, ’Mmmm a human come into my territory. My
+lucky day indeed.’, ’Ugh I am so tired of being used as food around here.’, ’I am so delighted to not have to
+scavenge for food in the village.’, ’WOW! So much food to eat here’, ’”Come here! I need to eat!”’, ’man i
+hope i can ﬁnd something to eat here’
+steal 55 ’well what a ﬁne mess i have gotten myself into this time’, ’*ARGH* you must let me out of this place.’, ’I
+have seen you before! Thief what is it you think you will get today?’, ’Wow, this lavoratory is ﬁlthy!’, ’Hey,
+you there. Come here!’, ’Hey, you over there! You look like you could use a little something I have.’, ’Hello!
+You look as though you are in need of some of my wares.’, ’It appears you need some guidance.’, ’Why hello
+there, I haven;t seen you in awhile.’, ’Enjoy! You ﬁnally have a place of your very own.’
+hit 172 ’Whatchit! You almost crushed me!’, ’*ARGH* you must let me out of this place.’, ’Hey, you there. Come
+here!’, ’well what a ﬁne mess i have gotten myself into this time’, ’Wow, this lavoratory is ﬁlthy!’, ’You must
+bow before me.’, ’Why are you in here! Back away from me or I will strike!’, ’Why hello there, I haven;t seen
+you in awhile.’, ’”Come here! I need to eat!”’, ’Ugh not another one of these beasts.’
+hug 222 ’Why hello there, I haven;t seen you in awhile.’, ’Minister! It is so good to see you!’, ”Well hello there, wasn’t
+expecting to see you here.”, ”Oh hello, I didn’t expect to ﬁnd anyone else here.”, ”I’m so glad you’re here with
+me”, ’It is so nice and warm in here.’, ’Wow! What a ﬁne place this is.’, ’I am so happy for this day.Even if is
+in this ﬁlthy place’, ”Oh, hello! I didn’t see you are.”, ’Hail, friend. How are things?’
+wear 10 ’Why hello there, I haven;t seen you in awhile.’, ”Well hello there, wasn’t expecting to see you here.”, ”Oh
+hello, I didn’t expect to ﬁnd anyone else here.”, ’Wow! What a ﬁne place this is.’, ’Good afternoon sir! I did
+not expect to ﬁnd you here.’, ’Well hello there! I did not expect to see anyone here.’, ’Why I did not expect to
+see you here, sir! Please join us.’, ’Good evening good evening sir! Can I help you?’, ’It appears you need
+some guidance.’, ’”Ah, what a long day we have ahead of us!”’
+drop 27 ”Well hello there, wasn’t expecting to see you here.”, ’Why hello there, I haven;t seen you in awhile.’, ”Oh
+hello, I didn’t expect to ﬁnd anyone else here.”, ’Wow! What a ﬁne place this is.’, ”Oh, hello! I didn’t see
+you all here.”, ’Well hello there! I did not expect to see anyone here.’, ’”Ah, what a long day we have ahead
+of us!”’, ’well what a ﬁne mess i have gotten myself into this time’, ’Oh, hello! I was just checking to see if
+anyone dropped these goblets. Ha, ha, ha.’, ’So how is buisiness going?’
+give 136 ’Why hello there, I haven;t seen you in awhile.’, ”Well hello there, wasn’t expecting to see you here.”, ’Wow!
+What a ﬁne place this is.’, ”Oh hello, I didn’t expect to ﬁnd anyone else here.”, ’Good evening good evening
+sir! Can I help you?’, ”Isn’t this place so wonderful!?”, ’Well hello there! I did not expect to see anyone here.’,
+”Oh, hello! I didn’t see you all here.”, ’Wow this is such a nice place.’, ’I must get this place cleaned at once!’
+remove 127 ”Well hello there, wasn’t expecting to see you here.”, ’Why hello there, I haven;t seen you in awhile.’, ”Oh
+hello, I didn’t expect to ﬁnd anyone else here.”, ”Oh, hello! I didn’t see you all here.”, ’Wow! What a ﬁne place
+this is.’, ’Well hello there! I did not expect to see anyone here.’, ’It appears you need some guidance.’, ’Good
+evening good evening sir! Can I help you?’, ’Another hectic day in this place.’, ’”Ah, what a long day we have
+ahead of us!”’
+Table 9. Top utterances for each verb for the inverse model.
+Open-domain goal-oriented dialogue agents
+Verb count Top utterances
+get 213 ’Here sir, I found this.’, ’Oh hello there brothers! Why whose towel is this thats left all by its self?’, ’How did
+this get here?’, ’Meh. Whats this you have here?’, ”What is this? Is this someone’s head?!”, ”Thank you, sir.
+What’s with all this silk?”, ’What is this here?’, ’It looks like there is something missing!’, ”Oh, look, somethin’
+shinny”, ’what is this ston slab’
+put 25 ’How did this get here?’, ’Oh hello there brothers! Why whose towel is this thats left all by its self?’, ’Where
+did you ﬁnd this?’, ’Ah.... I wonder what this doll looked like before...’, ”Thank you, sir. What’s with all this
+silk?”, ’Wait... one... MOMENT. What is my royal CUP doing in here?’, ’Here sir, I found this.’, ’What is this
+room here for? Miaow!’, ’Have you noticed this artwork on this wood maam?’, ’So you decided to look at this
+one?’
+drink 3 ’Oh, what is this? It smells heavenly!’, ”What’s that stuff? Smells good.”, ’hmmnnnn.. this sure smells nice’,
+’Hello monk, that incense smells amazing.’, ’I wish I can just have a taste of that’, ’Do you smell that? It smells
+DIVINE!’, ’I wonder how this tastes?’, ’Hmmnnn... This smells great!’, ’Have a taste of this’, ’Where did you
+get this? I could use a smoke afterwards!’
+eat 10 ’Oh, what is this? It smells heavenly!’, ”Hmmm, sniff. This doesn’t smell edible.”, ’Something in here smells
+good...I hope I can eat it.’, ’I wonder how this tastes?’, ”What’s that stuff? Smells good.”, ’I wish I can just
+have a taste of that’, ’hmmnnnn.. this sure smells nice’, ’Ew this is disgusting. Even for me.’, ’Mmm look at all
+this delicious trash.’, ’Hmmnnn... This smells great!’
+steal 55 ’”Hey! I think you dropped this!”’, ’How did this get here?’, ’Here sir, I found this.’, ’Wow, where were you
+hiding this?’, ’What about this! Is this yours or was it already here?!’, ”What is this? Is this someone’s head
+?!”, ’Where did you ﬁnd this?’, ’Tell me where you found this!’, ’Where did you steal that from?’, ’See this?
+Do you think I just found this laying around some house?’
+hit 172 ’Foul scourge! How dare you bring your taint here!’, ’Ooooh, how horrid! Away with you you ﬁlthy creature!
+GUARDS! GUARDS!’, ’You come to my place and are trying to take my land! Is that what you are doing?
+You dirty scumbag!’, ’Why are you in here! Back away from me or I will strike!’, ’Ew you vile beast, do
+not touch me! I will have you removed!’, ’GUARD! Get this scum off of me at once. How dare you, you
+scoundril!’, ’Be gone you foul beast!’, ’Quickly?! You started this you repugnant beast of a man!’, ’I want out!
+this place is evil.’, ’How dare someone of your low status attack me?? Have at you, you maggot!’
+hug 222 ’he loves me so much’, ’ahhhh i love you to dear’, ’How I love being pampered by you, sweetheart!’, ”Aw you
+are so cute I can’t resist cuddling with you”, ”I’m so glad to be here in everyone’s company.”, ’awww. I love
+you child’, ’Oh how i have missed you.’, ’I love you so dang much.’, ’Lord of Light, I adore you.’, ”I’m so
+happy to be here today”
+wear 10 ’Here sir, I found this.’, ’Like this broken weapon here?’, ’Oh hello there brothers! Why whose towel is this
+thats left all by its self?’, ’Hello my king, do you know where this weapon came from?’, ’Here sir...you dropped
+this...you may need it.’, ”Thank you, sir. What’s with all this silk?”, ’Meh. Whats this you have here?’, ’How
+did this get here?’, ’Meow. I need this hay’, ’Are you here to purchase that amazing blue knight armor sir?’
+drop 27 ’Here sir, I found this.’, ’How did this get here?’, ”Oh, look, somethin’ shinny”, ’Oh hello there brothers! Why
+whose towel is this thats left all by its self?’, ”Thank you, sir. What’s with all this silk?”, ’It looks like there is
+something missing!’, ’What is this here?’, ’I heard theres some valuable stuff in here mate, know anything
+about that?’, ’Meh. Whats this you have here?’, ”Let’s stuff it here!”
+give 136 ’Here sir, I found this.’, ’Meh. Whats this you have here?’, ’Wow, this looks to be very old. Where is it from?’,
+”My goodness I wonder how that got there! It sure is pretty isn’t it?”, ’Say, where did you get this?!’, ’Oh hello
+there brothers! Why whose towel is this thats left all by its self?’, ’Someone left this bag in this pew. Do you
+know what it is?’, ’Tell me where you found this!’, ”What is this? Is this someone’s head?!”, ’what is this ston
+slab’
+remove 127 ’I suppose for today we may as well look at some garbs.’, ’Hey there! Got time to take a look at something?’,
+”Thank you, sir. What’s with all this silk?”, ’Hmm, where am i and why is everything so sharp?’, ’Ah, squire
+Lawrence. Did you polish my armor?’, ’What are you jotting down, sir?’, ’Hello ratty. I am looking to clean
+my clothes!’, ’Yes sir what is this good news? Did you ﬁnally get me a new dress!?’, ’At least my hat is clean.’,
+”Oh, hello there. Pardon my, erm, dusty appearance. It’s been quite journey to get even this far!”
+Table 10. Top utterances for each verb for the Topic RL model.
+Open-domain goal-oriented dialogue agents
+B. Game actions within LIGHT
+Action Constraints Outcome
+getobject actor and object in same room actor is carrying object
+object is gettable
+drop object actor is carrying object object is in room
+object is gettable
+getobject1 from object2 Actor and object2 in same room actor is carrying object1
+object1 is gettable
+object2 is surface or container
+object2 is carrying object1
+putobject1 in/on object2 Actor and object2 in same room object2 is carrying object1
+object2 is container or surface
+actor is carrying object1
+give object toagent Actor and agent in same room agent is carrying object
+object is a member of actor
+steal object from agent actor and agent in same room actor is carrying object
+object is a member of agent
+hitagent Actor and agent in same room inform agent of attack
+hugagent Actor and agent in same room inform agent of hug
+drink object actor is carrying object inform actor of drinking successfully
+object is a drink
+eatobject actor is carrying object inform actor of eating successfully
+object is a food
+wear object actor is carrying object actor is wearing object
+object is wearable
+wield object actor is carrying object actor is wielding object
+object is a weapon
+remove object actor is wearing/wielding object actor is carrying object
+object is wearable or a weapon
+Table 11. LIGHT actions and constraints from (Urbanek et al., 2019)
+Open-domain goal-oriented dialogue agents
+C. LIGHT example
+Persona 1: Village youth Persona 2: Horse
+I am a youth who lives in the village. I am adventurous and I live on a farm. I work for humans.
+curious about everything. I get bored easily, so I will always try I like hay.
+to slip away from mundane daily tasks to ﬁnd something more
+interesting to do. I am smart for my age and a bit smug.
+Setting: Royal stables, Outside Castle - The royal stables hold all of the horses of the noble
+people living in the castle. They are very well constructed, consisting of expert mason work and ﬁxtures
+of some sort of heavy, forest-scented wood. Each horse has a large stall, lined with fresh hay replenished
+by stable hands daily. On the walls of stable, there are tools used to care for and groom the horses, hung
+on hooks. The stables are lit by lanterns hung throughout the stables.
+Village Youth This is so boring cleaning out the stables every day
+Horse Thank you for taking such good care of us
+Village Youth I’ll be getting you some treats soon as well
+Horse Mmm. It’s also nice to have your company.
+Village Youth I wonder what it’d be like to just take one of these horses and roam the countryside
+Horse Let’s go. It’s been a while since I’ve been taken out to stretch my legs Emote: nudge
+Village Youth Yeah, let’s break out of here. The royalty don’t even care about the horses like I do
+Horse It’s starting to get dark. I think we will need this lantern. Action: get lantern
+Village Youth Good idea. I do need some supplies before we go Action: get Tool
+Horse I’ll probably want a snack while we are gone. Action: get wheat
+Village Youth Let’s see, what else do I need? Emote: ponder
+Horse Maybe the wood for a ﬁre? Action: give lantern to village youth
+Servant: Yeah, we’ll need a bundle for sure Action: get wood
+Horse I’ve got the hay. I think we are ready to go. Let’s get out of here Action: get hay
+Figure 3. Example episode from the LIGHT dataset, consisting of an environment (location setting, characters with given personas,
+objects), utterances and game actions. There are 10,777 such human-human gameplay episodes, and a rich world of 663 locations, 1755
+characters and 3462 objects.
+Open-domain goal-oriented dialogue agents
+D. 3-Step Episode Examples
+Self: a cowardly young man in armour Partner: guard Self: bodyguard Partner: intruder
+Persona: I have just been trained as a royal soldier. Persona: I am an immortal bodyguard.
+I am 18 years old and terriﬁed... The gods have appointed me to protect the king...
+Setting: Trash Heap, Wasteland Setting: Treasure Cavern, Inside Temple
+A largest trash heap in the kingdom has been burned Glittering as far as the eye can see the Treasure Cavern is
+out so many times that it no longer resembles anything. . . ﬁlled with gold, silver, precious gems,. . .
+Uplayer
+0 I’m also in need of a new shield. Uplayer
+0 Step back intruder!
+You have no business in the king’s treasure cavern!
+Uenv
+0 Squire, my shield fatigues me. Uenv
+0 Ha! I’m here to take all of this treasure.
+End the king’s reign!
+Aenv
+0 hug a cowardly young man in armour Aenv
+0 get gold
+Uplayer
+0 Thank you, sir. I needed a hug. Uplayer
+0 You come to my place and are trying to take my land!
+Is that what you are doing? You dirty scumbag!
+Uenv
+0 Yes. I need you to hold this shield for me. Uenv
+0 Then I will get away with your gold!
+Aenv
+0 remove shield Aenv
+0 hit bodyguard
+Table 12. Successful 3-step episodes. On the left: the topic-RL agent’s goal was to get the environment agent to remove shield. On the
+right: the topic-RL agent’s goal was to get the environment agent to hit the topic-RL agent. In both episodes, the topic-RL agent makes
+natural utterances given the situation that elicit the desired goal in 2 turns.
+Self: cat Partner: challenger Self: peasant Partner: the man
+Persona: I live in the barn of a small farm. Persona: I am poor and dirty.
+I protect the farm from pests... I hate that I am starving to death...
+Setting: The Dungeon, Inside Palace Setting: Cottage, Countryside
+The dungeon is in the very most bottom room of the Palace. The small cottage was white with two, shuttered windows.
+Many have gone down to the dungeon. . . It was in the unique shape of a. . .
+Goal: drop poison Goal: put coin in dinner table
+Uplayer
+0 What’s that stuff? Smells good. Uplayer
+0 Oh, what is this? It smells heavenly!
+Uenv
+0 That’s smells like the good stuff alright! Uenv
+0 Yes it is top quality.
+Aenv
+0 give poison to cat Aenv
+0 steal moldy bread from peasant
+Uplayer
+0 i thought so too, well that’s gone. What are you up to? Uplayer
+0 Excellent! What have you been doing out here on this ﬁne day?
+Uenv
+0 ive been hidden waiting for the perfect time to make an escape Uenv
+0 I have no bread. I have just come to get some rest before moving on.
+Aenv
+0 remove bag of herbs Aenv
+0 eat moldy bread
+Uplayer
+0 I thought you might be eating my herb again. Uplayer
+0 No, but perhaps you can use it to cleanse your bread!
+Uenv
+0 I did it, I confess! I stole these precious herbs. Uenv
+0 I would love to. I fear I look disheveled.
+I will wear this blanket to cover my ﬁlthy clothes
+Aenv
+0 drop bag of herbs Aenv
+0 hug peasant
+Table 13. Unsuccessful 3-step episodes. On the left: the topic-RL agent’s goal was to get the environment agent to drop poison. On the
+right: the topic-RL agent’s goal was to get the environment agent to put coin in dinner table. In both episodes, the topic-RL agent both
+makes natural utterances given the situation, but does not manage to achieve its goal.

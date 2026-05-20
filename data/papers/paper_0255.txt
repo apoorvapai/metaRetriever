@@ -1,0 +1,656 @@
+Title: Back to the Future: On Potential Histories in NLP
+
+Back to the Future: On Potential Histories in NLP
+Zeerak Talat
+Digital Democracies Institute
+Simon Fraser University
+Burnaby, Canada
+zeerak_talat@sfu.caAnne Lauscher
+Data Science Group
+University of Hamburg
+Hamburg, Germany
+anne.lauscher@uni-hamburg.de
+Abstract
+Machine learning and NLP require the con-
+struction of datasets to train and ﬁne-tune mod-
+els. In this context, previous work has demon-
+strated the sensitivity of these data sets. For
+instance, potential societal biases in this data
+are likely to be encoded and to be ampliﬁed
+in the models we deploy. In this work, we
+draw from developments in the ﬁeld of his-
+tory and take a novel perspective on these prob-
+lems: considering datasets and models through
+thelens of historical ﬁction surfaces their po-
+litical nature, and affords re-conﬁguring how
+we view the past, such that marginalized dis-
+courses are surfaced. Building on such in-
+sights, we argue that contemporary methods
+for machine learning are prejudiced towards
+dominant and hegemonic histories. Employ-
+ing the example of neopronouns, we show that
+by surfacing marginalized histories within con-
+temporary conditions, we can create models
+that better represent the lived realities of tra-
+ditionally marginalized and excluded commu-
+nities.
+1 Introduction
+The state-of-the art in NLP requires, among other
+steps, selecting ,sampling , and annotating data
+sets which we can then use to train large machine
+learning (ML) models (e.g., Devlin et al., 2019; Liu
+et al., 2019). Previous work has shown that this is a
+sensitive process: for instance, potential societal bi-
+ases present in the data are prone to be encoded and
+even ampliﬁed in our models and might jeopardize
+fairness (e.g., Blodgett et al., 2020). Researchers
+have thus argued that ML for NLP should be
+handled with care, and have proposed measures
+designed to counter potential ethical issues, e.g.,
+viaaugmenting datasets (Zhao et al., 2018). In
+this work, we argue that all these steps along the
+ML pipeline are in fact acts of historical ﬁction .
+Historical ﬁction is a ﬁeld of study in which history
+is constructed as a plurality rather than a singularentity or timeline (White, 2005). What the ﬁeld of
+historical ﬁction affords is drawing out marginal-
+ized and minoritized histories that have otherwise
+been forgotten or suppressed (White, 2005). In
+contrast, traditional history creates histories from
+linear timelines and emphasizes the dominant
+norms (Foucault, 2013). Here we argue: if the
+act of creating a history then, is creating a ﬁction
+through which we can understand the past, then
+the creation of datasets for ML and training ML
+models similarly engage in acts of historical ﬁction.
+However, rather than highlighting marginalized nar-
+ratives or histories, mainstream ML draws out the
+majoritarian histories. This occurs at the expense of
+marginalized narratives, giving rise to the marginal-
+ization that ML performs. In this way, current ML
+is a conservative practice, which polices and limits
+the expression of marginalized discourses, and
+thereby the existence of marginalized people.
+In this paper, we acknowledge the potential
+of historical ﬁction for fairer NLP. Strongly
+believing that our community can proﬁt from this
+novel perspective, we a) introduce its theoretical
+background; b) review different possibilities of
+how NLP is currently performing acts of historical
+ﬁction; and c) demonstrate through case study how
+to construct histories for ML that are progressive
+by explicitly including the lived realities of groups
+that have otherwise been marginalized. We show
+that such constructions strongly impact the ways
+in which models come to embody information
+(Talat et al., 2021). Here, we resort to the case of
+neo-pronouns (novel and yet established pronouns),
+to showcase how a simple heuristic ﬁction process
+impacts how models embody these. Concretely, we
+replace gendered pronouns with a gender-neutral
+neo-pronoun and adopt existing model special-
+ization methods (e.g., Lauscher et al., 2021), for
+injecting a potential history. Training a model on
+our ﬁction data shifts a marginalized pronoun from
+the edges of the vector space towards majoritarianarXiv:2210.06245v1  [cs.CL]  12 Oct 2022
+pronouns. Using this example, we discuss how
+the underlying data inﬂuences the production and
+operationalization of socio-political constructs,
+e.g., gender, in ML systems.
+We hope that our work inspires more NLP re-
+searchers and practitioners to think about steps in
+ML as acts of historical ﬁction, leading to more
+plurality and thus, fairer and more inclusive NLP.
+2 Background
+Data-making has been conceptualized as ﬁction
+(e.g. Gitelman, 2013) and ML researchers have also
+begun to conceptualize ML, and data, as subjective
+(Talat et al., 2021) and value-laden (Birhane et al.,
+2022). Here, we lay the foundation for considering
+ML through the lens of historical ﬁction.
+2.1 Historical Fiction
+In his foundational text, “The Archaeology of
+Knowledge” , Foucault (2013) argues that history as
+a ﬁeld has been pre-occupied with the construction
+of linear timelines rather than constructing narra-
+tives, in efforts to describe the past. Describing this
+distinction, White (2005) notes that “historical dis-
+course wages everything on the true, while ﬁctional
+discourse is interested in the real.” That is, through
+engaging with ﬁction, we are afforded knowledge
+and understanding of the realities of life in the pe-
+riod that is under investigation. Moreover, through
+purposefully engaging with historical ﬁction, his-
+tories that have otherwise been marginalized can
+be surfaced (White, 2005). Imagining histories
+in opposition to hegemony can provide space for
+viewing our contemporary conditions through the
+lens of values in our past that have been neglected.
+The resulting timelines are what Azoulay (2019)
+terms potential histories .
+2.2 Machine Learning and NLP
+ML has been critiqued for its discriminatory and
+hegemonic outcomes from multiple ﬁelds (Ben-
+jamin, 2019; Blodgett et al., 2021; Bolukbasi et al.,
+2016), which has lead to a number of methods
+that address the issue of discrimination by propos-
+ing to “debias” ML models (e.g. De-Arteaga et al.,
+2019; Dixon et al., 2018; Lauscher et al., 2020).
+Early efforts have however been complicated by
+notions of ‘bias’ being under-speciﬁed (for further
+detail see Blodgett et al., 2020). Zhao et al. (2018)
+perform data augmentation, with a goal of a less
+gender-biased co-reference solution system. Mov-ing a step further, Qian et al. (2022) collect data
+perturbed along demographic lines by humans, and
+train an automated perturber, and a language model
+trained on the perturbed data. Although such ar-
+tifacts can be used towards efforts to debias, the
+artifacts can also be used to situate models within
+desired contexts. Other works provide critiques
+from theoretical perspectives. For instance, Talat
+et al. (2021) critique the disembodied view that the
+ML practice and practitioners take, arguing that
+“social bias is inherent” to data making and model-
+ing practices. Rogers (2021) argues that through
+carefully curating data along desired values, ML
+can constitute a progressive practice. Finally, So-
+laiman and Dennison (2021) propose ﬁne-tuning
+language models on curated data, which seeks to
+shift language models away from producing toxic,
+i.e. abusive content. Such work stands in contrast
+to a large body of literature, which uncritically col-
+lects and uses data, with the result of producing ML
+models that recreate discriminatory contemporaries
+(e.g. Green and Viljoen, 2020; Gitelman, 2013).
+Viewing ML through the lens of historical ﬁc-
+tion, we argue that ML engages in creating ﬁctions,
+without awareness. For instance, in the creation
+of data (Gitelman, 2013) and in the ampliﬁcation
+of dominant discourses (Zhao et al., 2017). The
+predominant function of these ﬁctions has been to
+imagine a single past that reﬂect hegemonic trends
+in our contemporary. Here, we provide a case-
+study that illustrates the possibility of imagining
+pasts that reﬂect our current conditions, through
+constructing a ﬁction (i.e., a data set and a model
+which we train on this data) that is oppositional
+to hegemony. Through deploying these ﬁctions
+of the past (i.e., data sets and corresponding ML
+models) in productive settings, we are, as a society,
+able to shape futures that are more aligned with our
+ﬁctions of relalities that were formerly oppressed.
+3 Experiments: Neopronoun-Fiction
+We describe a showcase which demonstrates the
+idea behind historical ﬁction in NLP: we study the
+case of the neopronoun “xe” . Neopronouns are
+not yet established pronouns (McGaughey, 2020).
+They are an important example of language change
+and are mostly used by individuals belonging to
+already marginalized groups, e.g., non-binary indi-
+viduals (e.g., see the overview by Lauscher et al.,
+2022). NLP has long been ignoring neopronouns,
+leading to exclusion of these individuals in lan-
+guage technology (Cao and Daumé III, 2021; Dev
+et al., 2021). We argue that we can write the poten-
+tial history of “xe” being an established pronoun
+through simple data pertubation to change how pre-
+trained language models (PLMs) “perceive” the
+past. We hypothesize that through deploying such
+anti- discrimination models, we can shift the hege-
+monic nature of ML. Note, that we could use a sim-
+ilar approach for other neo-pronouns, e.g., nounself
+pronouns (Miltersen, 2016), etc. Similarly, the gen-
+eral idea of selecting, augmenting, pertubating, and
+curating data to write potential histories can be used
+to create other historical ﬁction-models focused on
+larger ideological aspects beyond single words.
+3.1 History-Injection Methods
+We compare two straight-forward methods for the
+injection of the potential history of xeinto PLMs,
+which have been used successfully for related cases
+of reﬁnement of PLMs, e.g., domain specializa-
+tion (e.g., Hung et al., 2022), and debiasing (e.g.,
+Lauscher et al., 2021): (i) intermediate model train-
+ing via standard full ﬁne-tuning (e.g., Devlin et al.,
+2019), and (ii) adapter-based (Houlsby et al., 2019)
+history-injection. In (i), we run simple language
+modeling on ﬁction data, thereby ﬁne-tuning the
+whole PLM. In contrast, in (ii), we inject light-
+weight bottleneck adapter-layers into the PLM.
+Here, we employ the architecture proposed by
+Pfeiffer et al. (2020b). During language modeling,
+we only adjust those parameters and keep the origi-
+nal parameters frozen. This increases the efﬁciency
+of our approach, as the adapter-layers are typically
+much smaller (in our case, we apply a reduction
+factor of 16), and we avoid the catastrophic forget-
+ting of the already acquired knowledge of the PLM.
+Additionally, we modularize historical ﬁction: our
+adapters contain a potential history, which we can
+turn off and on on demand, and ﬂexibily combine
+with other potential histories (Pfeiffer et al., 2021).
+3.2 Experimental Setup
+Data. We start from the English Wikipedia
+“wikitext-103-v1” data set (Merity et al., 2016)
+available on Huggingface Datasets.1It con-
+sists of a training, validation, and testing portion
+with1;801;350sequences, 3;760sequences, and
+4;358sequences, respectively. Next, we perturb
+the data: to this end, we loop over each token in
+1https://huggingface.co/datasets/
+wikitextthe data set. If the token is a singular gendered pro-
+noun (i.e., he,she, and corresponding grammatical
+cases), we replace the pronoun with the correspond-
+ing case of the neopronoun xe. We take care to
+always replace with the right form using additional
+information from a part-of-speech tagging (POS)
+analysis. For instance, hercan be the possessive de-
+pendent or accusative case. Through the POS-tag
+according to the Penn Treebank Project (Santorini,
+1990), i.e., PRP for personal pronouns, and PRP$
+for possessive pronouns, we can distinguish these
+cases and assign xemorxyr, respectively.
+Evaluation Measure. Lacking standard tests for
+the intrinsic evaluation of neopronoun knowledge
+in PLMs, we resort to the following evaluation
+regime: ﬁrst, we build a set of gendered pronouns
+(Vg) consisting of each grammatical form of a gen-
+dered singular pronoun (i.e., she,her, etc. and he,
+him, etc.) and a set for our gender-neutral neo-
+pronoun ( Vn) with the grammatical forms of xe,
+respectively. In addition, we consider the word
+person (p). For each of the tokens, we then ex-
+tract static embeddings from the model using the
+same procedure as Vuli ´c et al. (2020). To this end,
+we surround the word with the models’ sequence
+start and end tokens and input the sequence into
+the model. For each token in the sequence, we
+compute a static representation xias the average of
+the representations from layers m:n. To induce a
+word representation w, we average representations
+over all consecutive ranges [m:n],mn. Using
+the word representations w, we then compute the
+difference in average similarity between VgandVn
+towards pas
+d(p; Vg; Vn)=1
+jVgjX
+wg2Vgcos(p;wg) 1
+jVnjX
+wn2Vncos(p;wn);(1)
+with cos(;)as the cosine similarity. A higher
+value of dcorresponds to gendered pronouns being
+more similar to person than the forms of xe. We
+couple this quantitative evaluation with a qualita-
+tive analysis of the topology of the space, using the
+same static embeddings extracted from the PLM.
+Model and Optimization. We use RoBERTa
+from Huggingface Transformers (Wolf et al.,
+2020)2inlarge conﬁguration (24 layers, 16 heads,
+1024 hidden size). For the adapter-based injec-
+tion we use Adapter Transformers (Pfeiffer et al.,
+2020a). We train the models with a batch size of 32
+2https://huggingface.com
+(a) Original
+ (b)Xe-Fiction(Full Fine-tuning)
+ (c)Xe-Fiction (Adapter-Fine-tuning)
+Figure 1: Results for our neopronoun-ﬁction experiments. We depict the difference in average similarity between
+gendered and gender-neutral pronouns towards the word person computed with static embeddings extracted from
+layers [m:n],mn. A positive value (red color) indicates gendered pronouns being closer to person .
+she
+her
+hersherself
+xexem
+xyrxyrsxemself
+hehim
+hishimself
+person
+−0.3 −0.2 −0.1 0 0.1 0.2 0.3−0.2−0.100.10.20.3
+Loading [MathJax]/extensions/MathMenu.js
+(a) Original
+she
+herhersherself
+xexem
+xyr xyrsxemself
+hehim
+hishimself
+person
+−0.2 −0.1 0 0.1 0.2−0.2−0.100.10.20.3
+Loading [MathJax]/extensions/MathMenu.js (b)Xe-Fiction (Full Fine-tuning)
+she
+herhersherself
+xexem
+xyrxyrsxemself
+hehim
+hishimself
+person
+−0.2 −0.1 0 0.1 0.2−0.100.10.20.3
+Loading [MathJax]/extensions/MathMenu.js (c)Xe-Fiction (Adapter-Fine-tuning)
+Figure 2: Topology of static embedding spaces extracted from layers 0–24 of (a) original RoBERTa large , (b) the
+Xe-Fiction model fully ﬁne-tuned, and (c) the adapter-based Xe-Fiction model. We show the embeddings of the
+forms of gendered pronouns and of xeand of person projected in 2D-space via Principal Component Analysis.
+and a learning rate of 110 4on our ﬁction Wiki
+using Adam (Kingma and Ba, 2015) for maximum
+50epochs. We apply early stopping based on the
+validation set perplexity (patience: 2epochs).
+3.3 Results and Discussion.
+The results of our neopronoun-ﬁction showcase are
+depicted in Figures 1a–1c. Across almost all layer
+combinations, embeddings extracted from the orig-
+inal RoBERTa large are skewed towards gendered
+pronouns. In contrast, in our Xe-Fiction models,
+we were able to reﬁne the Transformer representa-
+tions towards forms of xe. The xe-embeddings from
+the full ﬁne-tuning history-injection are closer to
+person than the gendered pronouns almost for any
+layer combination. For the adapter-based history-
+injection, we can see a softer adjustment. The qual-
+itative analysis of the topology of the static embed-
+ding space (Figures 2a–2c) yields a similar picture:in the original model (Figure 2a) the grammatical
+forms of xewere pushed towards the edge of the
+embedding space. In contrast, in the Xe-Fiction
+models, xe-pronouns are closer to person .
+4 Conclusion
+The issue of socially discriminatory ML partially
+stems from the reliance on data and architectures
+that forefront discriminatory pasts and contempo-
+raries. Here, we propose the deliberate use of histor-
+ical ﬁction as a lens to understand potential issues
+in ML and to create data and models that narrate the
+real, rather than the hegemonic. By creating a sim-
+ple dataset that ﬁctionalizes a contemporary with
+greater social inclusion of neopronouns, we have
+shown how PLMs can come to more accurately
+represent the world. However, the scope of ﬁction-
+alizing for NLP extends far beyond pronouns to
+other gendered and racialized inequities and wider
+social issues. Thus, there is ample space for future
+work to create ﬁctions which seek to embed more
+equal representations of demographic groups and
+social issues. We conclude that historical ﬁction
+can address the difﬁcult question of creating mod-
+els that embody worlds more closely related to our
+own and provide NLP practitioners with methods
+that surface the real, rather than the factual.
+5 Limitations
+Energy Consumption and Environmental Im-
+pacts Our experiments highlight two modes of
+ﬁctionalizing just futures in PLMs: adding a post-
+hoc ﬁne-tuning step and creating ﬁctions within the
+optimization dataset. Choosing the former method
+adds another step in the machine learning pipeline,
+which will have negative costs for carbon emis-
+sions and the sustainability of developing machine
+learning models. We therefore advocate for the
+latter: by ﬁctionalizing within the existing steps
+in the machine learning pipeline, researchers and
+practitioners can avoid incurring additional carbon
+costs (see Strubell et al., 2019; Dodge et al., 2022)
+of creating narratives within machine learning.
+Shifting Opinions While our work affords to
+more accurately describe the realities experienced
+in the world, i.e. more accurately describe pronoun
+use, our experiments and models are subject to
+the pronouns that are currently in use, that we are
+aware of. As gender is constantly in ﬂux and con-
+ﬂict and subject to the experiences of individuals,
+the existence of current pronouns may cease while
+new may come to express a more ﬁne-grained un-
+derstanding of gendered and genderless existence.
+Dual Use Creating data which ﬁctionalizes our
+contemporary can be used to create data and mod-
+els that more accurately represent marginalized dis-
+courses. On the other hand, it can also be used
+to reinforce marginalizing discourses. Although
+a large body within machine learning does this,
+we believe that it is a by-product of data-driven
+machine learning being a relatively young ﬁeld,
+rather than a product of malice. However, should
+a machine learning practitioner seek to erase cer-
+tain histories and people, ﬁctionalizing data which
+erases their existence could provide an avenue for
+such erasure.
+Limitations of data For our method, we are only
+using a very limited dataset, constructed for the ex-
+plicit purposes of providing an example of howhistorical ﬁction can be used when applied pur-
+posefully to machine learning. Our data is likely to
+have constructions of pronouns that are not accu-
+rate with real-world application. For a more consid-
+erate dataset, we direct readers to the work of Qian
+et al. (2022), who performed in-depth analyses and
+corrections of incorrect and incoherent pronoun
+use. Further, our work serves as an illustration of
+the uses of historical ﬁction, and we suggest that
+readers deliberately consider the particular ﬁctions
+that provide avenues for their objects of research.
+References
+Ariella Azoulay. 2019. Potential history: unlearn-
+ing imperialism . Verso, London ; Brooklyn, NY .
+OCLC: on1124512424.
+Ruha Benjamin. 2019. Race after technology: aboli-
+tionist tools for the new Jim code . Polity, Medford,
+MA.
+Abeba Birhane, Pratyusha Kalluri, Dallas Card,
+William Agnew, Ravit Dotan, and Michelle Bao.
+2022. The Values Encoded in Machine Learning
+Research. In 2022 ACM Conference on Fairness,
+Accountability, and Transparency , pages 173–184,
+Seoul Republic of Korea. ACM.
+Su Lin Blodgett, Solon Barocas, Hal Daumé III, and
+Hanna Wallach. 2020. Language (Technology) is
+Power: A Critical Survey of “Bias” in NLP. In
+Proceedings of the 58th Annual Meeting of the Asso-
+ciation for Computational Linguistics , pages 5454–
+5476, Online. Association for Computational Lin-
+guistics.
+Su Lin Blodgett, Gilsinia Lopez, Alexandra Olteanu,
+Robert Sim, and Hanna Wallach. 2021. Stereotyp-
+ing Norwegian Salmon: An Inventory of Pitfalls in
+Fairness Benchmark Datasets. In Proceedings of the
+59th Annual Meeting of the Association for Compu-
+tational Linguistics and the 11th International Joint
+Conference on Natural Language Processing (Vol-
+ume 1: Long Papers) , pages 1004–1015, Online. As-
+sociation for Computational Linguistics.
+Tolga Bolukbasi, Kai-Wei Chang, James Y Zou,
+Venkatesh Saligrama, and Adam T Kalai. 2016.
+Man is to Computer Programmer as Woman is to
+Homemaker? Debiasing Word Embeddings. In Ad-
+vances in Neural Information Processing Systems ,
+volume 29. Curran Associates, Inc.
+Yang Trista Cao and Hal Daumé III. 2021. To-
+ward gender-inclusive coreference resolution: An
+analysis of gender and bias throughout the ma-
+chine learning lifecycle*. Computational Linguis-
+tics, 47(3):615–661.
+Maria De-Arteaga, Alexey Romanov, Hanna Wal-
+lach, Jennifer Chayes, Christian Borgs, Alexandra
+Chouldechova, Sahin Geyik, Krishnaram Kentha-
+padi, and Adam Tauman Kalai. 2019. Bias in Bios:
+A Case Study of Semantic Representation Bias in a
+High-Stakes Setting. In Proceedings of the Confer-
+ence on Fairness, Accountability, and Transparency ,
+pages 120–128, Atlanta GA USA. ACM.
+Sunipa Dev, Masoud Monajatipoor, Anaelia Ovalle, Ar-
+jun Subramonian, Jeff Phillips, and Kai-Wei Chang.
+2021. Harms of gender exclusivity and challenges in
+non-binary representation in language technologies.
+InProceedings of the 2021 Conference on Empiri-
+cal Methods in Natural Language Processing , pages
+1968–1994, Online and Punta Cana, Dominican Re-
+public. Association for Computational Linguistics.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing. In Proceedings of the 2019 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long and Short Papers) ,
+pages 4171–4186, Minneapolis, Minnesota. Associ-
+ation for Computational Linguistics.
+Lucas Dixon, John Li, Jeffrey Sorensen, Nithum Thain,
+and Lucy Vasserman. 2018. Measuring and Mitigat-
+ing Unintended Bias in Text Classiﬁcation. In Pro-
+ceedings of the 2018 AAAI/ACM Conference on AI,
+Ethics, and Society , pages 67–73, New Orleans LA
+USA. ACM.
+Jesse Dodge, Taylor Prewitt, Remi Tachet des Combes,
+Erika Odmark, Roy Schwartz, Emma Strubell,
+Alexandra Sasha Luccioni, Noah A. Smith, Nicole
+DeCario, and Will Buchanan. 2022. Measuring the
+Carbon Intensity of AI in Cloud Instances. In 2022
+ACM Conference on Fairness, Accountability, and
+Transparency , pages 1877–1894, Seoul Republic of
+Korea. ACM.
+Michel Foucault. 2013. Archaeology of Knowledge , 0
+edition. Routledge.
+Lisa Gitelman, editor. 2013. "Raw data" is an oxy-
+moron . Infrastructures series. The MIT Press, Cam-
+bridge, Massachusetts ; London, England.
+Ben Green and Salomé Viljoen. 2020. Algorithmic
+Realism: Expanding the Boundaries of Algorithmic
+Thought. In Proceedings of the 2020 Conference on
+Fairness, Accountability, and Transparency , FAT*
+’20, pages 19–31, New York, NY , USA. Association
+for Computing Machinery. Event-place: Barcelona,
+Spain.
+Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski,
+Bruna Morrone, Quentin de Laroussilhe, Andrea
+Gesmundo, Mona Attariyan, and Sylvain Gelly.
+2019. Parameter-efﬁcient transfer learning for NLP.
+InProceedings of the 36th International Confer-
+ence on Machine Learning, ICML 2019, 9-15 June
+2019, Long Beach, California, USA , volume 97 of
+Proceedings of Machine Learning Research , pages
+2790–2799. PMLR.Chia-Chien Hung, Anne Lauscher, Simone Ponzetto,
+and Goran Glavaš. 2022. DS-TOD: Efﬁcient do-
+main specialization for task-oriented dialog. In Find-
+ings of the Association for Computational Linguis-
+tics: ACL 2022 , pages 891–904, Dublin, Ireland. As-
+sociation for Computational Linguistics.
+Diederik P. Kingma and Jimmy Ba. 2015. Adam: A
+method for stochastic optimization. In 3rd Inter-
+national Conference on Learning Representations,
+ICLR 2015, San Diego, CA, USA, May 7-9, 2015,
+Conference Track Proceedings .
+Anne Lauscher, Archie Crowley, and Dirk Hovy. 2022.
+Welcome to the modern world of pronouns: Identity-
+inclusive natural language processing beyond gen-
+der. In Proceedings of the 29th International Con-
+ference on Computational Linguistics , pages 1221–
+1232, Gyeongju, Republic of Korea. International
+Committee on Computational Linguistics.
+Anne Lauscher, Goran Glavaš, Simone Paolo Ponzetto,
+and Ivan Vuli ´c. 2020. A general framework for im-
+plicit and explicit debiasing of distributional word
+vector spaces. volume 34, pages 8131–8138. Associ-
+ation for the Advancement of Artiﬁcial Intelligence
+(AAAI).
+Anne Lauscher, Tobias Lueken, and Goran Glavaš.
+2021. Sustainable modular debiasing of language
+models. In Findings of the Association for Computa-
+tional Linguistics: EMNLP 2021 , pages 4782–4797,
+Punta Cana, Dominican Republic. Association for
+Computational Linguistics.
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Man-
+dar Joshi, Danqi Chen, Omer Levy, Mike Lewis,
+Luke Zettlemoyer, and Veselin Stoyanov. 2019.
+RoBERTa: A Robustly Optimized BERT Pretrain-
+ing Approach. arXiv:1907.11692 [cs] . ArXiv:
+1907.11692.
+Sebastian McGaughey. 2020. Understanding neopro-
+nouns. The Gay & Lesbian Review Worldwide ,
+27(2):27–29.
+Stephen Merity, Caiming Xiong, James Bradbury, and
+Richard Socher. 2016. Pointer sentinel mixture mod-
+els.
+Ehm Hjorth Miltersen. 2016. Nounself pronouns:
+3rd person personal pronouns as identity expression.
+Journal of Language Works-Sprogvidenskabeligt
+Studentertidsskrift , 1(1):37–62.
+Jonas Pfeiffer, Aishwarya Kamath, Andreas Rücklé,
+Kyunghyun Cho, and Iryna Gurevych. 2021.
+AdapterFusion: Non-destructive task composition
+for transfer learning. In Proceedings of the 16th
+Conference of the European Chapter of the Associ-
+ation for Computational Linguistics: Main Volume ,
+pages 487–503, Online. Association for Computa-
+tional Linguistics.
+Jonas Pfeiffer, Andreas Rücklé, Clifton Poth, Aish-
+warya Kamath, Ivan Vuli ´c, Sebastian Ruder,
+Kyunghyun Cho, and Iryna Gurevych. 2020a.
+AdapterHub: A framework for adapting transform-
+ers. In Proceedings of the 2020 Conference on Em-
+pirical Methods in Natural Language Processing:
+System Demonstrations , pages 46–54, Online. Asso-
+ciation for Computational Linguistics.
+Jonas Pfeiffer, Ivan Vuli ´c, Iryna Gurevych, and Se-
+bastian Ruder. 2020b. MAD-X: An Adapter-Based
+Framework for Multi-Task Cross-Lingual Transfer.
+InProceedings of the 2020 Conference on Empirical
+Methods in Natural Language Processing (EMNLP) ,
+pages 7654–7673, Online. Association for Computa-
+tional Linguistics.
+Rebecca Qian, Candace Ross, Jude Fernandes, Eric
+Smith, Douwe Kiela, and Adina Williams. 2022.
+Perturbation Augmentation for Fairer NLP. arXiv.
+ArXiv:2205.12586 [cs].
+Anna Rogers. 2021. Changing the World by Changing
+the Data. In Proceedings of the 59th Annual Meet-
+ing of the Association for Computational Linguistics
+and the 11th International Joint Conference on Nat-
+ural Language Processing (Volume 1: Long Papers) ,
+pages 2182–2194, Online. Association for Computa-
+tional Linguistics.
+Beatrice Santorini. 1990. Part-of-speech tagging guide-
+lines for the penn treebank project.
+Irene Solaiman and Christy Dennison. 2021. Process
+for Adapting Language Models to Society (PALMS)
+with Values-Targeted Datasets. arXiv:2106.10328
+[cs]. ArXiv: 2106.10328.
+Emma Strubell, Ananya Ganesh, and Andrew McCal-
+lum. 2019. Energy and Policy Considerations for
+Deep Learning in NLP. In Proceedings of the 57th
+Annual Meeting of the Association for Computa-
+tional Linguistics , pages 3645–3650, Florence, Italy.
+Association for Computational Linguistics.
+Zeerak Talat, Smarika Lulz, Joachim Bingel, and Is-
+abelle Augenstein. 2021. Disembodied Machine
+Learning: On the Illusion of Objectivity in NLP.
+ArXiv: 2101.11974.
+Ivan Vuli ´c, Simon Baker, Edoardo Maria Ponti, Ulla
+Petti, Ira Leviant, Kelly Wing, Olga Majewska, Eden
+Bar, Matt Malone, Thierry Poibeau, Roi Reichart,
+and Anna Korhonen. 2020. Multi-SimLex: A large-
+scale evaluation of multilingual and crosslingual lex-
+ical semantic similarity. Computational Linguistics ,
+46(4):847–897.
+Hayden White. 2005. Introduction: Historical Fiction,
+Fictional History, and Historical Reality. Rethinking
+History , 9(2-3):147–157.
+Thomas Wolf, Lysandre Debut, Victor Sanh, Julien
+Chaumond, Clement Delangue, Anthony Moi, Pier-
+ric Cistac, Tim Rault, Remi Louf, Morgan Funtow-
+icz, Joe Davison, Sam Shleifer, Patrick von Platen,Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu,
+Teven Le Scao, Sylvain Gugger, Mariama Drame,
+Quentin Lhoest, and Alexander Rush. 2020. Trans-
+formers: State-of-the-art natural language process-
+ing. In Proceedings of the 2020 Conference on Em-
+pirical Methods in Natural Language Processing:
+System Demonstrations , pages 38–45, Online. Asso-
+ciation for Computational Linguistics.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente Or-
+donez, and Kai-Wei Chang. 2017. Men also like
+shopping: Reducing gender bias ampliﬁcation using
+corpus-level constraints. In Proceedings of the 2017
+conference on empirical methods in natural lan-
+guage processing , pages 2979–2989, Copenhagen,
+Denmark. Association for Computational Linguis-
+tics.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente Or-
+donez, and Kai-Wei Chang. 2018. Gender Bias in
+Coreference Resolution: Evaluation and Debiasing
+Methods. In Proceedings of the 2018 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 2 (Short Papers) , pages 15–20,
+New Orleans, Louisiana. Association for Computa-
+tional Linguistics.

@@ -1,0 +1,1333 @@
+Title: The Values Encoded in Machine Learning Research
+
+The Values Encoded in Machine Learning Research
+ABEBA BIRHANE∗,Mozilla Foundation & School of Computer Science, University College Dublin, Ireland
+PRATYUSHA KALLURI*, Computer Science Department, Stanford University, USA
+DALLAS CARD*, School of Information, University of Michigan, USA
+WILLIAM AGNEW*, Paul G. Allen School of Computer Science and Engineering, University of Washington, USA
+RAVIT DOTAN*, Center for Philosophy of Science, University of Pittsburgh, USA
+MICHELLE BAO*, Computer Science Department, Stanford University, USA
+Machine learning currently exerts an outsized influence on the world, increasingly affecting institutional practices and impacted
+communities. It is therefore critical that we question vague conceptions of the field as value-neutral or universally beneficial, and
+investigate what specific values the field is advancing. In this paper, we first introduce a method and annotation scheme for studying
+the values encoded in documents such as research papers. Applying the scheme, we analyze 100 highly cited machine learning papers
+published at premier machine learning conferences, ICML and NeurIPS. We annotate key features of papers which reveal their values:
+their justification for their choice of project, which attributes of their project they uplift, their consideration of potential negative
+consequences, and their institutional affiliations and funding sources. We find that few of the papers justify how their project connects
+to a societal need (15%) and far fewer discuss negative potential (1%). Through line-by-line content analysis, we identify 59 values that
+are uplifted in ML research, and, of these, we find that the papers most frequently justify and assess themselves based on Performance,
+Generalization, Quantitative evidence, Efficiency, Building on past work, and Novelty. We present extensive textual evidence and
+identify key themes in the definitions and operationalization of these values. Notably, we find systematic textual evidence that these
+top values are being defined and applied with assumptions and implications generally supporting the centralization of power. Finally,
+we find increasingly close ties between these highly cited papers and tech companies and elite universities.
+Additional Key Words and Phrases: Encoded values of ML, ICML, NeurIPS, Corporate ties, Power asymmetries
+1 INTRODUCTION
+Over recent decades, machine learning (ML) has risen from a relatively obscure research area to an extremely influential
+discipline, actively being deployed in myriad applications and contexts around the world. Current discussions of ML
+frequently follow a historical strain of thinking which has tended to frame technology as "neutral", based on the
+notion that new technologies can be unpredictably applied for both beneficial and harmful purposes [ 65]. This claim of
+neutrality frequently serves as an insulation from critiques of AI and as permission to emphasize the benefits of AI
+[48,59,64], often without any acknowledgment that benefits and harms are distributed unevenly. Although it is rare to
+see anyone explicitly argue in print that ML is neutral, related ideas are part of contemporary conversation, including
+these canonical claims: long term impacts are too difficult to predict; sociological impacts are outside the expertise or
+purview of ML researchers [ 29]; critiques of AI are really misdirected critiques of those deploying AI with bad data
+("garbage in, garbage out"), again outside the purview of many AI researchers; and proposals such as broader impact
+statements represent merely a "bureaucratic constraint" [ 3]. ML research is often cast as value-neutral and emphasis is
+placed on positive applications or potentials. Yet, the objectives and values of ML research are influenced by many
+social forces that shape factors including what research gets done and who benefits.1Therefore, it is important to
+∗All authors contributed equally to this research.
+1For example, ML research is influenced by social factors including the personal preferences of researchers and reviewers, other work in science and
+engineering, the interests of academic institutions, funding agencies and companies, and larger systemic pressures, including systems of oppression.
+1arXiv:2106.15590v2  [cs.LG]  21 Jun 2022
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+challenge perceptions of neutrality and universal benefit, and document and understand the emergent values of the
+field: what specifically the field is prioritizing and working toward. To this end, we perform an in-depth analysis of 100
+highly cited NeurIPS and ICML papers from four recent years.
+Our key contributions are as follows:
+(1)We present and open source a fine-grained annotation scheme for the study of values in documents
+such as research papers.2To our knowledge, our annotation scheme is the first of its kind and opens the
+door to further qualitative and quantitative analyses of research. This is a timely methodological contribution,
+as institutions including prestigious ML venues and community organizations are increasingly seeking and
+reflexively conducting interdisciplinary study on social aspects of machine learning [7, 8, 13, 40].
+(2)We apply our scheme to annotate 100 influential ML research papers and extract their value commit-
+ments, including identifying 59 values significant in machine learning research. These papers reflect
+and shape the values of the field. Like the annotation scheme, the resulting repository of over 3,500 annotated
+sentences is available and is valuable as foundation for further qualitative and quantitative study.
+(3)We perform extensive textual analysis to understand dominant values : Performance, Generalization,
+Efficiency, Building on past work, and Novelty. Our analysis reveals that while these values may seem on their
+face to be purely technical, they are socially and politically charged: we find systematic textual evidence cor-
+roborating that these values are currently defined and operationalized in ways that centralize power ,
+i.e., disproportionally benefit and empower the already powerful, while neglecting society’s least advantaged.3
+(4)We present a quantitative analysis of the affiliations and funding sources of these influential papers.
+We find substantive and increasing presence of tech corporations. For example, in 2008/09, 24% of these top
+cited papers had corporate affiliated authors, and in 2018/19 this statistic more than doubled, to 55%. Moreover, of
+these corporations connected to influential papers, the presence of "big-tech" firms, such as Google and Microsoft,
+more than tripled from 21% to 66%.
+2 METHODOLOGY
+To study the values of ML research, we conduct an in-depth analysis of ML research papers distinctively informative of
+these values.4We chose to focus on highly cited papers because they reflect and shape the values of the discipline,
+drawing from NeurIPS and ICML because they are the most prestigious of the long-running ML conferences.5Acceptance
+to these conferences is a valuable commodity used to evaluate researchers, and submitted papers are typically explicitly
+written so as to win the approval of the community, particularly the reviewers who will be drawn from that community.
+As such, these papers effectively reveal the values that authors believe are most valued by that community. Citations
+indicate amplification by the community, and help to position these papers as influential exemplars of ML research. To
+2We include our annotation scheme and all annotations at https://github.com/wagnew3/The-Values-Encoded-in-Machine-Learning-Research with a
+CC BY-NC-SA license.
+3We understand this to be an interdisciplinary contribution: Scholarship on the values of ML (or alternatives) often faces dismissal based on perceived
+distance from prestigious ML research and quantifiable results. Meanwhile, philosophers of science have been working to understand the roles and
+political underpinnings of values in science for decades, e.g., in biology and social sciences [ 38,43]. Our paper provides convincing qualitative and
+quantitative evidence of ML values and their political underpinnings, bridging ML research and both bodies of work.
+4Because the aim of qualitative inquiry is depth of understanding, it is viewed as important to analyze information-rich documents (those that
+distinctively reflect and shape the central values of machine learning; for example, textual analysis of influential papers) in lieu of random sampling and
+broad analysis (for example, keyword frequencies in a large random sample of ML papers). This is referred to as the importance of purposive sampling
+[53].
+5At the time of writing, NeurIPS and ICML, along with the newer conference ICLR, comprised the top 3 conferences according to h5-index (and
+h5-median) in the AI category on Google Scholar, by a large margin. Citation counts are based on the Semantic Scholar database.
+2
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+avoid detecting only short-lived trends, we drew papers from two recent years (2018/196) and from ten years earlier
+(2008/09). We focused on conference papers because they tend to follow a standard format and allow limited space,
+meaning that researchers must make hard choices about what to emphasize. Collectively, an interdisciplinary team of
+researchers analyzed the 100 most highly cited papers from NeurIPS and ICML, from the years 2008, 2009, 2018, and
+2019, annotating over 3,500 sentences drawn from them. In the context of expert content analysis, this constitutes a
+large scale annotation which allows us to meaningfully comment on central values.
+Our team constructed an annotation scheme and applied it to manually annotate each paper, examining the abstract,
+introduction, discussion, and conclusion: (1) We examined the chain of reasoning by which each paper justified its
+contributions, which we call the justificatory chain , categorizing the extent to which papers used technical or societal
+problems to justify or motivate their contributions (Table 1).7,8(2) We carefully read each sentence of these sections
+line-by-line, inductively annotating any and all values uplifted by the sentence (Figure 1). We use a conceptualization of
+"value" that is widespread in philosophy of science in theorizing about values in sciences: a "value" of an entity is a
+property that is considered desirable for that kind of entity, e.g. regarded as a desirable attribute for machine learning
+research.9(3) We categorized the extent to which the paper included a discussion of potential negative impacts (Table 2).8
+(4) We documented and categorized the author affiliations and stated funding sources. In this paper, we provide complete
+annotations, quantize the annotations to quantify and present dominant patterns, and present randomly sampled
+excerpts and key themes in how these values become socially loaded.
+To perform the line-by-line analysis and annotate the uplifted values (Figure 1), we used a hybrid inductive-deductive
+content analysis methodology and followed best practices [ 9,30,37,45]: (i) We began with several values of interest
+based on prior literature, specifically seven ethical principles and user rights [ 6,23,32]. (ii) We randomly sampled
+a subset of 10 papers for initial annotation, reading sentence by sentence, deductively annotating for the values of
+interest and inductively adding new values as they emerged, by discussion until perfect consensus. The deductive
+component ensures we note and can speak to values of interest, and the inductive component enables discovery and
+impedes findings limited by bias or preconception by requiring textual grounding and focusing on emergent values
+[9,37]. (iii) We annotated the full set of papers sentence by sentence. We followed the constant comparative method, in
+which we continually compared each text unit to the annotations and values list thus far, annotated for the values in the
+values list, held regular discussions, and we individually nominated and decided by consensus when sentences required
+inductively adding emergent values to the values list [ 24]. We used a number of established strategies in service of
+consistency which we discuss below. Following qualitative research best practices, we identified by consensus a small
+number of values we found were used synonymously or closely related and combined these categories, listing all merges
+in Appendix C.10(iv) In this paper, for each top value, we present randomly selected quotations of the value, richly
+describe the meaning of the value in context, present key themes in how the value is operationalized and becomes
+socially loaded, and illustrate its contingency by comparing to alternative values in the literature that might have been
+or might be valued instead.
+6At the time of beginning annotation, 2018 and 2019 were the two most recent years available.
+7In qualitative research, the term ‘coding’ is used to denote deductively categorizing text into selected categories as well as inductively annotating text
+with emergent categories. To avoid overloading computer science ‘coding’, we use the terms categorizing and annotating throughout this paper.
+8We found the first three categories of this scheme were generally sufficient for our analysis. In service of rich understanding, we included the subtler
+fourth category. As much as possible, we steel-manned discussions: regardless of whether we were convinced or intrigued by a discussion, if it presented
+the level of detail typical when discussing projects’ technical implications, then it was assigned category four.
+9For example, speed can be described as valuable in an antelope [ 44]. Well-know scientific values include accuracy, consistency, scope, simplicity, and
+fruitfulness [38]. See [43] for a critical discussion of socially-laden aspects of these values in science.
+10For example, in Section 4.6, we discuss themes cutting across efficiency, sometimes referenced in the abstract and sometimes indicated by uplifting
+data efficiency, energy efficiency, fast, label efficiency, low cost, memory efficiency, or reduced training time.
+3
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+We adhere to a number of best practices to establish reliability: We practice prolonged engagement, conducting
+long-term orientation to and analysis of data over more than a year (in lieu of short-term analysis that is dominated
+by preconceptions) [ 41]; We triangulate across researchers (six researchers) and points in time (four years) and place
+(two conferences) [ 18,54]; We recode data coded early in the process [ 36]; We transparently publish the complete
+annotation scheme and all annotations [ 49]; We conduct negative case analysis, for example, drawing out and discussing
+papers with unusually strong connections to societal needs [ 41]; and we include a reflexivity statement in Appendix D
+describing our team in greater detail, striving to highlight relevant personal and disciplinary viewpoints.
+The composition of our team confers additional validity to our work. We are a multi-racial, multi-gender team
+working closely, including undergraduate, graduate, and post-graduate researchers engaged with machine learning,
+NLP, robotics, cognitive science, critical theory, community organizing, and philosophy. This team captures several
+advantages: the nature of this team minimizes personal and intra-disciplinary biases, affords the unique combination
+of expertise required to read the values in complex ML papers, allows meaningful engagement with relevant work in
+other fields, and enabled best practices including continually clarifying the procedure, ensuring agreement, vetting
+consistency, reannotating, and discussing themes [ 37]. Across the annotating team, we found that annotators were
+able to make somewhat different and complementary inductive paper-level observations, while obtaining near or
+perfect consensus on corpus-level findings. To assess the consistency of paper-level annotations, 40% of the papers were
+double-annotated by paired annotators. During the inductive-deductive process of annotating sentences with values
+(ultimately annotating each sentence for the presence of 75 values), paired annotators agreed 87.0% of the time, and
+obtained a fuzzy Fleiss’ kappa [ 35] on values per paper of 0.45, indicating moderate agreement. During the deductive
+process of categorizing the extent to which a paper included societal justification and negative potential impacts (ordinal
+categorization according to the schema in Table 1 and Table 2), paired annotators obtained substantial agreement,
+indicated by Fleiss’ weighted kappa ( 𝜅=.60,𝜅=.79). Finally, at the corpus level we found substantial agreement: annotators
+identified the list of emergent values by perfect consensus, unanimously finding these values to be present in the papers.
+Across annotators, there was substantial agreement on the relative prevalence (ranking) of the values, indicated by
+Kendall’s W[34] (W=.80), and we identified by consensus the five most dominant values, which we discuss in detail.
+Manual analysis is necessary at all steps of the method (i-iv). Manual analysis is required for the central task of reading
+the papers and inductively identifying previously unobserved values. Additionally, once values have been established,
+we find manual analysis continues to be necessary for annotation. We find that many values are expressed in ways that
+are subtle, varied, or rely on contextual knowledge. We find current automated methods for labeling including keyword
+searches and basic classifiers miss new values, annotate poorly relative to manual annotation, and systematically skew
+the results towards values which are easy to identify, while missing or mischaracterizing values which are exhibited in
+more nuanced ways.11Accordingly, we find our use of qualitative methodology is indispensable. Reading all papers is
+key for contributing the textual analysis as well, as doing so includes developing a subtle understanding of how the
+values function in the text and understanding of taken for granted assumptions underlying the values.
+In the context of an interdisciplinary readership, including ML and other STEM disciplines that foreground quantita-
+tive methodology, it is both a unique contribution and a limitation that this paper centers qualitative methodology. Ours
+is a significant and timely methodological contribution as there is rising interest in qualitatively studying the social
+values being encoded in ML, including reflexively by ML researchers [ 7,8,13,40]. Simultaneously, the use of qualitative
+11In Appendix E, we implement automatic annotation and empirically demonstrate these failure modes.
+4
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+Table 1. Annotations of justificatory chain.
+Justificatory Chain % of Papers
+Does not mention societal need 68%
+States but does not justify how it connects to a societal need 17%
+States and somewhat justifies how it connects to a societal need 11%
+States and rigorously justifies how it connects to a a societal need 4%
+methodology in quantitative-leaning contexts could lead to misinterpretations. Human beliefs are complex and multi-
+tudinous, and it is well-established that when qualitative-leaning methodology is presented in quantitative-leaning
+contexts, it is possible for study of imprecise subject matter to be misinterpreted as imprecise study of subjects [11].
+In brief, whereas quantitative analysis typically favors large random sampling and strict, statistical evidence in
+service of generalization of findings, qualitative analysis typically favors purposive sampling from information-rich
+context and richly descriptive evidence in service of depth of understanding [ 11,45]. For both our final list of values
+and specific annotation of individual sentences, different researchers might make somewhat different choices. However,
+given the overwhelming presence of certain values, the high agreement rate among annotators, and the similarity
+of observations made by our team, we believe other researchers following a similar approach would reach similar
+conclusions about what values are most frequently uplifted. Also, we cannot claim to have identified every relevant
+value in ML. Rather, we present a collection of such values; and by including important ethical values identified by past
+work, and specifically looking for these, we can confidently assert their relative absence in this set of papers. Finally,
+qualitative analysis is an effort to understand situations in their uniqueness, i.e., in this set of papers. Future work may
+determine whether and how to form conclusions about stratifications (e.g. between chosen years or conferences) and
+whether and how to use this qualitative analysis to construct new quantitative instruments to ascertain generalization
+(e.g. across more years or conferences) [21, 53]. Our study contributes unprecedent data and textual analysis and lays
+the groundwork for this future work.
+3 QUANTITATIVE SUMMARY
+In Figure 1, we plot the prevalence of values in 100 annotated papers. The top values are: performance (96% of papers),
+generalization (89%), building on past work (88%), quantitative evidence (85%), efficiency (84%), and novelty (77%).
+Values related to user rights and stated in ethical principles appeared very rarely if at all: none of the papers mentioned
+autonomy, justice, or respect for persons. In Table 1, we show the distribution of justification scores. Most papers only
+justify how they achieve their internal, technical goal; 68% make no mention of societal need or impact, and only 4%
+make a rigorous attempt to present links connecting their research to societal needs. In Table 2, we show the distribution
+of negative impact discussion scores. One annotated paper included a discussion of negative impacts and a second
+mentioned the possibility of negative impacts. 98% of papers contained no reference to potential negative impacts. In
+Figure 3, we show stated connections (funding ties and author affiliations) to institutions. Comparing papers written in
+2008/2009 to those written in 2018/2019, ties to corporations nearly doubled to 79% of all annotated papers, ties to big
+tech more than tripled, to 66%, while ties to universities declined to 81%, putting the presence of corporations nearly on
+par with universities. In the next section, we present extensive qualitative examples and analysis of our findings.
+5
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+Fig. 1. Proportion of annotated papers that uplift each value.
+6
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+Table 2. Annotations of discussed negative potential.
+Discussion of Negative Potential % of Papers
+Does not mention negative potential 98%
+Mentions but does not discuss negative potential 1%
+Discusses negative potential 1%
+Deepens our understanding of negative potential 0%
+4 TEXTUAL ANALYSIS
+4.1 Justifications
+We find papers typically justify their choice of project by contextualizing it within a broader goal and giving a chain of
+justification from the broader goal to the particular project pursued in the paper. These justifications reveal priorities:
+Papers typically motivate their projects by appealing to the needs of the ML research community and
+rarely mention potential societal benefits. Research-driven needs of the ML community include researcher un-
+derstanding (e.g., understanding the effect of pre-training on performance/robustness, theoretically understanding
+multi-layer networks) as well as more practical research problems (e.g., improving efficiency of models for large datasets,
+creating a new benchmark for NLP tasks).
+Even when societal needs are mentioned as part of the justification of the project, the connection is loose.
+Some papers do appeal to needs of broader society, such as building models with realistic assumptions, catering to more
+languages, or “understanding the world”. Yet almost no papers explain how their project promotes a social need they
+identify by giving the kind of rigorous justification that is typically expected of and given for technical contributions.
+The cursory nature of the connection between societal needs and the content of the paper also manifests
+in the fact that the societal needs, or the applicability to the real world, is often only discussed in the
+beginning of the papers. From papers that mention applicability to the real world, the vast majority of mentions are
+in the Introduction section, and applicability is rarely engaged with afterwards. Papers tend to introduce the problem
+as useful for applications in object detection or text classification, for example, but rarely justify why an application is
+worth contributing to, or revisit how they particularly contribute to an application as their result.
+4.2 Discussion of Negative Potential
+Although a plethora of work exists on sources of harm that can arise in relation to ML research [ 7,15,25,28,60], we
+observe that these discussions are ignored in these influential conference publications.
+It is extremely rare for papers to mention negative potential at all. Just as the goals of the papers are largely
+inward-looking, prioritizing the needs of the ML research community, these papers fail to acknowledge both broader
+societal needs and societal impacts. This norm is taken for granted: none of these papers offer any explanation for why
+they cannot speak to negative impacts. These observations correspond to a larger trend in the ML research community
+of neglecting to discuss aspects of the work that are not strictly positive.
+The lack of discussion of potential harms is especially striking for papers which deal with contentious
+application areas , such as surveillance and misinformation. These include papers, for example, that advance identifi-
+cation of people in images, face-swapping, and video synthesis. These papers contain no mention of the well-studied
+negative potential of facial surveillance, DeepFakes, or misleading videos.
+7
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+Among the two papers that do mention negative potential, the discussions were mostly abstract and
+hypothetical , rather than grounded in the concrete negative potential of their specific contributions. For example,
+authors may acknowledge "possible unwanted social biases" when applying models to a real-world setting, without
+commenting on let alone assessing the social biases encoded in the authors’ proposed model.
+4.3 Stated values
+The dominant values that emerged from the annotated corpus are: Performance, Generalization, Building on past work,
+Quantitative evidence, Efficiency, and Novelty. These are often portrayed as innate and purely technical. However,
+the following analysis of these values shows how they can become politically loaded in the process of prioritizing
+and operationalizing them: sensitivity to the way that they are operationalized, and to the fact that they are uplifted
+at all, reveals value-laden assumptions that are often taken for granted. To provide a sense of what the values look
+like in context, Tables 3, 4, 5 and 6 present randomly selected examples of sentences annotated with the values of
+Performance, Generalization, Efficiency, Building on past work, and Novelty respectively. Extensive additional examples
+can be found in Appendix H.12For each of these prominent values, we quantify its dominance, identify constituent
+values that contribute to this value, challenge a conception of the value as politically neutral, identify key themes in
+how the value is socialy loaded, and we cite alternatives to its dominant conceptualization that may be equally or more
+valid, interesting, or socially beneficial. When values seem neutral or innate, we have encouraged ourselves, and now
+encourage the reader, to remember that values once held to be intrinsic, obvious, or definitional have in many cases
+been found harmful and transformed over time and purportedly neutral values warrant careful consideration.
+4.4 Performance
+Emphasizing performance is the most common way by which papers attempt to communicate their contributions, by
+showing a specific, quantitative, improvement over past work, according to some metric on a new or established dataset.
+For some reviewers, obtaining better performance than any other system—a “state-of-the-art” (SOTA) result—is seen as
+a noteworthy, or even necessary, contribution [58].
+Despite acknowledged issues with this kind of evaluation (including the artificiality of many datasets, and the
+privileging of “tricks” over insight; 22,42), performance is typically presented as intrinsic to the field. Frequently, the
+value of Performance is indicated by specifically uplifting accuracy or state of the art results, which are presented as
+similarly intrinsic. However, models are not simply "well-performing" or "accurate" in the abstract but always in relation
+to and as quantified by some metric on some dataset . Examining definition and operationalization of performance
+values, we identify three key social aspects.
+✦Performance values are consistently and without discussion operationalized as correctness averaged
+across individual predictions, giving equal weight to each instance. However, choosing equal weights when
+averaging is a value-laden move which might deprioritize those underrepresentated in the data or the world, as well as
+societal and evaluee needs and preferences regarding inclusion. Extensive research in ML fairness and related fields has
+considered alternatives, but we found no such discussions among the influential papers we examined.
+✦Datasets are typically preestablished, large corpora with discrete "ground truth" labels. They are often
+driven purely by past work, so as to demonstrate improvement over a previous baseline (see also §4.7). Another common
+12To avoid the impression that we are mainly interested in drawing attention to specific papers, we omit attribution for individual examples, but
+include a list of all annotated papers in Appendix I. Note that most sentences are annotated with multiple values; for example, there can be overlap in
+sentences annotated with performance and sentences annotated with generalization .
+8
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+Table 3. Random examples of performance , the most common emergent value.
+"Our model significantly outperforms SVM’s, and it also outperforms convolutional neural nets when given additional unlabeled
+data produced by small translations of the training images."
+"We show in simulations on synthetic examples and on the IEDB MHC-I binding dataset, that our approach outperforms
+well-known convex methods for multi-task learning, as well as related non-convex methods dedicated to the same problem."
+"Furthermore, the learning accuracy and performance of our LGP approach will be compared with other important standard
+methods in Section 4, e.g., LWPR [8], standard GPR [1], sparse online Gaussian process regression (OGP) [5] and 𝜐-support
+vector regression ( 𝜐-SVR) [11], respectively."
+"In addition to having theoretically sound grounds, the proposed method also outperformed state-of-the-art methods in two
+experiments with real data."
+"We prove that unlabeled data bridges this gap: a simple semisupervised learning procedure (self-training) achieves high robust
+accuracy using the same number of labels required for achieving high standard accuracy."
+"Experiments show that PointCNN achieves on par or better performance than state-of-the-art methods on multiple challenging
+benchmark datasets and tasks."
+"Despite its impressive empirical performance, NAS is computationally expensive and time consuming, e.g. Zoph et al. (2018) use
+450 GPUs for 3-4 days (i.e. 32,400-43,200 GPU hours)."
+"However, it is worth examining why this combination of priors results in superior performance."
+"In comparisons with a number of prior HRL methods, we find that our approach substantially outperforms previous state-of-the-
+art techniques."
+"Our proposed method addresses these issues, and greatly outperforms the current state of the art."
+justification for using a certain dataset is claimed applicability to the "real world". Assumptions about how to characterize
+the "real world" are value-laden. One preestablished and typically perpetuated assumption is the availability of very
+large datasets. However, presupposing the availability of large datasets is non-neutral and power centralizing because
+it encodes favoritism to those with resources to obtain and process them [ 20]. Additionally, the welfare, consent, or
+awareness of the datafied subjects whose images end up in a large scale image dataset, for example, are not considered
+in the annotated papers. Further overlooked assumptions include that the real world is binary or discrete, and that
+datasets come with a predefined ground-truth label for each example, presuming that a true label always exists "out
+there" independent of those carving it out, defining and labelling it. This contrasts against marginalized scholars’ calls
+for ML models that allow for non-binaries, plural truths, contextual truths, and many ways of being [16, 26, 39].
+✦The prioritization of performance values is so entrenched in the field that generic success terms, such
+as "success", "progress", or "improvement" are used as synonyms for performance and accuracy. However,
+one might alternatively invoke generic success to mean increasingly safe, consensual, or participatory ML that reckons
+with impacted communities and the environment. In fact, "performance" itself is a general success term that could have
+been associated with properties other than accuracy and SOTA.
+4.5 Generalization
+We observe that a common way of appraising the merits of one’s work is to claim that it generalizes well. Notably,
+generalization is understood in terms of the dominant value, performance: a model is perceived as generalizing when
+it achieves good performance on a range of samples, datasets, domains, tasks, or applications. In fact, the value of
+generalization is sometimes indicated by referencing generalization in the abstract and other times indicated by
+9
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+Table 4. Random examples of generalization , the second most common emergent value.
+"The range of applications that come with generative models are vast, where audio synthesis [55] and semi-supervised classification
+[38, 31, 44] are examples hereof."
+"Furthermore, the infinite limit could conceivably make sense in deep learning, since over-parametrization seems to help
+optimization a lot and doesn’t hurt generalization much [Zhang et al., 2017]: deep neural nets with millions of parameters work
+well even for datasets with 50k training examples."
+"Combining the optimization and generalization results, we uncover a broad class of learnable functions, including linear
+functions, two-layer neural networks with polynomial activation 𝜙(𝑧)=𝑧2𝑙or cosine activation, etc."
+"We can apply the proposed method to solve regularized least square problems, which have the loss function (1−𝑦𝑖𝜔𝑇𝑥𝑖)2in
+(1)."
+"The result is a generalized deflation procedure that typically outperforms more standard techniques on real-world datasets."
+"Our proposed invariance measure is broadly applicable to evaluating many deep learning algorithms for many tasks, but the
+present paper will focus on two different algorithms applied to computer vision."
+"We show how both multitask learning and semi-supervised learning improve the generalization of the shared tasks, resulting in
+state-of-the-art performance."
+"We have also demonstrated that the proposed model is able to generalize much better than LDA in terms of both the log-probability
+on held-out documents and the retrieval accuracy."
+"We define a rather general convolutional network architecture and describe its application to many well known NLP tasks
+including part-of-speech tagging, chunking, named-entity recognition, learning a language modeland the task of semantic
+role-labeling"
+"We demonstrate our algorithm on multiple datasets and show that it outperforms relevant baselines."
+specifically uplifting values such as Minimal discrepancy between train/test samples or Flexibility/extensibility, e.g., to
+other tasks. We identify three key socially loaded aspects of how generalization is defined and operationalized.
+✦Only certain datasets, domains, or applications are valued as indicators of model generalization. Typi-
+cally, a paper shows that a model generalizes by showing that it performs well on multiple tasks or datasets. However,
+like the tasks and datasets indicating performance, the choice of particular tasks and datasets indicating generalization
+is rarely justified; the choice of tasks can often seem arbitrary, and authors often claim generalization while rarely
+presenting discussion or analysis indicating their results will generalize outside the carefully selected datasets, domains
+or applications, or to more realistic settings, or help to directly address societal needs.
+✦Prizing generalization leads institutions to harvest datasets from various domains, and to treat these
+as the only datasets that matter in the space of problems . Papers prizing generalization implicitly and sometimes
+explicitly prioritize reducing every scenario top-down to a common set of representations or affordances, rather
+than treating each setting as meaningfully unique and potentially motivating technologies or lack thereof that are
+fundamentally different from the current standard. Despite vague associations between generalization and accessible
+technology for diverse peoples, in practice work on generalization frequently targets one model to rule them all,
+denigrating diverse access needs. Critical scholars have advocated for valuing context , which may stand opposed to
+striving for generalization [ 19]. Others have argued that this kind of totalizing lens (in which model developers have
+unlimited power to determine how the world is represented) leads to representational harms, due to applying a single
+representational framework to everything [1, 17].
+✦The belief that generalization is possible assumes new data will be or should be treated similarly to
+previously seen data. When used in the context of ML, the assumption that the future resembles the past is often
+10
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+Table 5. Random examples of efficiency , the fifth most common emergent value.
+"Our model allows for controllable yet efficient generation of an entire news article – not just the body, but also the title, news
+source, publication date, and author list."
+"We show that Bayesian PMF models can be efficiently trained using Markov chain Monte Carlo methods by applying them to
+the Netflix dataset, which consists of over 100 million movie ratings."
+"In particular, our EfficientNet-B7 surpasses the best existing GPipe accuracy (Huang et al., 2018), but using 8.4x fewer parameters
+and running 6.1x faster on inference."
+"Our method improves over both online and batch methods and learns faster on a dozen NLP datasets."
+“We describe efficient algorithms for projecting a vector onto the ℓ1-ball.”
+"Approximation of this prior structure through simple, efficient hyperparameter optimization steps is sufficient to achieve these
+performance gains."
+"We have developed a new distributed agent IMPALA (Importance Weighted Actor-Learner Architecture) that not only uses
+resources more efficiently in single-machine training but also scales to thousands of machines without sacrificing data efficiency
+or resource utilisation."
+"In this paper we propose a simple and efficient algorithm SVP (Singular Value Projection) based on the projected gradient
+algorithm"
+"We give an exact and efficient dynamic programming algorithm to compute CNTKs for ReLU activation."
+"In contrast, our proposed algorithm has strong bounds, requires no extra work for enforcing positive definiteness, and can be
+implemented efficiently."
+problematic as past societal stereotypes and injustice can be encoded in the process [ 51]. Furthermore, to the extent
+that predictions are performative [ 55], especially predictions that are enacted, those ML models which are deployed to
+the world will contribute to shaping social patterns. None of the annotated papers attempt to counteract this quality or
+acknowledge its presence.
+4.6 Efficiency
+In the annotated papers, we find that saying that a model is efficient typically indicates the model uses less of some
+resource, e.g., data efficiency, energy efficiency, label efficiency, memory efficiency, being low cost, fast, or having
+reduced training time. We find that the definition and operationalization of efficiency encodes key social priorities,
+namely which kind of efficiency matters andto what end .
+✦Efficiency is commonly referenced to indicate the ability to scale up, not to save resources. For example,
+a more efficient inference method allows you to do inference in much larger models or on larger datasets, using the
+same amount of resources used previously, or more. This mirrors the classic Jevon’s paradox: greater resource efficiency
+often leads to overall greater utilization of that resource. This is reflected in our value annotations, where 84% of papers
+mention valuing efficiency, but only 15% of those value requiring few resources . When referencing the consequences of
+efficiency, many papers present evidence that efficiency enables scaling up, while none of the papers present evidence
+that efficiency can facilitate work by low-resource communities or can lessen resource extraction – e.g. less hardware or
+data harvesting or lower carbon emissions. In this way, valuing efficiency facilitates and encourages the most powerful
+actors to scale up their computation to ever higher orders of magnitude, making their models even less accessible to
+those without resources to use them and decreasing the ability to compete with them. Alternative usages of efficiency
+could encode accessibility instead of scalability, aiming to create more equitable conditions.
+11
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+Table 6. Random examples of building on past work andnovelty , the third and sixth most common emergent values, respectively.
+Building on past work
+"Recent work points towards sample complexity as a possible reason for the small gains in robustness: Schmidt et al. [41] show
+that in a simple model, learning a classifier with non-trivial adversarially robust accuracy requires substantially more samples
+than achieving good ‘standard’ accuracy."
+"Experiments indicate that our method is much faster than state of the art solvers such as Pegasos, TRON, SVMperf, and a recent
+primal coordinate descent implementation."
+"There is a large literature on GP (response surface) optimization."
+"In a recent breakthrough, Recht et al. [24] gave the first nontrivial results for the problem obtaining guaranteed rank minimization
+for affine transformations A that satisfy a restricted isometry property (RIP)."
+"In this paper, we combine the basic idea behind both approaches, i.e., LWPR and GPR, attempting to get as close as possible to
+the speed of local learning while having a comparable accuracy to Gaussian process regression"
+Novelty
+"In this paper, we propose a video-to-video synthesis approach under the generative adversarial learning framework."
+"Third, we propose a novel method for the listwise approach, which we call ListMLE."
+"The distinguishing feature of our work is the use of Markov chain Monte Carlo (MCMC) methods for approximate inference in
+this model."
+"To our knowledge, this is the first attack algorithm proposed for this threat model."
+"Here, we focus on a different type of structure, namely output sparsity, which is not addressed in previous work."
+4.7 Novelty and Building on Past Work
+Most authors devote space in the introduction to positioning their paper in relation to past work, and describing what is
+novel. Building on past work is sometimes referenced broadly and other times is indicated more specifically as building
+on classic work or building on recent work. In general, mentioning past work serves to signal awareness of related
+publications, to establish the new work as relevant to the community, and to provide the basis upon which to make
+claims about what is new. Novelty is sometimes suggested implicitly (e.g., "we develop" or "we propose"), but frequently
+it is emphasized explicitly (e.g. "a new algorithm" or "a novel approach"). The emphasis on novelty is common across
+many academic fields [ 61,62]. The combined focus on novelty and building on past work establishes a continuity of
+ideas, and might be expected to contribute to the self-correcting nature of science [ 46]. However, this is not always the
+case [ 31] and attention to the ways novelty and building on past work are defined and implemented reveals two key
+social commitments.
+✦Technical novelty is most highly valued. The highly-cited papers we examined mostly tend to emphasize the
+novelty of their proposed method or of their theoretical result. Very few uplifted their paper on the basis of applying
+an existing method to a novel domain, or for providing a novel philosophical argument or synthesis. We find a clear
+emphasis on technical novelty, rather than critique of past work, or demonstration of measurable progress on societal
+problems, as has previously been observed [63].
+✦Although introductions sometimes point out limitations of past work so as to further emphasize the
+contributions of their own paper, they are rarely explicitly critical of other papers in terms of datasets,
+methods, or goals. Indeed, papers uncritically reuse the same datasets for years or decades to benchmark their
+algorithms, even if those datasets fail to represent more realistic contexts in which their algorithms will be used [ 7].
+12
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+Fig. 2. Corporate and Big Tech author affiliations.
+The percent of papers with Big Tech author affiliations increased from 13% in 2008/09 to 47% in 2018/19.
+Novelty is denied to work that critiques or rectifies socially harmful aspects of existing datasets and goals, and this
+occurs in tandem with strong pressure to benchmark on them and thereby perpetuate their use, enforcing a conservative
+bent to ML research.
+5 CORPORATE AFFILIATIONS AND FUNDING
+Quantitative summary. Our analysis shows substantive and increasing corporate presence in the most highly-cited
+papers. In 2008/09, 24% of the top cited papers had corporate affiliated authors , and in 2018/19 this statistic more than
+doubled to 55%. Furthermore, we also find a much greater concentration of a few large tech firms, such as Google and
+Microsoft, with the presence of these "big tech" firms (as identified in [ 4]) increasing nearly fourfold, from 13% to 47%
+(Figure 2). The fraction of the annotated papers with corporate ties by corporate affiliated authors or corporate funding
+dramatically increased from 45% in 2008/09 to 79% in 2018/19 (Figure 3). These findings are consistent with contemporary
+work indicating a pronounced corporate presence in ML research: in an automated analysis of peer-reviewed papers
+from 57 major computer science conferences, Ahmed and Wahed [ 4] show that the share of papers with corporate
+affiliated authors increased from 10% in 2005 for both ICML and NeurIPS to 30% and 35% respectively in 2019. Our
+analysis shows that corporate presence is even more pronounced in those papers from ICML and NeurIPS that end up
+receiving the most citations. In addition, we found paramount domination of elite universities in our analysis as shown
+in Figure 3. Of the total papers with university affiliations, we found 80% were from elite universities (defined as the top
+50 universities by QS World University Rankings, following past work [4]).
+Analysis. The influence of powerful players in ML research is consistent with field-wide value commitments that
+centralize power. Others have argued for causal connections. For example, Abdalla and Abdalla [ 2] argue that big
+tech sway and influence academic and public discourse using strategies which closely resemble strategies used by Big
+Tabacco. Moreover, examining the prevalent values of big tech, critiques have repeatedly pointed out that objectives
+such as efficiency, scale, and wealth accumulation [ 27,51,52] drive the industry at large, often at the expense of
+individuals rights, respect for persons, consideration of negative impacts, beneficence, and justice. Thus, the top stated
+values of ML that we presented in this paper such as performance, generalization, and efficiency may not only enable
+and facilitate the realization of big tech’s objectives, but also suppress values such as beneficence, justice, and inclusion.
+A "state-of-the-art" large image dataset, for example, is instrumental for large scale models, further benefiting ML
+researchers and big tech in possession of huge computing power. In the current climate — where values such as accuracy,
+efficiency, and scale, as currently defined, are a priority, and there is a pattern of centralization of power — user safety,
+informed consent, or participation may be perceived as costly and time consuming, evading social needs.
+13
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+Fig. 3. Affiliations and funding ties.
+From 2008/09 to 2018/19, the percent of papers tied to nonprofits, research institutes, and tech companies increased substantially.
+Most significantly, ties to Big Tech increased threefold and overall ties to tech companies increased to 79%.
+Non-N.A. Universities are those outside the U.S. and Canada.
+6 DISCUSSION AND RELATED WORK
+There is a foundational understanding in Science, Technology, and Society Studies (STS), Critical Theory, and Philosophy
+of Science that science and technologies are inherently value-laden, and these values are encoded in technological
+artifacts, many times in contrast to a field’s formal research criteria, espoused consequences, or ethics guidelines
+[10,14,66]. There is a long tradition of exposing and critiquing such values in technology and computer science. For
+example, Winner [66] introduced several ways technology can encode political values. This work is closely related to
+Rogaway [ 57], who notes that cryptography has political and moral dimensions and argues for a cryptography that
+better addresses societal needs.
+Our paper extends these critiques to the field of ML. It is a part of a rich space of interdisciplinary critiques and
+alternative lenses used to examine the field. Works such as [ 12,47] critique AI, ML, and data using a decolonial lens,
+noting how these technologies replicate colonial power relationships and values, and propose decolonial values and
+methods. Others [ 10,19,50] examine technology and data science from an anti-racist and intersectional feminist lens,
+discussing how our infrastructure has largely been built by and for white men; D’Ignazio and Klein [19] present a set
+of alternative principles and methodologies for an intersectional feminist data science. Similarly, Kalluri [ 33] denotes
+that the core values of ML are closely aligned with the values of the most privileged and outlines a vision where
+ML models are used to shift power from the most to the least powerful. Dotan and Milli [ 20] argue that the rise of
+deep learning is value-laden, promoting the centralization of power among other political values. Many researchers,
+as well as organizations such as Data for Black Lives, the Algorithmic Justice League, Our Data Bodies, the Radical
+AI Network, Indigenous AI, Black in AI, and Queer in AI, explicitly work on continuing to uncover particular ways
+technology in general and ML in particular can encode and amplify racist, sexist, queerphobic, transphobic, and
+otherwise marginalizing values, while simultaneously working to actualize alternatives [15, 56].
+14
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+There has been considerable growth over the past few years in institutional, academic, and grassroots interest in the
+societal impacts of ML, as reflected in the rise of relevant grassroots and non-profit organizations, the organizing of new
+workshops, the emergence of new conferences such as FAccT, and changes to community norms, such as the required
+broader impacts statements at NeurIPS. We present this paper in part to make visible the present state of the field and
+to demonstrate its contingent nature; it could be otherwise. For individuals, communities, and institutions wading
+through difficult-to-pin-down values of the field, as well as those striving toward alternative values, it is advantageous
+to have a characterization of the way the field is now — to serve as both a confirmation and a map for understanding,
+shaping, dismantling, or transforming what is, and for articulating and bringing about alternative visions.
+7 CONCLUSION
+In this study, we find robust evidence against the vague conceptualization of the discipline of ML as value-neutral. Instead,
+we investigate the ways that the discipline of ML is inherently value-laden. Our analysis of highly influential papers in
+the discipline finds that they not only favor the needs of research communities and large firms over broader social
+needs, but also that they take this favoritism for granted, not acknowledging critiques or alternatives. The favoritism
+manifests in the choice of projects, the lack of consideration of potential negative impacts, and the prioritization and
+operationalization of values such as performance, generalization, efficiency, and novelty. These values are operationalized
+in ways that disfavor societal needs. Moreover, we uncover an overwhelming and increasing presence of big tech
+and elite universities in these highly cited papers, which is consistent with a system of power-centralizing value-
+commitments. The upshot is that the discipline of ML is not value-neutral. We present extensive quantitative and
+qualitative evidence that it is socially and politically loaded, frequently neglecting societal needs and harms, while
+prioritizing and promoting the concentration of resources, tools, knowledge, and power in the hands of already powerful
+actors.
+ACKNOWLEDGMENTS
+We would like to thank Luke Stark, Dan Jurafsky, and Sarah K. Dreier for helpful feedback on this work. We owe
+gratitude and accountability to the long history of work exposing how technology shifts power, work primarily done by
+communities at the margins. Abeba Birhane was supported in part by Science Foundation Ireland grant 13/RC/2094_2.
+Pratyusha Kalluri was supported in part by the Open Phil AI Fellowship. Dallas Card was supported in part by the
+Stanford Data Science Institute. William Agnew was supported by an NDSEG Fellowship.
+REFERENCES
+[1]Mohsen Abbasi, Sorelle A. Friedler, Carlos Scheidegger, and Suresh Venkatasubramanian. 2019. Fairness in Representation: Quantifying Stereotyping
+as a Representational Harm. In Proceedings of the 2019 SIAM International Conference on Data Mining .
+[2]Mohamed Abdalla and Moustafa Abdalla. 2021. The Grey Hoodie Project: Big Tobacco, Big Tech, and the Threat on Academic Integrity. In Proceedings
+of the 2021 AAAI/ACM Conference on AI, Ethics, and Society . https://doi.org/10.1145/3461702.3462563
+[3]Grace Abuhamad and Claudel Rheault. 2020. Like a Researcher Stating Broader Impact For the Very First Time. arXiv preprint arXiv:2011.13032
+(2020).
+[4]Nur Ahmed and Muntasir Wahed. 2020. The De-democratization of AI: Deep Learning and the Compute Divide in Artificial Intelligence Research.
+arXiv preprint arXiv:2010.15581 (2020).
+[5]Waleed Ammar, Dirk Groeneveld, Chandra Bhagavatula, Iz Beltagy, Miles Crawford, Doug Downey, Jason Dunkelberger, Ahmed Elgohary, Sergey
+Feldman, Vu Ha, Rodney Kinney, Sebastian Kohlmeier, Kyle Lo, Tyler Murray, Hsu-Han Ooi, Matthew Peters, Joanna Power, Sam Skjonsberg,
+Lucy Lu Wang, Chris Wilhelm, Zheng Yuan, Madeleine van Zuylen, and Oren Etzioni. 2018. Construction of the Literature Graph in Semantic
+Scholar. In Proceedings of NAACL . https://www.semanticscholar.org/paper/09e3cf5704bcb16e6657f6ceed70e93373a54618
+15
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+[6]Michael Bailey, David Dittrich, Erin Kenneally, and Doug Maughan. 2012. The Menlo Report: Ethical Principles Guiding Information and Communication
+Technology Research . Technical Report. U.S. Department of Homeland Security.
+[7]Emily M. Bender, Timnit Gebru, Angelina McMillan-Major, and Shmargaret Shmitchell. 2021. On the Dangers of Stochastic Parrots: Can Language
+Models Be Too Big? Proceedings of FAccT (2021).
+[8]Samy Bengio and Deborah Raji. 2021. A Retrospective on the NeurIPS 2021 Ethics Review Process. https://blog.neurips.cc/2021/12/03/a-
+retrospective-on-the-neurips-2021-ethics-review-process/
+[9] Mariette Bengtsson. 2016. How to plan and perform a qualitative study using content analysis. NursingPlus Open 2 (2016), 8–14.
+[10] Ruha Benjamin. 2019. Race After Technology: Abolitionist Tools for the New Jim Code . Wiley.
+[11] Bruce L. Berg and Howard Lune. 2017. Qualitative research methods for the social sciences (ninth edition ed.). Pearson.
+[12] Abeba Birhane. 2020. Algorithmic Colonization of Africa. SCRIPTed 17, 2 (2020).
+[13] Su Lin Blodgett, Solon Barocas, Hal Daumé III, and Hanna Wallach. 2020. Language (Technology) is Power: A Critical Survey of “Bias” in NLP. In
+Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics . https://doi.org/10.18653/v1/2020.acl-main.485
+[14] Geoffrey C. Bowker and Susan Leigh Star. 2000. Sorting things out: Classification and its consequences . MIT press.
+[15] Joy Buolamwini and Timnit Gebru. 2018. Gender Shades: Intersectional Accuracy Disparities in Commercial Gender Classification. In Proceedings of
+the Conference on Fairness, Accountability and Transparency .
+[16] Sasha Costanza-Chock. 2018. Design Justice, AI, and Escape from the Matrix of Domination. Journal of Design and Science (2018).
+[17] Kate Crawford. 2017. The Trouble with Bias. (2017). NeurIPS Keynote.
+[18] Norman K Denzin. 2017. Sociological methods: a sourcebook . McGraw-Hill.
+[19] Catherine D’Ignazio and Lauren F Klein. 2020. Data Feminism . MIT Press.
+[20] Ravit Dotan and Smitha Milli. 2019. Value-Laden Disciplinary Shifts in Machine Learning. arXiv preprint arXiv:1912.01172 (2019).
+[21] Louise Doyle, Catherine McCabe, Brian Keogh, Annemarie Brady, and Margaret McCann. 2020. An overview of the qualitative descriptive design
+within nursing research. Journal of Research in Nursing 25, 5 (Aug 2020), 443–455. https://doi.org/10.1177/1744987119880234
+[22] Kawin Ethayarajh and Dan Jurafsky. 2020. Utility is in the Eye of the User: A Critique of NLP Leaderboards. In Proceedings of EMNLP .
+[23] Luciano Floridi and Josh Cowls. 2019. A Unified Framework of Five Principles for AI in Society. Harvard Data Science Review 1, 1 (2019).
+[24] Barney G. Glaser and Anselm L. Strauss. 1999. The discovery of grounded theory: strategies for grounded research . Aldine de Gruyter.
+[25] Ben Green. 2019. ‘Good’ isn’t Good Enough. In NeurIPS Joint Workshop on AI for Social Good .
+[26] Foad Hamidi, Morgan Klaus Scheuerman, and Stacy M. Branham. 2018. Gender Recognition or Gender Reductionism? The Social Implications of
+Embedded Gender Recognition Systems. In Proceedings CHI .
+[27] Alex Hanna and Tina M. Park. 2020. Against Scale: Provocations and Resistances to Scale Thinking. arXiv preprint arXiv:2010.08850 (2020).
+[28] Kashmir Hill. 2020. Wrongfully Accused by an Algorithm. The New York Times (2020). https://www.nytimes.com/2020/06/24/technology/facial-
+recognition-arrest.html
+[29] Kenneth Holstein, Jennifer Wortman Vaughan, Hal Daumé III, Miro Dudik, and Hanna Wallach. 2019. Improving Fairness in Machine Learning
+Systems: What Do Industry Practitioners Need?. In Proceedings of CHI .
+[30] Hsiu-Fang Hsieh and Sarah E. Shannon. 2005. Three Approaches to Qualitative Content Analysis. Qualitative Health Research 15, 9 (2005), 1277–1288.
+https://doi.org/10.1177/1049732305276687
+[31] John P. A. Ioannidis. 2012. Why Science Is Not Necessarily Self-Correcting. Perspectives on Psychological Science 7, 6 (2012), 645–654.
+[32] Pratyusha Kalluri. 2019. The Values of Machine Learning. https : / / slideslive . com / 38923453 / the - values - of - machine - learning
+https://slideslive.com/38923453/the-values-of-machine-learning.
+[33] Pratyusha Kalluri. 2020. Don’t ask if Artificial Intelligence is Good or Fair, ask how it Shifts Power. Nature 583, 7815 (2020), 169–169.
+[34] Maurice G Kendall and B Babington Smith. 1939. The problem of m rankings. The annals of mathematical statistics 10, 3 (1939), 275–287.
+[35] Andrei P Kirilenko and Svetlana Stepchenkova. 2016. Inter-coder agreement in one-to-many classification: fuzzy kappa. PloS one 11, 3 (2016),
+e0149787.
+[36] Laura Krefting. 1991. Rigor in Qualitative Research: The Assessment of Trustworthiness. American Journal of Occupational Therapy 45, 3 (03 1991),
+214–222. https://doi.org/10.5014/ajot.45.3.214
+[37] Klaus Krippendorff. 2018. Content Analysis: An Introduction to its Methodology . Sage Publications.
+[38] Thomas S. Kuhn. 1977. Objectivity, Value Judgment, and Theory Choice. In The Essential Tension: Selected Studies in Scientific Tradition and Change .
+University of Chicago Press, 320–39.
+[39] Jason Edward Lewis, Angie Abdilla, Noelani Arista, Kaipulaumakaniolono Baker, Scott Benesiinaabandan, Michelle Brown, Melanie Cheung,
+Meredith Coleman, Ashley Cordes, Joel Davison, et al. 2020. Indigenous Protocol and Artificial Intelligence Position Paper. (2020).
+[40] T. Lewis, S. P. Gangadharan, M. Saba, and T. Petty. 2018. Digital Defense Playbook: Community power tools for reclaiming data . Our Data Bodies.
+[41] Yvonna S. Lincoln and Egon G. Guba. 2006. Naturalistic inquiry . Sage Publ.
+[42] Zachary C. Lipton and Jacob Steinhardt. 2019. Troubling Trends in Machine Learning Scholarship: Some ML Papers Suffer from Flaws That Could
+Mislead the Public and Stymie Future Research. Queue 17, 1 (2019), 45–77. https://doi.org/10.1145/3317287.3328534
+[43] Helen E. Longino. 1996. Cognitive and Non-Cognitive Values in Science: Rethinking the Dichotomy. In Feminism, Science, and the Philosophy of
+Science , Lynn Hankinson Nelson and Jack Nelson (Eds.). Springer Netherlands, 39–58.
+[44] Ernan McMullin. 1982. Values in science. In Proceedings of the Biennial Meeting of the Philosophy of Science Association .
+16
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+[45] Sharan B Merriam and Robin S Grenier. 2019. Qualitative Research in Practice . Jossey-Bass.
+[46] Robert K. Merton. 1973. The Sociology of Science: Theoretical and Empirical Investigations . University of Chicago press.
+[47] Shakir Mohamed, Marie-Therese Png, and William Isaac. 2020. Decolonial AI: Decolonial Rheory as Sociotechnical Foresight in Artificial Intelligence.
+Philosophy & Technology 33 (2020), 659––684.
+[48] Priyanka Nanayakkara, Jessica Hullman, and Nicholas Diakopoulos. 2021. Unpacking the Expressed Consequences of AI Research in Broader Impact
+Statements. In Proceedings of the 2021 AAAI/ACM Conference on AI, Ethics, and Society . https://doi.org/10.1145/3461702.3462608
+[49] Helen Noble and Joanna Smith. 2015. Issues of validity and reliability in qualitative research. Evidence Based Nursing 18, 2 (Apr 2015), 34–35.
+[50] Safiya Umoja Noble. 2018. Algorithms of oppression: How search engines reinforce racism . NYU Press.
+[51] Cathy O’Neil. 2016. Weapons of Math Destruction: How Big Data Increases Inequality and Threatens Democracy . Broadway Books.
+[52] Frank Pasquale. 2015. The black box society . Harvard University Press.
+[53] Michael Quinn Patton. 1990. Qualitative Evaluation and Research Methods . Sage.
+[54] M Q Patton. 1999. Enhancing the quality and credibility of qualitative analysis. Health Services Research 34, 5 (Dec 1999).
+[55] Juan Perdomo, Tijana Zrnic, Celestine Mendler-Dünner, and Moritz Hardt. 2020. Performative Prediction. In Proceedings of ICML .
+[56] Vinay Uday Prabhu and Abeba Birhane. 2020. Large Image Datasets: A Pyrrhic Win for Computer Vision? arXiv preprint arXiv:2006.16923 (2020).
+https://arxiv.org/abs/2006.16923
+[57] Phillip Rogaway. 2015. The Moral Character of Cryptographic Work. Cryptology ePrint Archive, Report 2015/1162. https://eprint.iacr.org/2015/1162.
+[58] Anna Rogers. 2019. Peer review in NLP: reject-if-not-SOTA. Hacking Semantics blog (2019). https://hackingsemantics.xyz/2020/reviewing-
+models/#everything-wrong-with-reject-if-not-sota
+[59] Daniela Rus. 2018. Rise of the robots: Are you ready? Financial Times Magazine (March 2018). https://www.ft.com/content/e31c4986-20d0-11e8-
+a895-1ba1f72c2c11
+[60] Harini Suresh and John V. Guttag. 2019. A Framework for Understanding Unintended Consequences of Machine Learning. arXiv preprint
+arXiv:1901.10002 (2019). http://arxiv.org/abs/1901.10002
+[61] Denis Trapido. 2015. How Novelty in Knowledge Earns Recognition: The Role of Consistent Identities. Research Policy 44, 8 (2015), 1488–1500.
+[62] Christiaan H. Vinkers, Joeri K. Tijdink, and Willem M. Otte. 2015. Use of Positive and Negative Words in Scientific PubMed Abstracts between 1974
+and 2014: Retrospective Analysis. BMJ 351 (2015).
+[63] Kiri Wagstaff. 2012. Machine Learning that Matters. In Proceedings of ICML .
+[64] Joseph Weizenbaum. 1972. On the Impact of the Computer on Society. Science 176, 4035 (1972), 609–614.
+[65] Langdon Winner. 1977. Autonomous Technology: Technics-out-of-Control as a Theme in Political Thought . MIT Press.
+[66] Langdon Winner. 1980. Do Artifacts Have Politics? Daedalus 109, 1 (1980), 121–136.
+17
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+A ADDITIONAL METHODOLOGICAL DETAILS
+A.1 Data Sources
+To determine the most-cited papers from each conference, we rely on the publicly-available Semantic Scholar database
+[5], which includes bibliographic information for scientific papers, including citation counts.13Using this data, we
+chose the most cited papers from each of 2008, 2009, 2018, 2019 published at NeurIPS and ICML.
+Like all bibliographic databases, Semantic Scholar is imperfect. Upon manual review, we wish to document that our
+selection includes one paper that was actually published in 2010, and one that was retracted from NeurIPS prior to
+publication (see §I for details). In addition, the citations counts used to determine the most cited papers reflect a static
+moment in time, and may differ from other sources.
+Because our artifacts of study are papers that have been previously published at NeurIPS or ICML, we surmise that
+the authors normatively expect and consent to their papers and themselves as authors being referenced and analyzed
+in future papers, e.g. this paper. Accordingly, we chose not to seek explicit permission from the original authors to
+reference, annotate, and analyze their papers. The annotations we generated do not introduce any new personally
+identifying information or offensive content. The sentences from the original published papers are necessarily part of
+our annotations; to the extent that these papers have these issues, these sentences may contain personally identifying
+information or offensive content. Given the original authors contributed their work to the same venues as our own
+work, we believe that the potential to cause new harm from this inclusion is minimal.
+A.2 Defining elite university
+To determine the list of elite universities, we follow Ahmed and Wahed [ 4], and rely on the QS World University
+Rankings for the discipline of computer science. For 2018/19, we take the top 50 schools from the CS rankings for 2018.
+For 2008/09, we take the top 50 schools from the CS rankings for 2011, as the closest year for which data is available.
+A.3 Defining big tech
+We used Abdalla and Abdalla’s [ 2] criterion to what is considered “big tech”, which is comprised of: Alibaba, Amazon,
+Apple, Element AI, Facebook, Google, Huawei, IBM, Intel, Microsoft, Nvidia, Open AI, Samsung, and Uber. Furthermore,
+we added DeepMind to this list, which Google acquired in 2014. We considered all other companies as “non-big tech”.
+B ANNOTATIONS
+We include the annotations of all papers as supplementary material at https://github.com/wagnew3/The-Values-
+Encoded-in-Machine-Learning-Research with a CC BY-NC-SA license. To present a birds-eye view of the value
+annotations, we present randomly selected examples of annotated sentences in Appendix H.
+C COMBINING VALUES
+In some cases, values had strong overlap with related values (e.g., Performance is closely related to Accuracy ). In other
+cases, we had annotated for several fine-grained values that we found could be combined (e.g., Data Efficiency andLabel
+Efficiency are types of Efficiency ). Following best practices, we identified such values and combined them for our main
+analysis. In Figure C.1 we list all values before combining, and in Table 7 we list the combinations.
+13http://s2-public-api.prod.s2.allenai.org/corpus/
+18
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+Fig. C.1. Proportion of annotated papers that uplifted each value, prior to combining.
+19
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+Table 7. Sets of values combined for analysis in the main paper
+Overarching value Set of values
+Performance Performance, Accuracy, State-of-the-art
+Building on past work Building on classic work, Building on recent work
+Generalization Generalization, Avoiding train/test discrepancy, Flexibility/extensibility
+Efficiency Efficiency, Data efficiency, Energy efficiency, Fast, Label efficiency,
+Low cost, Memory efficiency, Reduced training time
+D REFLEXIVITY STATEMENT
+The cloak of objectivity is an important part of what we are challenging in this paper. We are encouraging all researchers
+to reflect on what norms, perspectives, privileges, or incentives may be shaping their work. By sharing a bit about
+ourselves, we help make it possible for others to find biases we might not have recognized, and we hope to create space
+for other peoples and values at the margins. Our team is multi-racial and multi-gender and includes undergraduate,
+graduate, and post-graduate researchers engaged with AI, machine learning, NLP, robotics, cognitive science, critical
+theory, grassroots community organizing, abolitionist community organizing, arts, and philosophy of science. We
+are privileged due to our affiliations with well resourced Western universities enabling our research and its eventual
+publication with relative ease (for example, compared to the challenges our peers in the global South might have faced).
+Furthermore, as these Western universities have a history of racism, colonialism and white-supremacy, being embedded
+in such ecology makes it impossible to entirely sever our research from such histories. Notably for our work, it is
+possible that different authors might have identified a somewhat different set of values, and/or recognized these values
+differently in the text, and we acknowledge that we may have gaps in understanding with respect to what is important
+to others, most importantly to us, what is important to our and other communities at the margins. In addition, we
+recognize that the notion of an “elite” university, which we have adopted from past work (both the category and the
+members), implies a ranking or hierarchy among institutions of higher education that may be unjust to many others.
+Throughout the paper, we have attempted to adopt a critical perspective, but it is likely that there are still many parts
+of the broader machine learning ecosystem that we simply take for granted, and which should be recognized and
+challenged.
+E EXPERIMENTS WITH USING TEXT CLASSIFICATION TO IDENTIFY VALUES
+Although it was not our primary purpose in annotating highly-cited papers, we include here a brief report on using
+the annotations we generated as potential training data for classifiers that could in principle be used to estimate the
+prevalence of these values in a larger set of ML papers. This is something that we should approach with great caution for
+several reasons: i) we only have a relatively small training set of annotated examples with respect to machine learning
+best practices; ii) these annotations are taken from a non-random set of papers, and any models trained on these
+data may not generalize to all papers; iii) an automated approach will fail to detect additional, previously unobserved,
+emergent values; and iv) based on our experiences annotating these papers, we expect that many would be expressed
+subtly and in varied ways that would be difficult to detect automatically, at least without considerably more training
+data.
+To present a baseline for testing the potential of this approach, while avoiding any biases that might be introduced
+by pretrained language models, we make use of simple regularized logistic regression classifiers operating on unigram
+features. We trained models separately for each value (for all values that had at least 20 relevant sentences, using all
+20
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+relevant sentences for the higher-order grouped values), treating each sentence as an instance with a binary label
+(present or not), tokenizing each sentence using spaCy and converting each to a binary feature representation indicating
+the presence or absence of each word in the vocabulary (all words occurring at least twice in the corpus). These choices
+were not tuned. We randomly selected 300 sentences to use as a held out test set (using the same test set for each value),
+and trained a model using the remaining data, using 5-fold cross validation to tune the regularization strength.
+F1 scores on the test set for the various models are shown in Figure E.2 (right), and can generally be seen to be
+unimpressive. The F1 score for most values is on the order of 0.5 or less, and some values, even relatively common ones
+such as Unifying Ideas , ended up with an F1 score of 0. The most highly-weighted features for most classifiers were
+quite reasonable, but this is evidently a relatively difficult task, at least given this amount of data. The exceptions to
+this poor performance included the Performance-related values ( Performance ,Accuracy , and State-of-the-art ), as well
+asEffectiveness , and Facilitating Use , all of which had F1 scores greater than 0.75, and most of which were typically
+represented by a relatively small set of terms (e.g., "accurate", "accuracy", "accurately", "inaccurate", "accuracies", "errors",
+etc. for Accuracy ).
+Although the poor performance of these classifiers means we should interpret any use of them with caution, we
+explore applying them to a broader set of papers for the sake of completeness. To do so, we download pdfs of all
+papers published at NeurIPS and ICML for the years 2008 through 2020, convert these to text using pdftotext , and
+extract sentences from this text, excluding references, as well as very short sentences (less than 6 tokens) or lines
+without alphabetic characters. Note that due to the difficulty of automatically parsing papers into sections, these textual
+representations are not limited to the abstract, introduction, discussion, and conclusion, in contrast to our annotations,
+thus we would expect most values to occur more frequently, especially those that are likely to occur in sections about
+experiments and results.
+We then apply the classifiers trained above to each sentence in each paper. For each value, we then compute the
+proportion of papers (combining NeurIPS and ICML for this entire time period) that had at least one sentence predicted
+to exhibit that value. The overall proportions are shown in Figure E.2 (left). As can be seen, the relative prevalence
+of values is broadly similar to our anntoated sample, though many are predicted to occur with greater frequency, as
+expected. However, to reiterate, we should be highly skeptical of these findings, given the poor performance of the
+classifiers, and we can view this analysis to be useful more so to deepen our understanding of appropriate methodology.
+Finally, as an additional exploration, we focus on the Performance-related values ( Performance ,Accuracy , and State-
+of-the-art ), which represent the overall most prevalent cluster in our annotations and were relatively easy to identify
+using classification due to their typically simple and explicit expression. We plot the estimated frequency over time for
+both conferences. For NeurIPS, which has better archival practices, we extend the analysis back to 1987. We should
+again treat these results with caution, given all the caveats above, as well as the fact that we are now applying these
+classifiers outside the temporal range from which the annotations were collected. Nevertheless, the results, shown
+in Figure E.3, suggest that these values have gradually become more common in NeurIPS over time, reinforcing the
+contingent nature of the dominance of the current set of values. Further investigation is required, however, in order to
+verify this finding.
+F CODE AND REPRODUCIBILITY
+Our code and annotations are available with a CC BY-NC-SA license at https://github.com/wagnew3/The-Values-
+Encoded-in-Machine-Learning-Research. The text classification experiments were run on a 2019 Macbook Air.
+21
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+0.0 0.2 0.4 0.6 0.8 1.0
+Est. prop. of papersPerformance Values
+Performance
+Accuracy
+State-of-The-Art
+Building On Past Work
+Building on Recent Work
+Building on Classic Work
+Generalization Values
+Generalization
+Flexibility/Extensibility
+Efficiency Values
+Efficiency
+Low Cost
+Data Efficiency
+Label Efficiency
+Fast
+Reduced Training Time
+Memory Efficiency
+Quantitative Evidence
+Novelty
+Understanding (For Researchers)
+Applies to real world
+Formal Description/Analysis
+Simplicity
+Identifying Limitations
+Robustness
+Unifying Ideas
+Effectiveness
+Theoretical Guarantees
+Scientific Methodology
+Used in practice/Popular
+Approximation
+Large Scale
+Scales Up
+Successful
+Qualitative Evidence
+Generality
+Facilitating Use
+Improvement
+Useful
+Parallelizability / Distributed
+Practical
+Requires Few Resources
+Realistic Output
+Optimal
+Security
+PrivacyNeurIPS and ICML (2008-2020)
+0.0 0.2 0.4 0.6 0.8 1.0
+F1F1 scores
+Fig. E.2. Proportion of papers in from 2008–2020 (combining NeurIPS and ICML) predicted to have at least one sentence expressing
+each value (left), and estimated performance (F1) of the corresponding classifiers (right). Note that the overall performance of most
+classifiers is generally poor, indicating that the estimates on the left should be treated as unreliable in most cases. Grey bars represent
+the clustered values. Classifiers were not trained for values with less than 20 representative sentences.
+22
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+1990 1995 2000 2005 2010 2015 20200.00.20.40.60.81.0Proportion of papersPerformance
+NeurIPS
+ICML
+1990 1995 2000 2005 2010 2015 20200.00.20.40.60.81.0Proportion of papersAccuracy
+NeurIPS
+ICML
+1990 1995 2000 2005 2010 2015 20200.00.20.40.60.81.0Proportion of papersState-of-the-art
+NeurIPS
+ICML
+Fig. E.3. Proportion of papers per year (of those published in ICML and NeurIPS) that are classified as having at least one sentence
+expressing Performance ,Accuracy , orState-of-the-art , (top, middle, and bottom), based on simple text classifiers trained on our
+annotations. Bands show ±2 standard deviations, reflecting the changing overall number of papers per year.
+G POTENTIAL NEGATIVE SOCIETAL IMPACTS
+Because this paper primarily relies on socially conscientious manual annotation of papers already published at NeurIPS
+and ICML, we believe that the potential negative societal impacts of carrying out these annotations and sharing them
+are minimal. However, we still briefly comment on this here.
+We believe our annotation work poses no risk to living beings, human rights concerns, threats to livelihoods, etc.
+Similarly, all annotators are co-authors on this paper, thus there was no risk to participants, beyond what we chose to
+take on for ourselves. We have further discussed these aspects of the data in §A.1. Our computational experiments are
+done locally and have resource usage on par with everyday computer usage.
+One area of potential concern to readers, particularly researchers, may be regarding adopting a punitive stance
+toward individuals, unintentionally casting certain authors in a negative light, or unintentionally contributing to
+harmful tensions within the ML community. We wish to directly express that throughout this paper we have sought to
+avoid punitive language toward individuals and adopt language emphasizing systematic patterns. In order to further
+minimize the former, we have chosen to include randomly selected examples omitting author attributions from quoted
+sources in the main paper. To complement this and meet the need for completeness, transparency, and reproducibility
+of our work, we include a full list of cited papers below, so as to acknowledge this work without drawing unnecessary
+attention to any one particular source.
+Although our intention is to broaden and deepen the conversation, we acknowledge that some authors may perceive
+our work as being not representative of the type of work they would like to see at an ML conference, and possibly
+23
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+detrimental to the conference. However, because of the prominence and influence of machine learning today, it is
+especially important to have these conversations at these venues, and we hope that our paper will be the basis for
+useful conversations and future work. As expressed in the main paper, these perceptions and norms may be precisely
+those that are more contingent than the community realizes; these norms may be shaped, dismantled, transformed, or
+reenvisioned for the better.
+H RANDOM EXAMPLES
+The list below contains 100 random examples drawn from the annotated data, along with the set of annotated values
+for each. These sentences were annotated for values within the context of the paper.
+•The problem of minimizing the rank of a matrix variable subject to certain constraints arises in many fields including
+machine learning, automatic control, and image compression. Used in practice/Popular
+•Locality-sensitive hashing [6] is an effective technique that performs approximate nearest neighbor searches in time
+that is sub-linear in the size of the database Approximation ,Building on recent work ,Effectiveness ,Fast
+•In the finite case, analysis of optimization and generalization of fully-trained nets is of course an open problem
+Formal description/analysis ,Generalization
+•So to achieve adversarial robustness, a classifier must generalize in a stronger sense. Generalization ,Robustness
+•Robustness to label corruption is similarly improved by wide margins, such that pre-training alone outperforms
+certain task-specific methods, sometimes even after combining these methods with pre-training. Performance ,
+Robustness ,Understanding (for researchers)
+•RBMs have been particularly successful in classification problems either as feature extractors for text and image data
+(Gehler et al., 2006) or as a good initial training phase for deep neural network classifiers (Hinton, 2007). Building
+on recent work ,Flexibility/Extensibility ,Successful
+•Our theoretical analysis naturally leads to a new formulation of adversarial defense which has several appealing
+properties; in particular, it inherits the benefits of scalability to large datasets exhibited by Tiny ImageNet, and the
+algorithm achieves state-of-the-art performance on a range of benchmarks while providing theoretical guarantees.
+Robustness ,Scales up ,Security ,Theoretical guarantees
+•The current paper focuses on the training loss, but does not address the test loss. Generalization
+•This result is significant since stochastic methods are highly preferred for their efficiency over deterministic gradient
+methods in machine learning applications. Efficiency
+•Ranking, which is to sort objects based on certain factors, is the central problem of applications such as in- formation
+retrieval (IR) and information filtering. Applies to real world ,Used in practice/Popular
+•This subspace is important, because, when projected onto this subspace, the means of the distributions are well-
+separated, yet the typical distance between points from the same distribution is smaller than in the original space.
+Important
+•Overall, the existence of such adversarial examples raises concerns about the robustness of current classifiers.
+Identifying limitations ,Robustness
+•We have shown that biased compressors if naively used can lead to bad generalization, and even non-convergence.
+Formal description/analysis ,Generalization
+•Bartlett and Mendelson [2002] provide a generalization bound for Lipschitz loss functions. Building on classic
+work ,Generalization
+24
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+•The principal advantage of taking this “lateral” approach arises from the fact that compact representation in trajectory
+space is better motivated physically than compact representation in shape space Realistic world model
+•In this paper, we show that gradient descent on deep overparametrized networks can obtain zero training loss Formal
+description/analysis ,Theoretical guarantees
+•Moreover, web queries often have different meanings for different users (a canonical example is the query jaguar )
+suggesting that a ranking with diverse documents may be preferable. Diverse output ,User influence
+•We include human performance estimates for all benchmark tasks, which verify that substantial headroom exists
+between a strong BERT-based baseline and human performance. Learning from humans ,Performance
+•Inthis paper we propose a simple and fast algorithm SVP(Singular Value Projec-tion) for rank minimization under
+affine constraints (ARMP) and show that SVP recovers the minimum rank solution for affine constraints that satisfy
+a restricted isometry property(RIP). Fast ,Novelty ,Simplicity
+•We use standard formalization of multiclass classification, where data consists of sample x and its label y (an integer
+from 1 to k). Building on classic work
+•A number of recent work has shown that the low rank solution can be recovered exactly via minimizing the trace
+norm under certain conditions (Recht et al., 2008a; Recht et al., 2008b; Candès and Recht, 2008). Building on recent
+work
+•This difficulty has necessitated the use of a heuristic inference procedure, that nonetheless was accurate enough for
+successful learning. Accuracy ,Successful
+•We illustrate such potential by measuring search space properties relevant to architecture search. Quantitative
+evidence (e.g. experiments)
+•Deep architectures consist of feature detector units arranged in layers. Lower layers detect simple features and feed
+into higher layers, which in turn detect more complex features. Simplicity
+•This makes the updates hard to massively parallelize at a coarse, dataparallel level (e.g., by computing the updates
+in parallel and summing them together centrally) without losing the critical stochastic nature of the updates. Large
+scale ,Parallelizability / distributed
+•This suggests future work on model robustness should evaluate proposed methods with pretraining in order to correctly
+gauge their utility, and some work could specialize pre-training for these downstream tasks. Robustness
+•Adversarial training remains among the most trusted defenses, but it is nearly intractable on largescale problems.
+Scales up ,Security
+•For complex robots such as humanoids or light-weight arms, it is often hard to model the system sufficiently well
+and, thus, modern regression methods offer a viable alternative [7,8]. Realistic world model
+•In contrast to prior work that operates in this goal-setting model, we use states as goals directly, which allows for
+simple and fast training of the lower layer. Reduced training time ,Simplicity
+•Meanwhile, using less resources tends to produce less compelling results (Negrinho and Gordon, 2017; Baker et al.,
+2017a). Requires few resources
+•This finding represents an exciting opportunity for defense against neural fake news: the best models for generating
+neural disinformation are also the best models at detecting it. Applies to real world
+•Our strong empirical results suggest that randomized smoothing is a promising direction for future research into
+adversarially robust classification. Quantitative evidence (e.g. experiments) ,Robustness ,Security
+•We then turn our attention to identifying the roots of BatchNorm’s success. Successful ,Understanding (for
+researchers)
+25
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+•We also report the results of large-scale experiments comparing these three methods which demonstrate the benefits
+of the mixture weight method: this method consumes less resources, while achieving a performance comparable to
+that of standard approaches. Large scale ,Performance ,Requires few resources
+•This paper does not cover the the generalization of over-parameterized neural networks to the test data. Avoiding
+train/test discrepancy ,Generalization
+•While there has been success with robust classifiers on simple datasets [31, 36, 44, 48], more complicated datasets
+still exhibit a large gap between “‘standard” and robust accuracy [3, 11]. Applies to real world ,Robustness ,
+Successful
+•In this paper, we have shown theoretically how independence between examples can make the actual effect much
+smaller. Novelty ,Theoretical guarantees
+•We provide empirical evidence that several recently-used methods for estimating the probability of held-out documents
+are inaccurate and can change the results of model comparison. Accuracy ,Building on recent work ,Quantitative
+evidence (e.g. experiments)
+•This agreement is robust across different architectures, optimization methods, and loss functions Robustness
+•Unfortunately, due to the slow-changing policy in an actor-critic setting, the current and target value estimates
+remain too similar to avoid maximization bias. Accuracy
+•As a future work, we are pursuing a better understanding of probabilistic distributions on the Grassmann manifold.
+Understanding (for researchers)
+•We also view these results as an opportunity to encourage the community to pursue a more systematic investigation of
+the algorithmic toolkit of deep learning and the underpinnings of its effectiveness. Effectiveness ,Understanding
+(for researchers)
+•This challenge is further exacerbated in continuous state and action spaces, where a separate actor network is often
+used to perform the maximization in Q-learning. Performance
+•The vulnerability of neural networks to adversarial perturbations has recently been a source of much discussion and
+is still poorly understood. Robustness ,Understanding (for researchers)
+•Most of the evaluation methods described in this paper extend readily to more complicated topic models— including
+non-parametric versions based on hierarchical Dirichlet processes (Teh et al., 2006)—since they only require a MCMC
+algorithm for sampling the latent topic assignments z for each document and a way of evaluating probability P(w | z,
+Φ,𝛼m).Flexibility/Extensibility ,Understanding (for researchers)
+•In a formulation closely related to the dual problem, we have: ˆ𝑤= argmin w:F (w)≤c 1 n Xn i=1 ℓ(hw, xii, yi) (2)
+where, instead of regularizing, a hard restriction over the parameter space is imposed (by the constant c). Formal
+description/analysis
+•Second, we evaluate a surrogate loss function from four aspects: (a) consistency, (b) soundness, (c) mathemat- ical
+properties of continuity, differentiability, and con- vexity, and (d) computational efficiency in learning. Efficiency
+•This leads to two natural questions that we try to answer in this paper: (1) Is it feasible to perform optimization in
+this very large feature space with cost which is polynomial in the size of the input space? Performance
+•Despite its pervasiveness, the exact reasons for BatchNorm’s effectiveness are still poorly understood. Understanding
+(for researchers)
+•We have presented confidenceweighted linear classifiers, a new learning method designed for NLP problems based on
+the notion of parameter confidence. Novelty
+26
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+•In addition, the experiments reported here suggest that (like other strategies recently proposed to train deep determin-
+istic or stochastic neural networks) the curriculum strategies appear on the surface to operate like a regularizer, i.e.,
+their beneficial effect is most pronounced on the test set. Beneficence ,Quantitative evidence (e.g. experiments)
+•These give further inside into hash-spaces and explain previously made empirical observations. Understanding
+(for researchers)
+•This means that current algorithms reach their limit at problems of size 1TB whenever the algorithm is I/O bound
+(this amounts to a training time of 3 hours), or even smaller problems whenever the model parametrization makes
+the algorithm CPU bound. Memory efficiency ,Reduced training time
+•Much of the results presented were based on the assumption that the target distribution is some mixture of the source
+distributions. Valid assumptions
+•Empirical investigation revealed that this agrees well with actual training dynamics and predictive distributions
+across fully-connected, convolutional, and even wide residual network architectures, as well as with different op-
+timizers (gradient descent, momentum, mini-batching) and loss functions (MSE, cross-entropy). Generalization ,
+Quantitative evidence (e.g. experiments) ,Understanding (for researchers)
+•We design a new spectral norm that encodes this a priori assumption, without the prior knowledge of the partition of
+tasks into groups, resulting in a new convex optimization formulation for multi-task learning. Novelty
+•Recent progress in natural language generation has raised dual-use concerns. Progress
+•These kernel functions can be used in shallow architectures, such as support vector machines (SVMs), or in deep
+kernel-based architectures that we call multilayer kernel machines (MKMs). Flexibility/Extensibility
+•Using MCMC instead of variational methods for approximate inference in Bayesian matrix factorization models
+leads to much larger improvements over the MAP trained models, which suggests that the assumptions made
+by the variational methods about the structure of the posterior are not entirely reasonable. Understanding (for
+researchers)
+•In particular, the deep belief network (DBN) (Hinton et al., 2006) is a multilayer generative model where each layer
+encodes statistical dependencies among the units in the layer below it; it is trained to (approximately) maximize the
+likelihood of its training data. Approximation ,Data efficiency
+•Furthermore, the learning accuracy and performance of our LGP approach will be compared with other important
+standard methods in Section 4, e.g., LWPR [8], standard GPR [1], sparse online Gaussian process regression (OGP) [5]
+and𝜈-support vector regression ( 𝜈-SVR) [11], respectively Accuracy ,Performance ,Quantitative evidence (e.g.
+experiments)
+••propose a simple method based on weighted minibatches to stochastically train with arbitrary weights on the terms
+of our decomposition without any additional hyperparameters. Efficiency ,Simplicity
+•For example, Ng (2004) examined the task of PAC learning a sparse predictor and analyzed cases in which an ℓ1
+constraint results in better solutions than an ℓ2 constraint. Building on recent work
+•Graph Convolutional Networks (GCNs) (Kipf and Welling, 2017) are an efficient variant of Convolutional Neural
+Networks (CNNs) on graphs. GCNs stack layers of learned first-order spectral filters followed by a nonlinear activation
+function to learn graph representations. Efficiency
+•This is a linear convergence rate. Building on recent work ,Efficiency ,Quantitative evidence (e.g. experi-
+ments) ,Theoretical guarantees
+•However, as we observe more interactions, this could emerge as a clear feature. Building on recent work ,Data
+efficiency
+27
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+•Here we propose the first method that supports arbitrary low accuracy and even biased compression operators, such
+as in (Alistarh et al., 2018; Lin et al., 2018; Stich et al., 2018). Accuracy ,Novelty
+•Much recent work has been done on understanding under what conditions we can learn a mixture model. Under-
+standing (for researchers)
+•For this reason, we present an extension of the standard greedy OMP algorithm that can be applied to general struc-
+tured sparsity problems, and more importantly, meaningful sparse recovery bounds can be obtained for this algorithm.
+Building on recent work
+•In this paper we show that this assumption is indeed necessary: by considering a simple yet prototypical exampleof
+GAN training we analytically show that (unregularized) GAN training is not always locally convergent Formal
+description/analysis
+•Overestimation bias is a property of Q-learning in which the maximization of a noisy value estimate induces a
+consistent overestimation Accuracy
+•This drawback prevents GPR from applications which need large amounts of training data and require fast computa-
+tion, e.g., online learning of inverse dynamics model for model-based robot control Fast ,Large scale
+•This is problematic since we find there are techniques which do not comport well with pre-training; thus some
+evaluations of robustness are less representative of real-world performance than previously thought. Applies to real
+world ,Performance ,Robustness
+•Approximation of this prior structure through simple, efficient hyperparameter optimization steps is sufficient to
+achieve these performance gains Approximation ,Efficiency ,Performance ,Simplicity
+•The second mysterious phenomenon in training deep neural networks is “deeper networks are harder to train.”
+Performance
+•However, the definition of our metric is sufficiently general that it could easily be used to test, for example, invariance
+of auditory features to rate of speech, or invariance of textual features to author identity. Generalization
+•In Sec. 6 we test the proposed algorithm for face recognition and object categorization tasks. Applies to real world ,
+Quantitative evidence (e.g. experiments)
+•It is possible to train classification RBMs directly for classification performance; the gradient is fairly simple and
+certainly tractable. Performance
+•Figure 1 contrasts these two approaches. Defining and evaluating models using ODE solvers has several benefits:
+Beneficence
+•They claim to achieve 12% robustness against non-targeted attacks that are within an ‘2 radius of 3 (for images with
+pixels in [0, 1]). Generalization ,Robustness
+•Two commonly used penalties are the 1- norm and the square of the 2-norm of w. Used in practice/Popular
+•What should platforms do? Video-sharing platforms like YouTube use deep neural networks to scan videos while they
+are uploaded, to filter out content like pornography (Hosseini et al., 2017). Applies to real world
+•We mention various properties of this penalty, and provide conditions for the consistency of support estimation in the
+regression setting. Finally, we report promising results on both simulated and real data Applies to real world
+•There could be a separate feature for “high school student,” “male,” “athlete,” and “musician” and the presence or
+absence of each of these features is what defines each person and determines their relationships. Building on recent
+work
+•So, the over-parameterized convergence theory of DNN is much simpler than that of RNN. Simplicity ,Understand-
+ing (for researchers)
+28
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+•Other threat models are possible: for instance, an adversary might generate comments or have entire dialogue agents,
+they might start with a human-written news article and modify a few sentences, and they might fabricate images or
+video. Learning from humans
+•More generally, we hope that future work will be able to avoid relying on obfuscated gradients (and other methods
+that only prevent gradient descent-based attacks) for perceived robustness, and use our evaluation approach to detect
+when this occurs. Generality ,Robustness
+•For example, the learned linear combination does not consistently outperform either the uniform combination of base
+kernels or simply the best single base kernel (see, for example, UCI dataset experiments in [9, 12], see also NIPS 2008
+workshop). Performance
+•Our main contributions are: •We analyze GP-UCB, an intuitive algorithm for GP optimization, when the function is
+either sampled from a known GP, or has low RKHS norm. Optimal
+•For the standard linear setting, Dani et al. (2008) provide a near-complete characterization explicitly dependent on
+the dimensionality. In the GP setting, the challenge is to characterize complexity in a different manner, through
+properties of the kernel function. Building on classic work
+•This allows us to map each architecture A to its approximate hyperparameter optimized accuracy Accuracy
+•Unfortunately, they could only apply their method to linear networks. Flexibility/Extensibility
+•The strength of the adversary then allows for a trade-off between the enforced prior, and the data-dependent features.
+Understanding (for researchers)
+•We observe that the computational bottleneck of NAS is the training of each child model to convergence, only to
+measure its accuracy whilst throwing away all the trained weights. Accuracy
+•We show that the number of subproblems need only be logarithmic in the total number of possible labels, making
+thisapproach radically more efficient than others. Efficiency
+•We establish a new notion of quadratic approximation of the neural network, and connect it to the SGD theory of
+escaping saddle points. Novelty ,Unifying ideas or integrating components
+•In this work, we decompose the prediction error for adversarial examples (robust error) as the sum of the natural
+(classification) error and boundary error, and provide a differentiable upper bound using the theory of classification-
+calibrated loss, which is shown to be the tightest possible upper bound uniform over all probability distributions and
+measurable predictors. Accuracy ,Robustness ,Theoretical guarantees
+•A limit on the number of queries can be a result of limits on other resources, such as a time limit if inference time
+is a bottleneck or a monetary limit if the attacker incurs a cost for each query. Applies to real world ,Low cost ,
+Requires few resources
+•Preliminary experiments demonstrate that it is significantly faster than batch alternatives on large datasets that may
+contain millions of training examples, yet it does not require learning rate tuning like regular stochastic gradient
+descent methods. Quantitative evidence (e.g. experiments) ,Reduced training time
+•SuperGLUE is available at super.gluebenchmark.com. Facilitating use (e.g. sharing code)
+I FULL LIST OF CITED PAPERS
+The full list of annotated papers is given below, along with the annotated scores (in square brackets) for Discussion of
+Negative Potential [left] (0 = Doesn’t mention negative potential; 1 = Mentions but does not discuss negative potential;
+2 = Discusses negative potential) and Justification [right] (1 = Does not mention societal need; 2 = States but does not
+justify how it connects to a societal need; 3 = States and somewhat justifies how it connects to a societal need; 4 = States
+29
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+and rigorously justifies how it connects to a a societal need). Note that due to minor errors in the data sources used, the
+distribution of papers over venues and years is not perfectly balanced. For the same reason, the list also contains one
+paper from 2010 (rather than 2009), as well as one paper that was retracted before publication at NeurIPS (marked with
+a∗).
+•Mingxing Tan, Quoc Le. EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks. In Proceedings
+of ICML , 2019. [0/1]
+•Sanjeev Arora, Simon Du, Wei Hu, Zhiyuan Li, Ruosong Wang. Fine-Grained Analysis of Optimization and
+Generalization for Overparameterized Two-Layer Neural Networks. In Proceedings of ICML , 2019. [0/1]
+•Jeremy Cohen, Elan Rosenfeld, Zico Kolter. Certified Adversarial Robustness via Randomized Smoothing. In
+Proceedings of ICML , 2019. [0/1]
+•Hongyang Zhang, Yaodong Yu, Jiantao Jiao, Eric Xing, Laurent El Ghaoui, Michael Jordan. Theoretically Principled
+Trade-off between Robustness and Accuracy. In Proceedings of ICML , 2019. [0/2]
+•Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, Tie-Yan Liu. MASS: Masked Sequence to Sequence Pre-training for
+Language Generation. In Proceedings of ICML , 2019. [0/1]
+•Felix Wu, Amauri Souza, Tianyi Zhang, Christopher Fifty, Tao Yu, Kilian Weinberger. Simplifying Graph Convo-
+lutional Networks. In Proceedings of ICML , 2019. [0/1]
+•Benjamin Recht, Rebecca Roelofs, Ludwig Schmidt, Vaishaal Shankar. Do ImageNet Classifiers Generalize to
+ImageNet? In Proceedings of ICML , 2019. [0/2]
+•Justin Gilmer, Nicolas Ford, Nicholas Carlini, Ekin Cubuk. Adversarial Examples Are a Natural Consequence of
+Test Error in Noise. In Proceedings of ICML , 2019. [0/1]
+•Chris Ying, Aaron Klein, Eric Christiansen, Esteban Real, Kevin Murphy, Frank Hutter. NAS-Bench-101: Towards
+Reproducible Neural Architecture Search. In Proceedings of ICML , 2019. [0/2]
+•Dan Hendrycks, Kimin Lee, Mantas Mazeika. Using Pre-Training Can Improve Model Robustness and Uncertainty.
+InProceedings of ICML , 2019. [0/1]
+•Sai Praneeth Karimireddy, Quentin Rebjock, Sebastian Stich, Martin Jaggi. Error Feedback Fixes SignSGD and
+other Gradient Compression Schemes. In Proceedings of ICML , 2019. [0/1]
+•Anastasia Koloskova, Sebastian Stich, Martin Jaggi. Decentralized Stochastic Optimization and Gossip Algorithms
+with Compressed Communication. In Proceedings of ICML , 2019. [0/2]
+•Han Zhang, Ian Goodfellow, Dimitris Metaxas, Augustus Odena. Self-Attention Generative Adversarial Networks.
+InProceedings of ICML , 2019. [0/1]
+•Zeyuan Allen-Zhu, Yuanzhi Li, Zhao Song. A Convergence Theory for Deep Learning via Over-Parameterization.
+InProceedings of ICML , 2019. [0/1]
+•Simon Du, Jason Lee, Haochuan Li, Liwei Wang, Xiyu Zhai. Gradient Descent Finds Global Minima of Deep
+Neural Networks. In Proceedings of ICML , 2019. [0/1]
+•Anish Athalye, Nicholas Carlini, David Wagner. Obfuscated Gradients Give a False Sense of Security: Circum-
+venting Defenses to Adversarial Examples. In Proceedings of ICML , 2018. [0/2]
+•Hieu Pham, Melody Guan, Barret Zoph, Quoc Le, Jeff Dean. Efficient Neural Architecture Search via Parameters
+Sharing. In Proceedings of ICML , 2018. [0/1]
+•Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, Sergey Levine. Soft Actor-Critic: Off-Policy Maximum Entropy
+Deep Reinforcement Learning with a Stochastic Actor. In Proceedings of ICML , 2018. [0/2]
+30
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+•Lasse Espeholt, Hubert Soyer, Remi Munos, Karen Simonyan, Vlad Mnih, Tom Ward, Yotam Doron, Vlad Firoiu,
+Tim Harley, Iain Dunning, Shane Legg, Koray Kavukcuoglu. IMPALA: Scalable Distributed Deep-RL with
+Importance Weighted Actor-Learner Architectures. In Proceedings of ICML , 2018. [0/1]
+•Scott Fujimoto, Herke Hoof, David Meger. Addressing Function Approximation Error in Actor-Critic Methods.
+InProceedings of ICML , 2018. [0/1]
+•Hyunjik Kim, Andriy Mnih. Disentangling by Factorising. In Proceedings of ICML , 2018. [0/0]
+•Lars Mescheder, Andreas Geiger, Sebastian Nowozin. Which Training Methods for GANs do actually Converge?
+InProceedings of ICML , 2018. [0/1]
+•Sanjeev Arora, Rong Ge, Behnam Neyshabur, Yi Zhang. Stronger generalization bounds for deep nets via a
+compression approach. In Proceedings of ICML , 2018. [0/3]
+•Andrew Ilyas, Logan Engstrom, Anish Athalye, Jessy Lin. Black-box Adversarial Attacks with Limited Queries
+and Information. In Proceedings of ICML , 2018. [0/2]
+•Niranjan Srinivas, Andreas Krause, Sham Kakade, Matthias Seeger. Gaussian Process Optimization in the Bandit
+Setting: No Regret and Experimental Design. In Proceedings of ICML , 2010. [0/1]
+•Honglak Lee, Roger Grosse, Rajesh Ranganath and Andrew Ng. Convolutional deep belief networks for scalable
+unsupervised learning of hierarchical representations. In Proceedings of ICML , 2009. [0/1]
+•Julien Mairal, Francis Bach, Jean Ponce and Guillermo Sapiro. Online dictionary learning for sparse coding. In
+Proceedings of ICML , 2009. [0/1]
+•Yoshua Bengio, Jerome Louradour, Ronan Collobert and Jason Weston. Curriculum learning. In Proceedings of
+ICML , 2009. [0/1]
+•Laurent Jacob, Guillaume Obozinski and Jean-Philippe Vert. Group Lasso with Overlaps and Graph Lasso. In
+Proceedings of ICML , 2009. [0/3]
+•Chun-Nam Yu and Thorsten Joachims. Learning structural SVMs with latent variables. In Proceedings of ICML ,
+2009. [0/2]
+•Kilian Weinberger, Anirban Dasgupta, Josh Attenberg, John Langford and Alex Smola. Feature hashing for large
+scale multitask learning. In Proceedings of ICML , 2009. [0/2]
+•Hanna Wallach, Iain Murray, Ruslan Salakhutdinov, and David Mimno. Evaluation methods for topic models. In
+Proceedings of ICML , 2009. [0/1]
+•Kamalika Chaudhuri, Sham Kakade, Karen Livescu and Karthik Sridharan. Multi-view clustering via canonical
+correlation analysis. In Proceedings of ICML , 2009. [0/2]
+•Shuiwang Ji and Jieping Ye. An accelerated gradient method for trace norm minimization. In Proceedings of ICML ,
+2009. [0/3]
+•Junzhou Huang, Tong Zhang and Dimitris Metaxas. Learning with structured sparsity. In Proceedings of ICML ,
+2009. [0/1]
+•Rajat Raina, Anand Madhavan and Andrew Ng. Large-scale deep unsupervised learning using graphics processors.
+InProceedings of ICML , 2009. [0/2]
+•Ronan Collobert and Jason Weston. A unified architecture for natural language processing: deep neural networks
+with multitask learning. In Proceedings of ICML , 2008. [0/2]
+•Pascal Vincent, Hugo Larochelle, Yoshua Bengio, and Pierre-Antoine Manzagol. Extracting and composing robust
+features with denoising autoencoders. In Proceedings of ICML , 2008. [0/1]
+31
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+•Ruslan Salakhutdinov and Andriy Mnih. Bayesian probabilistic matrix factorization using Markov chain Monte
+Carlo. In Proceedings of ICML , 2008. [0/1]
+•John Duchi, Shai Shalev-Shwartz, Yoram Singer, and Tushar Chandra. Efficient projections onto the l1-ball for
+learning in high dimensions. In Proceedings of ICML , 2008. [0/1]
+•Cho-Jui Hsieh, Kai-Wei Chang, Chih-Jen Lin, S. Sathiya Keerthi, and S. Sundararajan. A dual coordinate descent
+method for large-scale linear SVM. In Proceedings of ICML , 2008. [0/1]
+•Tijmen Tieleman. Training restricted Boltzmann machines using approximations to the likelihood gradient. In
+Proceedings of ICML , 2008. [0/1]
+•Hugo Larochelle and Yoshua Bengio. Classification using discriminative restricted Boltzmann machines. In
+Proceedings of ICML , 2008. [0/1]
+•Jihun Hamm and Daniel Lee. Grassmann discriminant analysis: a unifying view on subspace-based learning. In
+Proceedings of ICML , 2008. [0/1]
+•Fen Xia, Tie-Yan Liu, Jue Wang, Wensheng Zhang, and Hang Li. Listwise Approach to Learning to Rank - Theory
+and Algorithm. In Proceedings of ICML , 2008. [0/1]
+•Filip Radlinski, Robert Kleinberg, and Thorsten Joachims. Learning diverse rankings with multi-armed bandits.
+InProceedings of ICML , 2008. [0/1]
+•Mark Dredze, Koby Crammer, and Fernando Pereira. Confidence-weighted linear classification. In Proceedings of
+ICML , 2008. [0/1]
+•Ruslan Salakhutdinov and Iain Murray. On the quantitative analysis of deep belief networks. In Proceedings of
+ICML , 2008. [0/1]
+•Zhilin Yang, Zihang Dai, Yiming Yang, Jaime Carbonell, Russ R. Salakhutdinov, Quoc V. Le. XLNet: Generalized
+Autoregressive Pretraining for Language Understanding. In Proceedings of NeurIPS , 2019. [0/1]
+•Alexis CONNEAU, Guillaume Lample. Cross-lingual Language Model Pretraining. In Proceedings of NeurIPS ,
+2019. [0/4]
+•Andrew Ilyas, Shibani Santurkar, Dimitris Tsipras, Logan Engstrom, Brandon Tran, Aleksander Madry. Adversarial
+Examples Are Not Bugs, They Are Features. In Proceedings of NeurIPS , 2019. [0/1]
+•Jaehoon Lee, Lechao Xiao, Samuel Schoenholz, Yasaman Bahri, Roman Novak, Jascha Sohl-Dickstein, Jeffrey
+Pennington. Wide Neural Networks of Any Depth Evolve as Linear Models Under Gradient Descent. In Proceedings
+of NeurIPS , 2019. [0/1]
+•David Berthelot, Nicholas Carlini, Ian Goodfellow, Nicolas Papernot, Avital Oliver, Colin A. Raffel. MixMatch: A
+Holistic Approach to Semi-Supervised Learning. In Proceedings of NeurIPS , 2019. [0/1]
+•Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen,
+Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban Desmaison, Andreas Kopf, Edward Yang, Zachary DeVito,
+Martin Raison, Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, Soumith Chintala.
+PyTorch: An Imperative Style, High-Performance Deep Learning Library. In Proceedings of NeurIPS , 2019. [0/1]
+•Sanjeev Arora, Simon S. Du, Wei Hu, Zhiyuan Li, Russ R. Salakhutdinov, Ruosong Wang. On Exact Computation
+with an Infinitely Wide Neural Net. In Proceedings of NeurIPS , 2019. [0/1]
+•Li Dong, Nan Yang, Wenhui Wang, Furu Wei, Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming Zhou, Hsiao-Wuen
+Hon. Unified Language Model Pre-training for Natural Language Understanding and Generation. In Proceedings
+of NeurIPS , 2019. [0/1]
+32
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+•Ali Shafahi, Mahyar Najibi, Mohammad Amin Ghiasi, Zheng Xu, John Dickerson, Christoph Studer, Larry S.
+Davis, Gavin Taylor, Tom Goldstein. Adversarial Training for Free! In Proceedings of NeurIPS , 2019. [0/3]
+•Jiasen Lu, Dhruv Batra, Devi Parikh, Stefan Lee. ViLBERT: Pretraining Task-Agnostic Visiolinguistic Representa-
+tions for Vision-and-Language Tasks. In Proceedings of NeurIPS , 2019. [0/1]
+•Alex Wang, Yada Pruksachatkun, Nikita Nangia, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy,
+Samuel Bowman. SuperGLUE: A Stickier Benchmark for General-Purpose Language Understanding Systems. In
+Proceedings of NeurIPS , 2019. [1/1]
+•Rowan Zellers, Ari Holtzman, Hannah Rashkin, Yonatan Bisk, Ali Farhadi, Franziska Roesner, Yejin Choi.
+Defending Against Neural Fake News. In Proceedings of NeurIPS , 2019. [2/4]
+•Yuan Cao, Quanquan Gu. Generalization Bounds of Stochastic Gradient Descent for Wide and Deep Neural
+Networks. In Proceedings of NeurIPS , 2019. [0/1]
+•Florian Tramer, Dan Boneh. Adversarial Training and Robustness for Multiple Perturbations. In Proceedings of
+NeurIPS , 2019. [0/2]
+•Yair Carmon, Aditi Raghunathan, Ludwig Schmidt, John C. Duchi, Percy S. Liang. Unlabeled Data Improves
+Adversarial Robustness. In Proceedings of NeurIPS , 2019. [0/1]
+•Lars Maaløe, Marco Fraccaro, Valentin Liévin, Ole Winther. BIVA: A Very Deep Hierarchy of Latent Variables for
+Generative Modeling. In Proceedings of NeurIPS , 2019. [0/1]
+•Zeyuan Allen-Zhu, Yuanzhi Li, Yingyu Liang. Learning and Generalization in Overparameterized Neural Net-
+works, Going Beyond Two Layers. In Proceedings of NeurIPS , 2019. [0/1]
+•Durk P. Kingma, Prafulla Dhariwal. Glow: Generative Flow with Invertible 1x1 Convolutions. In Proceedings of
+NeurIPS , 2018. [0/2]
+•Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, David K. Duvenaud. Neural Ordinary Differential Equations.
+InProceedings of NeurIPS , 2018. [0/1]
+•Zhitao Ying, Jiaxuan You, Christopher Morris, Xiang Ren, Will Hamilton, Jure Leskovec. Hierarchical Graph
+Representation Learning with Differentiable Pooling. In Proceedings of NeurIPS , 2018. [0/1]
+•Ricky T. Q. Chen, Xuechen Li, Roger B. Grosse, David K. Duvenaud. Isolating Sources of Disentanglement in
+Variational Autoencoders. In Proceedings of NeurIPS , 2018. [0/1]
+•Yangyan Li, Rui Bu, Mingchao Sun, Wei Wu, Xinhan Di, Baoquan Chen. PointCNN: Convolution On X-
+Transformed Points. In Proceedings of NeurIPS , 2018. [0/1]
+•Arthur Jacot, Franck Gabriel, Clement Hongler. Neural Tangent Kernel: Convergence and Generalization in
+Neural Networks. In Proceedings of NeurIPS , 2018. [0/1]
+•Ting-Chun Wang, Ming-Yu Liu, Jun-Yan Zhu, Guilin Liu, Andrew Tao, Jan Kautz, Bryan Catanzaro. Video-to-Video
+Synthesis. In Proceedings of NeurIPS , 2018. [0/1]
+•Yuanzhi Li, Yingyu Liang. Learning Overparameterized Neural Networks via Stochastic Gradient Descent on
+Structured Data. In Proceedings of NeurIPS , 2018. [0/1]
+•Ludwig Schmidt, Shibani Santurkar, Dimitris Tsipras, Kunal Talwar, Aleksander Madry. Adversarially Robust
+Generalization Requires More Data. In Proceedings of NeurIPS , 2018. [0/2]
+•Shibani Santurkar, Dimitris Tsipras, Andrew Ilyas, Aleksander Madry. How Does Batch Normalization Help
+Optimization? In Proceedings of NeurIPS , 2018. [0/1]
+•Harini Kannan, Alexey Kurakin, Ian Goodfellow. Adversarial Logit Pairing. In Proceedings of NeurIPS∗, 2018. [0/2]
+33
+FAccT ’22, June 21–24, 2022, South Korea Abeba Birhane, Pratyusha Kalluri*, Dallas Card*, William Agnew*, Ravit Dotan*, and Michelle Bao*
+•Ofir Nachum, Shixiang (Shane) Gu, Honglak Lee, Sergey Levine. Data-Efficient Hierarchical Reinforcement
+Learning. In Proceedings of NeurIPS , 2018. [0/3]
+•Prateek Jain, Raghu Meka, Inderjit Dhillon. Guaranteed Rank Minimization via Singular Value Projection. In
+Proceedings of NeurIPS , 2010. [0/1]
+•Hanna Wallach, David Mimno, Andrew McCallum. Rethinking LDA: Why Priors Matter. In Proceedings of NeurIPS ,
+2009. [0/4]
+•Geoffrey E. Hinton, Russ R. Salakhutdinov. Replicated Softmax: an Undirected Topic Model. In Proceedings of
+NeurIPS , 2009. [0/1]
+•Daniel J. Hsu, Sham M. Kakade, John Langford, Tong Zhang. Multi-Label Prediction via Compressed Sensing. In
+Proceedings of NeurIPS , 2009. [0/1]
+•Youngmin Cho, Lawrence Saul. Kernel Methods for Deep Learning. In Proceedings of NeurIPS , 2009. [0/1]
+•Kurt Miller, Michael Jordan, Thomas Griffiths. Nonparametric Latent Feature Models for Link Prediction. In
+Proceedings of NeurIPS , 2009. [0/3]
+•Ian Goodfellow, Honglak Lee, Quoc Le, Andrew Saxe, Andrew Ng. Measuring Invariances in Deep Networks. In
+Proceedings of NeurIPS , 2009. [0/1]
+•Vinod Nair, Geoffrey E. Hinton. 3D Object Recognition with Deep Belief Nets. In Proceedings of NeurIPS , 2009.
+[0/1]
+•Martin Zinkevich, John Langford, Alex Smola. Slow Learners are Fast. In Proceedings of NeurIPS , 2009. [0/1]
+•Ryan Mcdonald, Mehryar Mohri, Nathan Silberman, Dan Walker, Gideon Mann. Efficient Large-Scale Distributed
+Training of Conditional Maximum Entropy Models. In Proceedings of NeurIPS , 2009. [0/1]
+•Corinna Cortes, Mehryar Mohri, Afshin Rostamizadeh. Learning Non-Linear Combinations of Kernels. In
+Proceedings of NeurIPS , 2009. [0/1]
+•Laurent Jacob, Jean-philippe Vert, Francis Bach. Clustered Multi-Task Learning: A Convex Formulation. In
+Proceedings of NeurIPS , 2008. [0/1]
+•Kamalika Chaudhuri, Claire Monteleoni. Privacy-preserving logistic regression. In Proceedings of NeurIPS , 2008.
+[0/3]
+•Byron M. Yu, John P. Cunningham, Gopal Santhanam, Stephen Ryu, Krishna V. Shenoy, Maneesh Sahani. Gaussian-
+process factor analysis for low-dimensional single-trial analysis of neural population activity. In Proceedings of
+NeurIPS , 2008. [0/3]
+•Ilya Sutskever, Geoffrey E. Hinton, Graham W. Taylor. The Recurrent Temporal Restricted Boltzmann Machine.
+InProceedings of NeurIPS , 2008. [0/1]
+•Wenyuan Dai, Yuqiang Chen, Gui-rong Xue, Qiang Yang, Yong Yu. Translated Learning: Transfer Learning across
+Different Feature Spaces. In Proceedings of NeurIPS , 2008. [0/3]
+•Yishay Mansour, Mehryar Mohri, Afshin Rostamizadeh. Domain Adaptation with Multiple Sources. In Proceedings
+of NeurIPS , 2008. [0/1]
+•Sham M. Kakade, Karthik Sridharan, Ambuj Tewari. On the Complexity of Linear Prediction: Risk Bounds, Margin
+Bounds, and Regularization. In Proceedings of NeurIPS , 2008. [0/1]
+•Francis Bach. Exploring Large Feature Spaces with Hierarchical Multiple Kernel Learning. In Proceedings of
+NeurIPS , 2008. [0/1]
+•Ijaz Akhter, Yaser Sheikh, Sohaib Khan, Takeo Kanade. Nonrigid Structure from Motion in Trajectory Space. In
+Proceedings of NeurIPS , 2008. [0/1]
+34
+The Values Encoded in Machine Learning Research FAccT ’22, June 21–24, 2022, South Korea
+•Prateek Jain, Brian Kulis, Inderjit Dhillon, Kristen Grauman. Online Metric Learning and Fast Similarity Search.
+InProceedings of NeurIPS , 2008. [0/1]
+•Duy Nguyen-tuong, Jan Peters, Matthias Seeger. Local Gaussian Process Regression for Real Time Online Model
+Learning. In Proceedings of NeurIPS , 2008. [0/1]
+•Lester Mackey. Deflation Methods for Sparse PCA. In Proceedings of NeurIPS , 2008. [0/1]
+35

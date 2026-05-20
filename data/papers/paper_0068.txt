@@ -1,0 +1,3183 @@
+Title: Partitioned Variational Inference: A unified framework encompassing federated and continual learning
+
+Partitioned Variational Inference: A uniﬁed framework
+encompassing federated and continual learning
+Thang D. Bui1, Cuong V. Nguyen2, Siddharth Swaroop2, and Richard E. Turner2
+1University of Sydney, Australia; thang.buivn@gmail.com
+2University of Cambridge, UK; {vcn22,ss2163,ret26}@cam.ac.uk
+Abstract
+Variational inference (VI) has become the method of choice for ﬁtting many modern probabilistic
+models. However, practitioners are faced with a fragmented literature that oﬀers a bewildering
+array of algorithmic options. First, the variational family. Second, the granularity of the updates
+e.g. whether the updates are local to each data point and employ message passing or global. Third,
+the method of optimization (bespoke or blackbox, closed-form or stochastic updates, etc.). This
+paper presents a new framework, termed Partitioned Variational Inference (PVI), that explicitly
+acknowledges these algorithmic dimensions of VI, uniﬁes disparate literature, and provides guidance
+on usage. Crucially, the proposed PVI framework allows us to identify new ways of performing
+VI that are ideally suited to challenging learning scenarios including federated learning (where
+distributed computing is leveraged to process non-centralized data) and continual learning (where
+new data and tasks arrive over time and must be accommodated quickly). We showcase these new
+capabilities by developing communication-eﬃcient federated training of Bayesian neural networks
+and continual learning for Gaussian process models with private pseudo-points. The new methods
+signiﬁcantly outperform the state-of-the-art, whilst being almost as straightforward to implement as
+standard VI.
+1 Introduction
+Variational methods recast approximate inference as an optimization problem, thereby enabling advances
+in optimization to be leveraged for inference. VI has enabled approaches including natural gradient
+methods, mirror-descent, trust region and stochastic (mini-batch) optimization to be tapped in this way.
+The approach has been successful, with VI methods often lying on the eﬃcient frontier of approximate
+inference’s speed-accuracy trade-oﬀ. VI has consequently become one of the most popular varieties of
+approximate inference. For example, it is now a standard approach for Gaussian process models [Titsias,
+2009], latent topic models [Blei et al., 2003], and deep generative models [Kingma and Welling, 2014].
+Deployment of VI requires the practitioner to make three fundamental choices. First, the form of the
+approximate family which ranges from simple mean-ﬁeld or factorized distributions, through unfactorized
+exponential families to complex non-exponential family distributions. Second, the granularity of
+variational inference which includes, on the one hand, approaches based on the global variational
+free-energy, and on the other those that consider a single data point at a time and employ local
+message passing. Third, the form of the variational updates which encompasses the optimization method
+employed for maximizing the global variational free-energy or the form of the message passing updates.
+A large body of work has investigated how the choice of approximating family aﬀects the accuracy
+of VI [MacKay, 2003, Wang and Titterington, 2004, Turner and Sahani, 2011] and how additional
+approximations can enable VI to support more complex approximate families [Jaakkola and Jordan,
+1arXiv:1811.11206v1  [stat.ML]  27 Nov 2018
+1998, Rezende and Mohamed, 2015, Salimans et al., 2015, Ranganath et al., 2016, Mescheder et al., 2017].
+This is a fundamental question, but it is orthogonal to the focus of the current paper. Instead, we focus
+on the second two choices. The granularity of variational inference is an important algorithmic dimension.
+Whilst global variational inference has more theoretical guarantees and is arguably simpler to implement,
+local variational inference oﬀers unique opportunities for online or continual learning (e.g. allowing ‘old’
+data to be sporadically revisited) and distributed computing (e.g. supporting asynchronous lock-free
+updates). The form of the updates is equally important with a burgeoning set of alternatives. For global
+VI these including gradient ascent, natural gradient and mirror descent, approximate second-order
+methods, stochastic versions thereof, collapsed VI and ﬁxed-point updates to name but a few. For local
+VI, there has been less exploration of the options, but damping in natural and moment space is often
+employed.
+The goal of this paper is to develop a unifying framework, termed Partitioned Variational Infer-
+ence (PVI), that explicitly acknowledges that the granularity and the optimization method are two
+fundamental algorithmic dimensions of VI. The new framework 1. generalizes and extends current
+theoretical results in this area, 2. reveals the relationship between a large number of existing schemes,
+and 3. identiﬁes opportunities for innovation, a selection of which are demonstrated in experiments.
+We brieﬂy summarize the contributions of this paper, focusing on the uniﬁed viewpoint and novel
+algorithmic extensions to support federated and continual learning.
+1.1 Uniﬁcation
+The main theoretical contributions of the paper, described in sections 2 to 4, are: to develop Partitioned
+Variational Inference; clean up, generalize and derive new supporting theory (including PVI ﬁxed-point
+optimization, mini-batch approximation, hyperparameter learning); and show that PVI subsumes
+standard global variational inference, (local) variational message passing, and other well-established
+approaches. In addition, we also show in section 4 that damped ﬁxed-point optimization and natural
+gradient methods applied to PVI are equivalent to variationally-limited power EP.
+In section 4 PVI is used to connect a large literature that has become fragmented with separated
+strandsofrelated, butmutuallyuncitedwork. Morespeciﬁcallyweunifyworkon: onlineVI[Ghahramani
+and Attias, 2000, Sato, 2001, Broderick et al., 2013, Bui et al., 2017b, Nguyen et al., 2018]; global
+VI [Sato, 2001, Hensman et al., 2012, Hoﬀman et al., 2013, Salimans and Knowles, 2013, Sheth and
+Khardon, 2016a, Sheth et al., 2015, Sheth and Khardon, 2016b]; local VI [Knowles and Minka, 2011,
+Wand, 2014, Khan and Lin, 2018]; power EP and related algorithms [Minka, 2001, 2004, Li et al., 2015,
+Hasenclever et al., 2017, Gelman et al., 2014]; and stochastic mini-batch variants of these algorithms
+[Hoﬀman et al., 2013, Li et al., 2015, Khan and Lin, 2018]. Figures 2 and 3 and table 1 present a
+summary of these relationships in the context of PVI.
+1.2 Probabilistic inference for federated machine learning
+The goal of federated learning is to enable distributed training of machine learning models without
+centralizing data [see e.g. McMahan et al., 2017, Zhao et al., 2018]. This is challenging in practice as:
+modern data sets can often be distributed inhomogeneously and unevenly across many machines,
+forexamples, mobiledevicescancontainmanyimageswhichcanbeusedfortrainingaclassiﬁcation
+model, but accessing such information is often restricted and privacy-sensitive;
+computation resources available at terminal machines can be leveraged, but communication
+between these machines or between them and a central server can be limited and unreliable,
+for example, communication from and to mobile devices is often costly, and each device can be
+abruptly disconnected from the training setup or, similarly, a new device can appear;
+2
+the inference or prediction step is often needed in an any-time fashion at each machine, i.e. each
+machine needs to have access to a high-quality model to make predictions without having to send
+data to a remote server.
+These requirements are often not satisﬁed in the traditional training pipelines, many of which require
+data to be stored in a single machine, or in a data center where it is typically distributed among
+many machines in a homogeneous and balanced fashion [see e.g. Dean et al., 2012, Zhang et al., 2015,
+Chen et al., 2016]. Federated learning attempts to bridge this gap by tackling the aforementioned
+constraints. Additionally, this type of learning is arguably less privacy-sensitive as compared to
+centralized learning approaches, as it does not require local data to be collected and sent to a central
+server. It can also be further improved by employing encrypted aggregation steps [Bonawitz et al.,
+2017] or diﬀerentially-private mechanisms [Dwork and Roth, 2014].
+Distributed inference is also an active research area in the Bayesian statistics and machine learn-
+ing literature. For example, parallel Markov chain Monte Carlo approaches typically run multiple
+independent Markov chains on diﬀerent partitions of the data set, but require heuristics to aggregate,
+reweight and average the samples at test time [see e.g. Wang and Dunson, 2013, Scott et al., 2016].
+The closest to our work is the distributed EP algorithms of Gelman et al. [2014] and Hasenclever et al.
+[2017], which employ (approximate) MCMC for data partitions and EP for communication between
+workers. However, it is not clear these distributed approaches will work well in the federated settings
+described above. In section 5, we demonstrate that PVI can naturally and ﬂexibly address the above
+challenges, and thus be used for federated learning with eﬃcient synchronous or lock-free asynchronous
+communication. The proposed approach can be combined with recent advances in Monte Carlo VI for
+neural networks, enabling fast and communication-eﬃcient training of Bayesian neural networks on
+non-iid federated data. We provide an extensive experiment comparing to alternative approaches in
+section 7.
+1.3 Probabilistic inference for continual learning
+Continual learning (also termed online learning or life-long learning or incremental learning) is the
+ability to learn continually and adapt quickly to new experiences without catastrophically forgetting
+previously seen experiences [Schlimmer and Fisher, 1986, McCloskey and Cohen, 1989, Sutton and
+Whitehead, 1993, Ratcliﬀ, 1990]. Such requirements arise in many practical settings in which data
+can arrive sequentially or tasks may change over time (e.g. new classes may be discovered), or entirely
+new tasks can emerge. Batch learning algorithms which deal with the entire data set at once are not
+applicable in these settings, as (1) data can arrive one point at a time or in batches of a size that is
+unknown a priori, or in a possibly non i.i.d. way; and (2) previously seen data may not be directly
+accessible, which means the continual learning algorithms need to intelligently decide how to best
+combine prior or current experience with new data while being resistant to under-ﬁtting or over-ﬁtting
+to new data (i.e. intransigence vs forgetting).
+Continual learning has a rich literature [see e.g. Opper, 1998, Sato, 2001, Ghahramani and Attias,
+2000, Csató and Opper, 2002, Minka, 2001, Smola et al., 2004] but is enjoying a resurgence of interest
+ranging from deepening understanding of transfer learning and catastrophic forgetting [Goodfellow
+et al., 2014, Flesch et al., 2018], to developing learning algorithms for various models and applications
+[Broderick et al., 2013, Li and Hoiem, 2016, Kirkpatrick et al., 2017, Zenke et al., 2017, Seﬀ et al., 2017,
+Bui et al., 2017a, Nguyen et al., 2018, Zeno et al., 2018, Chaudhry et al., 2018], to setting up relevant
+metrics and benchmarks for evaluation [Lomonaco and Maltoni, 2017, Hayes et al., 2018]. While the
+PVI framework enables us to connect and unify much of the literature in this area, it also allows gaps in
+the literature to be identiﬁed and enables the development of new and improved algorithmic solutions.
+We demonstrate this in section 6 by presenting a new continual learning method for Gaussian process
+regression and classiﬁcation that greatly extends earlier work by Csató and Opper [2002] and Bui et al.
+3
+[2017a], allowing principled handling of hyperparameters and private pseudo-points for new data. The
+new technique is shown to be superior to alternative online learning approaches on various toy and
+real-world data sets in section 7. We also show in section 5 that continual learning can be reframed as
+a special case of federated learning.
+2 Partitioned Variational Inference
+In this section, we introduce Partitioned Variational Inference, a framework that encompasses many
+approaches to variational inference. We begin by framing PVI in terms of a series of local variational
+free-energy optimization problems, proving several key properties of the algorithm that reveal the
+relationship to global VI. In order to keep the development clear, we have separated most of the
+discussion of related work into section 4.
+Consider a parametric probabilistic model deﬁned by the prior p(j)over parameters and the
+likelihood function p(yj;) =QM
+m=1p(ymj;), wherefy1;:::; yMgis a partition of yintoMgroups
+of data points. Depending on the context, a data group ymcan be considered to be a mini-batch of
+ywhich is ﬁxed across epochs, or a data shard. For simplicity, we assume for the moment that the
+hyperparameters are ﬁxed and suppress them to lighten the notation. We will discuss hyperparameter
+optimization at the end of this section.
+Exact Bayesian inference in this class of model is in general intractable so we resort to variational
+inference. In particular, we posit a variational approximation of the true posterior as follows,
+q() =p()MY
+m=1tm()1
+Zp()MY
+m=1p(ymj) =p(jy); (1)
+whereZis the normalizing constant of the true posterior, or marginal likelihood. The approximate
+likelihoodtm()will be reﬁned by PVI to approximate the eﬀect the likelihood term p(ymj)has on the
+posterior. Note that the form of q()in(1)is similar to that employed by the expectation propagation
+algorithm [Minka, 2001], but with two diﬀerences. First, the approximate posterior is not restricted to
+lie in the exponential family, as is typically the case for EP. Second, the approximate posterior does
+not include a normalizing constant. Instead, the PVI algorithm will automatically ensure that the
+product of the prior and approximate likelihood factors in (1)is a normalized distribution. We will
+show that PVI will return an approximation to the marginal likelihood logZ=logp(y)in addition to
+the approximation of the posterior.
+Algorithm 1 details the PVI algorithm. At each iteration i, we select an approximate likelihood
+to reﬁne according to a schedule bi2f1:::Mg. The approximate likelihood t(i 1)
+bi()obtained from
+the previous iteration will be reﬁned and the corresponding data-group is denoted ybi. The reﬁnement
+proceeds in two steps. First, we reﬁne the approximate posterior using the local (negative) variational
+free energy q(i)() = argmaxq()2QF(i)(q())where the optimization is over a tractable family Qand
+F(i)(q()) =Z
+dq() logq(i 1)()p(ybij)
+q()t(i 1)
+bi(): (2)
+Second, the new approximate likelihood is found by division, t(i)
+bi() =q(i)()
+q(i 1)()t(i 1)
+bi().
+We will now justify these steps by stating properties, derived in the appendix, that show 1) the
+local free-energy optimization is equivalent to a variational KL optimization, 2) the update for the
+approximate likelihoods is consistent with the normalized density speciﬁed in 1, and 3) any ﬁxed point
+of the algorithm is also a local optimum of global VI and at this ﬁxed point the sum of the local
+4
+free-energies is equal to the global variational free-energy. The following properties apply for general
+q(), and are not limited to the exponential family.1
+Property 1 Maximizing the local free-energy F(i)(q())is equivalent to the KL optimization
+q(i)() = argmin
+q()2QKL
+q()kbp(i)()
+; (3)
+wherebp(i)() =1
+bZiq(i 1)()
+t(i 1)
+bi()p(ybij) =1
+bZip(ybij)Q
+m6=bit(i 1)
+m()is known as the tilted distribution in the
+EP literature and is intractable.
+The proof is straightforward (see A.1). The tilted distribution can be justiﬁed as a sensible target
+as it removes the approximate likelihood t(i 1)
+bi()from the current approximate posterior and replaces
+it with the true likelihood p(ybij). In this way, the tilted distribution comprises one true likelihood,
+M 1approximate likelihoods and the prior. The KL optimization then ensures the new posterior
+better approximates the true likelihood’s eﬀect, in the context of the approximate likelihoods and the
+prior.
+Property 2 At the end of each iteration i= 0;1;:::,q(i)() =p()QM
+m=1t(i)
+m().
+Again the proof is simple (see A.2), but it relies on PVI initializing the approximate likelihood factors
+to unity so that q(0)() =p().
+Property 3 Letq() =p()QM
+m=1t
+m()be a ﬁxed point of Algorithm 1, Fm(q()) =Rdq()logq()p(ymj)
+q()tm()be the local free-energy w.r.t. the factor tm, andF(q()) =
+R
+dq() logp()QM
+m=1p(ymj)
+q()be the global free-energy. We have:
+(a)PM
+m=1Fm(q()) =F(q()), i.e. the sum of the local free-energies is equal to the global
+free-energy, i.e. the PVI ﬁxed point is an optimum of global VI,
+(b) Ifq() = argmaxq()2QFm(q())for allm, thenq() = argmaxq()2QF(q()).
+These results are more complex to show, but can be derived by computing the derivative and Hessian
+of the global free-energy and substituting into these expressions the derivatives and Hessians of the
+local free-energies (see A.3). The fact that the ﬁxed point of PVI recovers a global VI solution (both
+the optimal q()and the global free-energy at this optimum) is the main theoretical justiﬁcation for
+employing PVI. However, we do not believe that there is a Lyapunov function for PVI, indicating that
+it may oscillate or diverge in general.
+Having laid out the general framework for PVI, what remains to be decided is the method used for
+optimizing the local free-energies. In a moment we consider three choices: analytic updates, oﬀ-the-shelf
+optimization methods and ﬁxed-point iterations, as well as discussing how stochastic approximations
+can be combined with these approaches. Before turning to these choices, we compare and contrast the
+algorithmic beneﬁts of the local and global approaches to VI in diﬀerent settings. This discussion will
+help shape the development of the optimization choices which follows.
+2.1 When should a local VI approach be employed rather than a global one?
+We will describe in section 4 how the PVI framework uniﬁes a large body of existing literature, thereby
+providing a useful conceptual scaﬀold for understanding the relationship between algorithms. However,
+1However, we will only consider exponential family approximations in the experiments in section 7.
+5
+Algorithm 1 Partitioned Variational Inference
+Input:data partitionfy1;:::; yMg, priorp()
+Initialize:
+t(0)
+m():= 1for allm= 1;2;:::;M:
+q(0)():=p():
+fori= 1;2;:::until convergence do
+bi:=index of the next approximate likelihood to reﬁne.
+Compute the new approximate posterior:
+q(i)():= argmax
+q()2QZ
+dq() logq(i 1)()p(ybij)
+q()t(i 1)
+bi()
+Update the approximate likelihood:
+t(i)
+bi():=q(i)()
+q(i 1)()t(i 1)
+bi(); (4)
+t(i)
+m():=t(i 1)
+m()for allm6=bi:
+end for
+Figure 1: Steps of the PVI algorithm when being used for continual learning [left] and federated learning
+[right].
+it is important to ask: What algorithmic and computation beneﬁts, if any, arise from considering a set
+of local free-energy updates, rather than a single global approximation (possibly leveraging stochastic
+mini-batch approximation)?
+In a nutshell, we will show that if the data set is ﬁxed before inference is performed (batch learning)
+or arrives in a simple online iid way (simple online learning), and distributed computation is not available,
+6
+then global VI will typically be simpler to implement, require less memory, and faster to converge than
+more local versions of PVI (the case of scaling collapsed bounds being a possible exception). However,
+if the conditions above are not met, the local versions of PVI will be appropriate. We will now unpack
+important examples of this sort.
+The PVI approach is ideally suited to the distributed setting, with simple distributed variants
+allowing asynchronous distributed updates. One simple approach, similar to that of Hasenclever et al.
+[2017], uses Mworkers that are each allocated a data group ym. The workers store and reﬁne the
+associated approximate likelihood tm(). A server maintains and updates the approximate posterior and
+communicates it to the workers. An idle worker receives the current posterior from the server, optimizes
+thelocalfree-energy, computesthechangeinthelocalapproximatelikelihood m() =t(new)
+m()=t(old)
+m(),
+sends this to the server, and repeats. The local workers do not change q()directly. Instead, the server
+maintains a queue of approximate likelihood updates and applies these to the approximate posterior
+q(new)() =q(old)()m(). This setup supports asynchronous updates of the approximate likelihood
+factors. See ﬁg. 1 for a pictorial depiction of these steps. In contrast, global VI is generally ill-suited to
+the distributed setting. Although the free-energy optimization can be parallelized over data points,
+typically this will only be advantageous for large mini-batches where the extra communication overhead
+does not dominate. Large mini-batches often result in slow optimization progress (early in learning it is
+often clear how to improve q()after seeing only a small number of data points). The special case of
+global VI employing mini-batch approximations and natural gradient updates can support asynchronous
+distributed processing if each worker receives statistically identical data and updates with the same
+frequency. It could not operate successfully when each node contains diﬀerent amounts or types of data,
+or if some workers update more frequently than others.
+Distributed versions of PVI not only enable VI to be scaled to large problems, but they also allow
+inference algorithms to be sent to user data, rather than requiring user data to be collected and
+centralized before performing inference. Consider the situation where workers are personal devices,
+like mobile phones, containing user data ym. Here the local free-energy updates can be performed
+client-side on the user’s devices and only summaries tm()of the relevant aspects of that information
+are communicated back to the central server. The frequency with which these messages are sent might
+be limited to improve security. Such an implementation is arguably more secure than one in which the
+user data (or associated gradients) are sent back to a central server [The Royal Society, 2017]. Since the
+amount and type of data at the nodes is outside of the control of the algorithm designer, mini-batch
+natural gradient global VI will generally be inappropriate for this setting.
+The PVI approach is also well suited to the continual or life-long learning setting. These settings
+are very general forms of online learning in which new data regularly arrive in a potentially non-iid
+way, tasks may change over time, and entirely new tasks may emerge. In this situation, the PVI
+framework can not only be used to continuously update the posterior distribution q()in light of new
+data by optimizing the local free-energy for the newly seen data, it can also be used to revisit old
+data groups (potentially in a judiciously selected way) thereby mitigating problems like catastrophic
+forgetting. The update steps for this learning scenario are illustrated in ﬁg. 1. In contrast, global
+VI is fundamentally ill-suited to the general online setting. The special case of global VI employing
+mini-batch approximations with natural gradient updates may be appropriate when the data are iid
+and only one update is performed for each new task (simple online learning), but it is not generally
+applicable.
+We will return to discuss the key issues raised in this section – the speed of convergence, memory
+overhead, online learning, and distributed inference – in the context of diﬀerent options for carrying out
+the optimization of the local free-energies in section 3.
+7
+2.2 Hyperparameter Learning
+Many probabilistic models depend on a set of hyperparameters and it is often necessary to learn
+suitable settings from data to achieve good performance on a task. One method is to optimize the
+variational free-energy thereby approximating maximum likelihood learning. The gradient of the global
+variational free-energy decomposes into a set of local computations, as shown in appendix B,
+d
+dF(;q()) =MX
+m=1Eq()d
+dlogp(ymj;)
++Eq()d
+dlogp(j)
+: (5)
+This expression holds for general q()and is valid both for coordinate ascent (updating withq()
+ﬁxed) and for optimizing the collapsed bound (where the approximate posterior optimizes the global
+free-energy q() =q()and therefore depends implicitly on ). Notice that this expression is amenable
+to stochastic approximation which leads to optimization schemes that use only local information at
+each step. When combined with diﬀerent choices for the optimization of the local free-energies wrt q(),
+this leads to a wealth of possible hyperparameter optimization schemes.
+In cases where a distributional estimate for the hyperparameters is necessary, e.g. in continual
+learning, the PVI framework above can be extended to handle the hyperparameters. In particular, the
+approximate posterior in eq. (1) can be modiﬁed as follows,
+q(;) =p()p(j)MY
+m=1tm(;)1
+Zp()p(j)MY
+m=1p(ymj;) =p(;jy);; (6)
+where the approximate likelihood factor tm(;)now involves both the model parameters and the
+hyperparameters. Similar to eq. (2), the approximate posterior above leads to the following local
+variational free-energy,
+F(i)(q(;)) =Z
+ddq(;) logq(i 1)(;)p(ybij;)
+q(;)t(i 1)
+bi(;): (7)
+Note that this approach retains all favourable properties of PVI such as local computation and ﬂexibility
+in choosing optimization strategies and stochastic approximations.
+3 Approaches for Optimizing the Local Free-energies
+Having established the general PVI algorithm and its properties, we will now describe diﬀerent options
+for performing the optimization of the local free-energies.
+3.1 Analytic Local Free-energy Updates
+Each local free-energy is equivalent in form to a global free-energy with an eﬀective prior pe() =
+q(i 1)()=t(i 1)
+bi(). As such, in conjugate exponential family models the KL optimizations will be
+available in closed form, for example in GP regression, and these updates can be substituted back
+into the local variational free-energies to yield locally-collapsed bounds, Fn(q(i)()), that are useful for
+hyperparameter optimization [Bui et al., 2017a]. One advantage of using local versions of PVI is that
+this allows collapsed bounds to be leveraged on large data sets where an application to entire data set
+would be computationally intractable, potentially speeding up convergence over global VI.
+8
+3.2 Oﬀ-the-shelf Optimizers for Local Free-energy Optimization
+If analytic updates are not tractable, the local free-energy optimizations can be carried out using
+standard optimizers. The PVI framework automatically breaks the data set into a series of local
+free-energy optimization problems and the propagation of uncertainty between the data groups weights
+the information extracted from each. This means non-stochastic optimizers such as BFGS can now be
+leveraged in the large data setting. Of course, if a further stochastic approximation like Monte Carlo VI
+is employed for each local optimization, stochastic optimizers such as RMSProp [Tieleman and Hinton,
+2012] or Adam [Kingma and Ba, 2014] might be more appropriate choices. In all cases, since the local free-
+energy is equivalent in form to a global free-energy with an eﬀective prior pe() =q(i 1)()=t(i 1)
+bi(),
+PVI can be implemented via trivial modiﬁcation to existing code for global VI. This is a key advantage
+of PVI over previous local VI approaches, such as variational message passing [Winn et al., 2005, Winn
+and Minka, 2009, Knowles and Minka, 2011], in which bespoke and closed-form updates are needed for
+diﬀerent likelihoods and cavity distributions.
+3.3 Local Free-energy Fixed Point Updates, Natural Gradient Methods, and Mir-
+ror Descent
+An alternative to using oﬀ-the-shelf optimizers is to derive ﬁxed-point update equations by zeroing the
+gradients of the local free-energy. These ﬁxed-point updates have elegant properties for approximate
+posterior distributions that are in the exponential family.
+Property 4 If the prior and approximate likelihood factors are in the un-normalized exponential family
+tm() =tm(;m) =exp(|
+mT())so that the variational distribution is in the normalized exponential
+familyq() =exp(|
+qT() A(q)), then the stationary point of the local free-energydF(i)(q())
+dq= 0
+implies
+(i)
+bi=C 1d
+dqEq(logp(ybij)): (8)
+where C:=d2A(q)
+dqdq=covq()[T()T|()]is the Fisher Information. Moreover, the Fisher Information
+can be written as C=dq
+dqwhereq=Eq(T())is the mean parameter of q(). Hence,
+(i)
+bi=d
+dqEq(logp(ybij)): (9)
+For some approximate posterior distributions q(), taking derivatives of the average log-likelihood with
+respect to the mean parameters is analytic (e.g. Gaussian) and for some it is not (e.g. gamma).
+These conditions, derived in appendix A.4, can be used as ﬁxed point equations. That is, they can be
+iterated possibly with damping ,
+(i)
+bi= (1 )(i 1)
+bi+d
+dqEq(logp(ybij)): (10)
+These iterations, which form an inner-loop in PVI, are themselves not guaranteed to converge (there
+is no Lyapunov function in general and so, for example, the local free-energy will not reduce at every
+step).
+The ﬁxed point updates are the natural gradients of the local free-energy and the damped versions
+are natural gradient ascent [Sato, 2001, Hoﬀman et al., 2013]. The natural gradients could also be used in
+other optimization schemes [Hensman et al., 2012, Salimbeni et al., 2018]. The damped updates are also
+9
+equivalent to performing mirror-descent [Raskutti and Mukherjee, 2015, Khan and Lin, 2018], a general
+form of proximal algorithm [Parikh and Boyd, 2014] that can be interpreted as trust-region methods.
+For more details about the relationship between these methods, see appendix A.7. Additionally, while
+natural gradients or ﬁxed-point updates have been shown to be eﬀective in the batch global VI settings
+[see e.g. Honkela et al., 2010], we present some result in appendix E.6 showing adaptive ﬁrst-order
+methods employing ﬂat gradients such as Adam [Kingma and Ba, 2014] performs as well as natural
+gradient methods, when stochastic mini-batch approximations are used.
+For these types of updates there is an interesting relationship between PVI and global (batch) VI:
+Property 5 PVI methods employing parallel updates result in identical dynamics for q()given by the
+following equation, regardless of the partition of the data employed
+(i)
+q=0+d
+dq(i 1)Eq(logp(yj)) =0+NX
+n=1d
+dq(i 1)Eq(i 1)(logp(ynj)): (11)
+See A.5 for the proof. If parallel ﬁxed-point updates are desired, then it is more memory eﬃcient to
+employ batch VI M= 1, since then only one global set of natural parameters needs to be retained.
+However, as previously discussed, using M= 1gives up opportunities for online learning and distributed
+computation (e.g. asynchronous updates).
+3.4 Stochastic mini-batch approximation
+There are two distinct ways to apply stochastic approximations within the PVI scheme.
+3.4.1 Stochastic Approximation within the Local Free-Energy
+The ﬁrst form of stochastic approximation leverages the fact that each local free-energy decomposes
+into a sum over data points and can, therefore, be approximated by sampling mini-batches within each
+data group ym. In the case where each partition includes a large number of data points, this leads
+to algorithms that converge more quickly than the batch variants – since a reasonable update for the
+approximate posterior can often be determined from just a few data points – and this faster convergence
+opens the door to processing larger data sets.
+Mini-batch approximation can be employed in the general PVI case, but for simplicity we consider
+the global VI case here M= 1. If simpliﬁed ﬁxed point updates are used for optimization, then
+samplingLmini-batches of data from the data distribution yliidpdata(y)yields the following stochastic
+approximation to the damped updates,2
+(i)
+q= (1 )(i 1)
+q +
+0+Ld
+dqEq(logp(ylj))
+; (12)
+=(i 1)
+q +0d
+dqEq(logp(ylj)) (i 1)
+like=L
+: (13)
+Here the ﬁrst form of the update is stochastic natural gradient ascent and the second form reveals the
+implied deletion step where (i 1)
+like=L= ((i 1)
+q (i 1)
+0)=Lis the contribution a mini-batch likelihood
+makes to the posterior natural parameters on average. The rescaled learning rate is 0=L. These two
+forms reveals that the mini-batch stochastic natural gradient update resembles an EP update step. See
+appendix A.6 for full details.
+2We have used a distinct notation for a mini-batch ( yl) and a data group ( ym) since the former will be selected iid
+from the data set and will vary at each epoch, whilst the latter need not be determined in this way and is ﬁxed across
+epochs.
+10
+3.4.2 Stochastic Scheduling of Updates Between Local Free-Energies
+The second form of stochastic approximation is to randomize the update schedule. For example, using
+M=Nand randomly selecting subsets of data to update in parallel. This can be memory intensive,
+requiringNlocal natural parameters to be stored. A more memory eﬃcient approach is to ﬁx the
+mini-batches across epochs and to visit the data groups ymin a random order [Khan and Lin, 2018].
+For the simpliﬁed ﬁxed point updates, this yields
+(i)
+m= (1 )(i 1)
+m +d
+dq(i 1)Eq(i 1)(logp(ymj)): (14)
+This approach results in a subtly diﬀerent update to qthat retains a speciﬁc approximation to the
+likelihood of each data partition, rather than a single global approximation
+(i)
+q=(i 1)
+q d
+dqEq(logp(ymj)) (i 1)
+m
+: (15)
+If the ﬁrst approach in eq. (14) employs learning rates that obey the Robins Munro conditions, the
+ﬁxed points will be identical to the second approach in eq. (15) and they will correspond to optima of
+the global free-energy.
+3.4.3 Comparing and Contrasting Stochastic Approaches
+There are pros and cons to both approaches. The ﬁrst approach in section 3.4.1 has a memory footprint
+Ltimes smaller than the second approach in section 3.4.2 and can converge more quickly. For example,
+on the ﬁrst pass through the data, it eﬀectively allows approximate likelihoods for as of yet unseen
+data to be updated based on those for the data seen so far, which means that larger learning rates
+can be used 0> . The second approach is required for continual learning, asynchronous updates,
+and client-side processing where the assumption that each mini-batch is iid (and a single gradient step
+is performed on each) is typically incorrect. The second approach also tends to produce less noisy
+learning curves, with stochasticity only entering via the schedule and not as an approximation to the
+local free-energy and the gradients thereof.
+These approaches could also be combined, with stochastic scheduling selecting the local free-energy
+to update next and mini-batch updates employed for each local free-energy optimization. See appendix
+A.6 for a full discussion.
+4 Uniﬁcation of Previous Work
+The local VI framework described above uniﬁes a large number of existing approaches. These methods
+include global VI (section 4.1), local VI (section 4.2), online VI (section 4.3) and a number of methods
+based on power EP (sections 4.4 to 4.7). A schematic showing the relationships between these methods
+at a high level is shown in ﬁg. 2. The literature has been organized into in ﬁg. 3 and table 1.
+4.1 Global VI Fixed Point Methods
+There has been a long history of applying the ﬁxed point updates for global VI (PVI where M= 1).
+Sato [2001] derived them for conjugate exponential family models, showing they recover the closed
+form updates for q(), and noting that damped ﬁxed point updates are equivalent to natural gradient
+ascent with unit step size ( = 1). Sato’s insight was subsequently built upon by several authors.
+Honkela et al. [2010] considered non-conjugate models, employed a Gaussian variational distribution
+and used natural gradients to update the variational distribution’s mean. Hensman et al. [2012] and
+11
+Figure 2: Variational inference schemes encompassed by the PVI framework.
+Hoﬀman et al. [2013] applied the insight to conjugate models when optimizing collapsed variational
+free-energies and deriving stochastic natural gradient descent, respectively. Salimans and Knowles
+[2013] apply the ﬁxed points to non-conjugate models where the expectations over qare intractable
+and use Monte Carlo to approximate them, but they explicitly calculate the Fisher information matrix,
+which is unnecessary for exponential family q. Sheth and Khardon [2016a] and Sheth et al. [2015] treat
+non-conjugate models with Gaussian latent variables, employ the cancellation of the Fisher information,
+and analyze convergence properties. Sheth and Khardon [2016b] further extend this to two level-models
+through Monte Carlo essentially applying the Fisher information cancellation to Salimans and Knowles
+[2013], but they were unaware of this prior work.
+4.2 Fully Local VI Fixed Point Methods
+There has also been a long history of applying the ﬁxed point updates in the fully local VI setting
+(whereM=N). Knowles and Minka [2011] derive them for non-conjugate variational message passing,
+but explicitly calculate the Fisher information matrix (except in a case where qwas univariate Gaussian
+case where they do employ the cancellation). Wand [2014] simpliﬁed VMP by applying the Fisher
+information cancellation to the case where q()is multivariate Gaussian. Khan and Lin [2018] also
+extend VMP to employ MC approximation and the Fisher information cancellation. They were unaware
+of Wand [2014], but extend this work by treating a wider range of approximate posteriors and models,
+stochastic updates, and a principled approach to damping. The work is closely related to Salimans and
+Knowles [2013] and Sheth and Khardon [2016b], since although these papers use ﬁxed-point updates for
+global VI, they show that these decompose over data points and thereby derive mini-batch updates
+that closely resemble ﬁxed-point local VI. This is a result of property 5.
+4.3 Online, Streaming, Incremental and Continual VI as a single pass of PVI
+If PVI makes a single pass through the data, the approximate likelihoods do not need to be explicitly
+computed or stored as data-groups are not revisited. In this case PVI reduces to initializing the
+approximate posterior to be the prior, q(0)() =p()and then optimizing a sequence of local free-
+energies
+q(i)():= argmax
+q()2QZ
+dq() logq(i 1)()p(ybij)
+q():
+These have the form of standard variational inference with the prior replaced by the previous variational
+distribution q(i 1)(). This idea – combining the likelihood from a new batch of data with the previous
+12
+Algorithm 2 One step of the PEP algorithm at the i-th iteration, for the bi-th data partition
+Compute the tilted distribution: ^p(i)
+() =q(i 1)()
+p(ybij)
+t(i 1)
+bi()
+Moment match: q() = proj(^p(i)
+())such that Eq()(T()) =E^p(i)
+()(T())
+Update the posterior distribution with damping :q(i)() = 
+q(i 1)()1 =(q())=
+Update the approximate likelihood: t(i)
+bi() =q(i)()
+q(i 1)()t(i 1)
+bi()
+Algorithm 3 One step of the PEP algorithm, as in algorithm 2, but with alpha divergence minimization
+Compute the tilted distribution: ^p(i)() =q(i 1)()p(ybij)
+t(i 1)
+bi()
+Find the posterior distribution: q(i)():= argminq()2QD[^p(i)()jjq()]
+Update the approximate likelihood: t(i)
+bi() =q(i)()
+q(i 1)()t(i 1)
+bi()
+approximate posterior and projecting back to a new approximate posterior – underpins online variational
+inference [Ghahramani and Attias, 2000, Sato, 2001], streaming variational inference [Broderick et al.,
+2013, Bui et al., 2017b], and variational continual learning [Nguyen et al., 2018]. Early work on online VI
+used conjugate models and analytic updates [Ghahramani and Attias, 2000, Sato, 2001, Broderick et al.,
+2013, Bui et al., 2017b], this was followed by oﬀ-the-shelf optimization approaches for non-conjugate
+models [Bui et al., 2017b] and further extended to leverage MC approximations of the local-free energy
+[Nguyen et al., 2018]. Recently Zeno et al. [2018] use the variational continual learning framework of
+Nguyen et al. [2018], but employ ﬁxed-point updates instead.
+4.4 Power EP as a Fully Local VI Fixed Point Method
+There is also an important relationship between PVI methods employing ﬁxed point updates and power
+expectation propagation [Minka, 2004]. Property 6 below states that the local VI ﬁxed point equations
+are recovered from the Power EP algorithm as !0.
+Property 6 The damped ﬁxed point equations are precisely those returned by the PEP algorithm, shown
+in algorithm 2, in the limit that !0.
+Although we suspect Knowles and Minka [2011] knew of this relationship, and it is well known that
+Power EP has the same ﬁxed points as VI in this case, it does not appear to be widely known that
+variationally limited Power EP yields exactly the same algorithm as ﬁxed point local VI. See A.8 for
+the proof.
+4.5 Alpha-divergence EP as a Local VI Method with Oﬀ-the-shelf Optimization
+PVI is intimately related to alpha-divergence EP. If PVI’s KL divergence is replaced by an alpha
+divergence D[p()jjq()] =1
+(1 )R
+p() + (1 )q() p()q()1 
+dwe recover the alpha-
+divergence formulation of the power-EP algorithm [Minka, 2004] which encompasses the current case as
+!0and EP when !1[Minka, 2001]. The updates using this formulation are shown in algorithm 3.
+The alpha divergence is typically very diﬃcult to compute once more than one non-Gaussian likelihood
+is included in a data group ym, meaning that for general alpha it would be appropriate to set M=N.
+The variational KL is the exception as it decomposes over data points.
+13
+Algorithm 4 One step of the SPEP algorithm at the i-th iteration, for the bi-th data partition
+Compute the tilted distribution: ^p(i)
+() =q(i 1)()p(ybij)
+t(i 1)()
+Moment match: q() = proj(^p(i)
+())such that Eq()(T()) =E^p(i)
+()(T())
+Update the posterior distribution with damping :q(i)() = 
+q(i 1)()1 N=(q())N=
+Update the approximate likelihood: t(i)=
+q(i)()
+p()1=N
+4.6 Stochastic Power EP as a Stochastic Global VI Fixed Point Method
+The stochastic power EP algorithm [Li et al., 2015] reduces the memory overhead of EP by maintaining
+a single likelihood approximation that approximates the average eﬀect a likelihood has on the posterior
+q() =p()t()M. Taking the variational limit of this algorithm, !0, we recover global VI M= 1
+with damped simpliﬁed ﬁxed-point updates that employ a stochastic (mini-batch) approximation
+[Hoﬀman et al., 2013].
+Property 7 The mini-batch ﬁxed point equations are precisely those returned by the SPEP algorithm,
+shown in algorithm 4 in the limit that !0.
+In this way the relationship between EP and SEP is the same as the relationship between ﬁxed point
+PVI and ﬁxed point mini-batch global VI (see section 3.4 where the two approaches diﬀer by removing
+either an average natural parameter or a speciﬁc one). Similarly, if we altered PVI to maintain a single
+average likelihood approximation, as SEP does, we would recover mini-batch global VI.
+4.7 Distributed (Power) EP Methods
+The convergent distributed Power EP approach of Hasenclever et al. [2017] recovers a version of PVI as
+!0with convergence guarantees. The PVI approach is also similar in spirit to Gelman et al. [2014],
+Hasenclever et al. [2017] who use EP to split up data sets into small parts that are amenable to MCMC.
+Here we are using PVI to split up data sets so that they are amenable for optimization.
+5 ImprovingFederatedLearningfor BayesianNeuralNetworksUsing
+PVI
+Having connected the previous literature using the unifying framework based on PVI, we will discuss
+how PVI enables novel and practical algorithms to emerge. In this section, we detail how Partitioned
+Variational Inference can be used for federated approximate training of Bayesian neural networks,
+allowing both synchronous or lock-free asynchronous model updates across many machines.3As a
+running example, consider a multiclass classiﬁcation problem with Cclasses and assume that the
+training points are partitioned into Kdisjoint memory shards (or subsets). In practical federated
+settings, the allocation of data points to shards is often unknown a priori, for example, the number of
+data points across various shards may be unbalanced or some classes may be present only on a few
+memory shards, or on one in the extreme. We ﬁrst discuss Bayesian neural networks and a global
+variational approximation for training BNNs, and detail how this approximation can be used at the
+shard level.
+Consider a neural network that models the distribution of a target ygiven an input x,p(yj;x),
+whereinclude the weights and biases in the network. To complete the model, we assign a prior p()
+3Neural network models are used throughout this section and the experiment, but other models can be employed in
+the same fashion as the training framework developed here is general.
+14
+Table 1: Variational inference schemes encompassed by the PVI framework. (See next page.) Selected
+past work has been organized into four categories: global VI (PVI with M= 1), fully local PVI ( M=N),
+Power EP variants, and online VI. The citation to the work is provided along with the granularity
+of the method (global indicates M= 1, fully local M=N, local implies general Mcan be used).
+The optimization used from the PVI perspective on this work is noted. Abbreviations used here are:
+Conjugate Gradient (CG) and Monte Carlo (MC). The model class that the scheme encompasses is noted
+(conjugate versus non-conjugate) along with the speciﬁc models that the scheme was tested on. Model
+abbreviations are: Non-linear State-space Model (NSSM), Non-linear Factor Analysis (NFA), Latent
+Dirichlet Allocation (LDA), Poisson Mixed Model (PMM), Heteroscedastic Linear Regression (HLR),
+Sparse Gaussian Processes (SGPs), Graphical Model (GM), Logistic Regression (LR), Beta-binomial
+(BB), Stochastic Volatility model (SV), Probit Regression (PR), Multinomial Regression (MR), Bayesian
+Neural Network (BNN), Gamma factor model (GFM), Poisson Gamma Matrix Factorization (PGMF),
+Mixture of Gaussians (MoG). Poisson Mixed Model (PMM), Heteroscedastic Linear Regression (HLR),
+Gaussian Latent Variable (GLV). If the scheme proposed by the method has a name, this is noted in
+the ﬁnal column. Abbreviations of the inference scheme are: Automatic Diﬀerentiation VI (ADVI),
+Incremental VI (IVI), Non-conjugate Variational Message Passing (NC-VMP), Simpliﬁed NC-VMP
+(SNC-VMP), Conjugate-Computation VI (CCVI), Power EP (PEP), Alpha-divergence PEP (ADPEP),
+Convergent Power EP (CPEP), Stochastic Power EP (SPEP), Variational Continual Learning (VCL),
+Bayesian Gradient Descent (BGD).
+globalstochastic
+mini-batchlocal
+analyticsimple 
+gradient
+basedfixed-point
+(nat. grad.)fixed-point
+(nat. grad.)
+simplified
+Monte Carlo VI Power EP Single Pass Through Data Variational InferenceHonkela 
+et al. 2010
+Hensman 
+et al. 2012
+Sheth & Khardon 
+2015, 2016aHoffman et al. 2013  
+Hensman et al. 2013
+Knowles 
+& Minka
+2004Wand
+2014
+Beal, 2003Sheth &
+Khardon
+2016b
+Salimans & 
+Knowles 
+2013Khan et al.
+2018
+Blundell 
+et al. 2015
+Kucukelbir 
+et al. 2017Salimans & 
+Knowles 2013Li et al.
+2015Minka 2004 
+Power EP
+Bui et al. 
+2017b
+Hasenclever 
+et al. 2017
+Minka 2004
+Bui et al.
+2017bMinka 2004
+ alpha-div. 
+EPBui et al. 
+2018
+Nyugen et al. 
+2018
+Ghahramani
+& Attias 2000
+Sato 2001
+Broderick 
+et al. 2013
+Bui et al. 2018Winn et al.
+2005
+Archambeau
+& Ermis,
+2015Hinton and 
+van Camp 1993
+Models encompassed:        conjugate         low dimensional non-conjugate        high dimensional non-conjugateZeno et al. 
+2018
+Figure 3: The local VI framework uniﬁes prior work. The granularity of the approximation and
+the optimization method employed are two fundamental algorithmic dimensions that are shown as
+axes. Fixed-point updates are identical to natural gradient ascent with unit step size. The models
+encompassed by each paper are indicated by the color. See 1 for more information.
+15
+Reference Granularity Optimization Models Name
+Global VI [PVIM= 1, see section 4.1]
+Beal [2003] global analytic conjugate VI
+Sato [2001] global analytic conjugate (MoG)
+Hinton and Van Camp [1993] global gradient ascent non-conjugate (neural network)
+Honkela et al. [2010] global natural gradient (mean only) non-conj. (MoG, NSSM, NFA)
+Hensman et al. [2012] global CG with natural gradient conjugate
+Hensman et al. [2013] global stochastic natural gradient conjugate
+Hoﬀman et al. [2013] global stochastic natural gradient conjugate SVI
+Kucukelbir et al. [2017] global stochastic gradient descent non-conjugate ADVI
+Salimans et al. [2013] global ﬁxed-point + MC + stochastic non-conjugate (PR, BB, SV)
+Sheth et al. [2015] global simpliﬁed ﬁxed point non-conjugate (GLV)
+Sheth and Khardon [2016a] global simpliﬁed ﬁxed point non-conjugate (GLV)
+Sheth and Khardon [2016b] global simpliﬁed ﬁxed point + MC non-conjugate (two level)
+Fully Local VI [PVIM=N, see section 4.2]
+Winn et al. [2005] fully local analytic conjugate (GM) VMP
+Archambeau and Ermis [2015] fully local incremental conjugate (LDA) IVI
+Knowles and Minka [2011] fully local ﬁxed-point non-conjugate (LR, MR) NC-VMP
+Wand [2014] fully local simpliﬁed ﬁxed-point non-conjugate (PMM, HLR) SNC-VMP
+Khan and Lin [2018] local damped stochastic simpliﬁed ﬁxed-
+pointnon-conjugate(LR,GFM,PGMF) CCVI
+Online VI [one pass of PVI, see section 4.3]
+Ghahramani and Attias [2000] fully local analytic conjugate (MoG)
+Sato [2001] fully local analytic conjugate (MoG) online VB
+Broderick et al. [2013] fully local analytic conjugate (LDA) streaming VI
+Bui et al. [2017a] fully local analytic/LBFGS conjugate and not (SGPs)
+Nguyen et al. [2018] fully local Adam non-conjugate (BNN) VCL
+Zeno et al. [2018] fully local ﬁxed-point non-conjugate (BNN) BGD
+Power EP [PVI when !0, see sections 4.4 to 4.7]
+Minka [2004] local series ﬁxed point non-conjugate (GM) PEP
+Minka [2004] local optimization ADEP
+Bui et al. [2017b] local analytic/ﬁxed-point conjugate / non-conj. (GPs) PEP
+Hasenclever et al. [2017] local analytic with MC non-conjugate (BNN) CPEP
+Li et al. [2015] local stochastic ﬁxed point non-conjugate (LR, BNN) SPEP
+Table 1: Variational inference schemes encompassed by the PVI framework. See previous page for full caption.
+16
+over the unknown parameters . Having speciﬁed the probability of everything, we turn the handle of
+probability theory to obtain the posterior distribution,
+p(jx;y) =p()p(yj;x)
+p(yjx)=p()QK
+k=1QNk
+n=1p(yk;nj;xk;n)
+p(yjx): (16)
+The exact posterior above is analytically intractable and thus approximation techniques such as sampling
+or deterministic methods are needed. There is a long history of research on approximate Bayesian
+training of neural networks, including extended Kalman ﬁltering [Singhal and Wu, 1989], Laplace’s
+approximation [MacKay, 2003], Hamiltonian Monte Carlo [Neal, 1993, 2012], variational inference
+[Hinton and Van Camp, 1993, Barber and Bishop, 1998, Graves, 2011, Blundell et al., 2015, Gal
+and Ghahramani, 2016], sequential Monte Carlo [de Freitas et al., 2000], expectation propagation
+[Hernández-Lobato and Adams, 2015], and approximate power EP [Li et al., 2015, Hernández-Lobato
+et al., 2016]. In this section, we focus on Monte Carlo variational inference methods with a mean-ﬁeld
+Gaussian variational approximation [Graves, 2011, Blundell et al., 2015]. In detail, a factorized global
+variational approximation, q() =Q
+iN(i;i;2
+i), is used to lower-bound the log marginal likelihood
+as follows,
+logp(yjx) = logZ
+dp()p(yj;x)Z
+dq() logp()p(yj;x)
+q()=FGVI(q());(17)
+whereFGVI(q())is the variational lower bound or the negative variational free-energy. This bound
+can be expanded as follows,
+FGVI(q()) = KL[q()jjp()] +KX
+k=1NkX
+n=1Z
+dq() logp(yk;nj;xk;n): (18)
+When the prior is chosen to be a Gaussian, the KL term in the bound above can be computed
+analytically. In contrast, the expected log-likelihood term is not analytically tractable. However, it can
+be approximated by simple Monte Carlo with the (local) reparameterization trick such that low-variance
+stochastic gradients of the approximate expectation wrt the variational parameters fi;igcan be
+easily obtained [Rezende et al., 2014, Kingma and Welling, 2014, Kingma et al., 2015].
+The variational lower-bound above can be optimized using any oﬀ-the-shelf stochastic optimizer, and
+its gradient computation can be trivially distributed across many machines. A possible synchronously
+distributed schedule when using K compute nodes, each having access to a memory shard, is as follows:
+(i) a central compute node passes the current q()to K workers, (ii) each worker then computes the
+gradients of the expected log-likelihood of (a mini-batch of) its own data and passes the gradients
+back to the central node, (iii) the central node aggregates these gradients, combines the result with
+the gradient of the KL term, and performs an optimization step to obtain a new q(). These steps are
+then repeated for a ﬁxed number of iterations or until convergence. However, notice that this schedule
+is communication-ineﬃcient, as it requires frequent communication of the gradients and the updated
+variational approximation between the central node and the K compute workers. We will next discuss
+an inference scheme based on PVI that allows communication eﬃcient updates between workers that is
+compatible with various scheduling schemes.
+Following the PVI formulation in section 2, the approximate posterior can be rewritten using the
+approximate factors, one for each memory shard, as follows,
+p(jx;y)/p()KY
+k=1NkY
+n=1p(yk;nj;xk;n)p()KY
+k=1tk() =q(); (19)
+17
+wheretk()approximates the contribution of data points in the k-th shard to the posterior. As discussed
+in the previous sections, PVI turns the original global approximate inference task into a collection of
+approximate inference tasks, i.e. for the k-th memory shard and k-th compute node, the task is to
+maximize,
+Fk
+PVI(q()) = KL[q()jjqnk()] +NkX
+n=1Z
+dq() logp(yk;nj;xk;n); (20)
+whereqnk() =q()=tk()is the context or eﬀective prior set by data points in other shards. Once a
+new variational approximation q()is obtained, a new approximate factor can be computed accordingly,
+tk() =q()=qnk(). Note that the objective for each compute node is almost identical to the GVI
+objective, except the prior is now replaced by the context and the data are limited to the compute
+node’s accessible data. This means any global VI implementation available on a compute node (either
+using optimization, ﬁxed-point updates, or in close-formed) can be trivially modiﬁed to handle PVI.
+A key additional diﬀerence to GVI is the communication frequency between the compute nodes and
+the central parameter server (that holds the latest q()): a worker can decide to pass tk()back to the
+central server after multiple passes through its data, after one epoch, or after just one mini-batch. This
+leaves room for practitioners to choose a learning schedule that meets communication constraints. More
+importantly, PVI enables various communication strategies to be deployed, for example:
+Sequential PVI with only one pass through the data set: each worker, in turn, runs Global VI,
+with the previous posterior being the prior/context, for the data points in its memory shard and
+returns the posterior approximation to the parameter server. This posterior approximation will
+then be used as the context for the next worker’s execution. Note that this is exactly equivalent
+to Variational Continual Learning [Nguyen et al., 2018] and can be combined with the multihead
+architecture, each head handling one task or one worker, or with episodic memory [see e.g. Zenke
+et al., 2017, Nguyen et al., 2018]. This strategy is communication-eﬃcient as only a small number
+of messages are required — only one up/down update is needed for each worker.
+PVI with synchronous model updates: instead of sequentially updating the context distribution
+and running only one worker at a time, all workers can be run in parallel. That is, each worker
+occasionally sends its updated contribution to the posterior back to the parameter server. The
+parameter server waits for all workers to ﬁnish before aggregating the approximate factors and
+sending the new posterior back to the workers. The workers will then update their own context
+distributions based on the current state of the central parameters. This process then repeats. By
+analyzing the homogeneity of the data and updates across workers, heuristics could be used to
+choose the learning rate for each worker and damping factor for the central parameter server —
+we leave this for future work.
+PVI with lock-free asynchronous updates: instead of waiting for all workers to ﬁnish training
+locally, the model aggregation and update steps can be performed as soon as any worker has
+ﬁnished. This strategy is particularly useful when communication is done over an unreliable
+channel, the distribution of the data across diﬀerent machines is highly unbalanced, or when a
+machine can be disconnected from the training procedure at any time. However, this strategy
+is expected to be generally worse compared the synchronous update scheme above, since the
+context/cavity distribution could be changed while a worker is running and the next parameter
+update performed by this worker could overwrite the updates made by other workers, i.e. there is
+the possibility of stale updates.
+We demonstrate these communication strategies on a large-scale federated classiﬁcation task in
+section 7.1 and highlight the advantages and potential pitfalls of PVI, GVI and various alternatives for
+diﬀerent levels of data homogeneity across memory shards.
+18
+6 Improving Continual Learning for Sparse Gaussian Processes Using
+PVI
+Gaussian processes (GPs) are ﬂexible probabilistic distributions over functions that have been used in
+wide variety of machine learning problems, including supervised learning [Rasmussen and Williams, 2006],
+unsupervised learning [Lawrence, 2004] and reinforcement learning [Deisenroth, 2010]. The application
+of GPs to more general, large-scale settings is however hindered by analytical and computational
+intractabilities. As a result, a large body of active GP research aims to develop eﬃcient approximation
+strategies for inference and learning in GP models. In this work, we develop an approximation based
+on partitioned variational inference for GP regression and classiﬁcation in a continual learning setting.
+In this setting, data arrive sequentially, either one data point at a time or in batches of a size that is
+unknown a priori. An eﬃcient strategy to accurately update the model in an online fashion is thus
+needed and can be used for various applications such as control [Nguyen-Tuong et al., 2009] or mapping
+[O’Callaghan and Ramos, 2012].
+In particular, building on recent work on pseudo-point sparse approximations [Titsias, 2009, Hensman
+et al., 2015, Matthews et al., 2016, Bui et al., 2017b] and streaming approximations [Csató and Opper,
+2002, Bui et al., 2017a], we develop a streaming variational approximation that approximates the
+posterior distribution over both the GP latent function andthe hyperparameters for GP regression and
+classiﬁcation models. Additionally, the partitioned VI view of this approximation allows just-in-time,
+dynamic allocation of new pseudo-points speciﬁc to a data batch, and more eﬃcient training time
+and accurate predictions in practice. We will provide a concise review of sparse approximations for
+Gaussian process regression and classiﬁcation before summarizing the proposed continual learning
+approach. For interested readers, see Quiñonero-Candela and Rasmussen [2005], Bui et al. [2017a]
+for more comprehensive reviews of sparse GPs. Appendix C contains the full derivation of diﬀerent
+streaming variational approaches with shared or private pseudo points, and with maximum likelihood
+or variational learning strategies for the hyperparameters.
+6.1 Variational inference for both latent function and hyperparameters
+GivenNinput and output pairs fxn;yngN
+n=1, a standard GP regression or classiﬁcation model assumes
+the outputsfyngN
+n=1are generated from the inputs fxngN
+n=1according to yn=f(xn) +n, where
+fis an unknown function that is corrupted by observation noise, for example, N(0;2
+y)in the
+real-valued output regression problem.4Typically,fis assumed to be drawn from a zero-mean GP
+priorfGP (0;k(;j))whose covariance function depends on hyperparameters . We also place
+a prior over the hyperparameters and as such inference involves ﬁnding the posterior over both f
+and,p(f;jy;x), and computing the marginal likelihood p(yjx), where we have collected the inputs
+and observations into vectors x=fxngN
+n=1andy=fyngN
+n=1respectively. This is one key diﬀerence
+to the work of Bui et al. [2017b], in which only a point estimate of the hyperparameters is learned
+via maximum likelihood. The dependence on the inputs of the posterior, marginal likelihood, and
+other quantities will be suppressed when appropriate to lighten the notation. Exact inference in the
+model considered here is analytically and computationally intractable, due to the non-linear dependency
+betweenfand, and the need to perform a high dimensional integration when Nis large.
+In this work, we focus on the variational free energy approximation scheme [Titsias, 2009, Matthews
+et al., 2016] which is arguably the leading approximation method for many scenarios. This scheme
+lower bounds the marginal likelihood of the model using a variational distribution q(f;)over the latent
+4In this section, fstands for the model parameters, as denoted by in the previous sections.
+19
+function and the hyperparameters:
+logp(yjx) = logZ
+dfdp(y;f;jx)Z
+dfdq(f;) logp(yjf;;x)p(fj)p()
+q(f;)=F(q(f;));
+whereF(q(f;))is the variational surrogate objective and can be maximized to obtain q(f;). In order
+to arrive at a computationally tractable method, the approximate posterior is parameterized via a
+set ofMapseudo-outputs awhich are a subset of the function values f=ff6=a;ag. Speciﬁcally, the
+approximate posterior takes the following structure:
+q(f;) =p(f6=aja;)q(a)q(); (21)
+whereq(a)andq()are variational distributions over aandrespectively, and p(f6=aja;)is the
+conditional prior distribution of the remaining latent function values. Note that while aandare
+assumed to be factorized in the approximate posterior, the dependencies between the remaining latent
+function values f6=aand the hyperparameters , and between f6=athemselves are retained due to the
+conditional prior. This assumption leads to a critical cancellation that results in a computationally
+tractable lower bound as follows:
+F(q(a);q()) =Z
+dfdq(f) logp(yjf;;x)p()p(aj))XXXXXXp(f6=aja;)
+XXXXXXp(f6=aja;)q(a)q()
+= KL[q()jjp()] Z
+dq()KL[q(a)jjp(aj)]
++X
+nZ
+ddadfnq()q(a)p(fnja;) logp(ynjfn;;xn);
+wherefn=f(xn)is the latent function value at xn. Most terms in the variational lower bound
+above require computation of an expectation wrt the variational approximation q(), which is not
+available in closed-form even when q()takes a simple form such as a diagonal Gaussian. However, these
+expectations can be approximated by simple Monte Carlo with the reparameterization trick [Kingma
+and Welling, 2014, Rezende et al., 2014]. The remaining expectations can be handled tractably, either
+in closed-form or by using Gaussian quadrature.
+6.2 Continual learning for streaming data with private pseudo-points
+In continual learning, data arrive sequentially and revisiting previously seen data is prohibitive, and the
+current variational posterior can be reused to approximate the eﬀect of the previous data on the exact
+posterior. Letfx1;y1gandfx2;y2gdenote previous and new data, respectively. We ﬁrst re-interpret
+the structured global approximate posterior in eq. (21) as a product of local approximate factors as
+follows,
+p(f;jy1;x1) =p()p(fj)p(y1jf;;x1)=Z1
+=p()p(f6=aja;)p(aj)p(y1jf;;x1)=Z1
+p()p(f6=aja;)t1(a)t1()g1(a)g1()
+=p(f6=aja;)q1(a)q1();
+whereq1(a) =t1(a)g1(a),q1() =p()t1()g1(), andt1()s andg1()s are introduced to approximate
+the contribution of p(aj)andp(y1jf;;x1)to the posterior, respectively. Note that the last equation
+is identical to eq. (21), but the factor representation above facilitates inference using PVI and allows
+20
+more ﬂexible approximations in the streaming setting. In particular, the exact posterior when both old
+datay1and newly arrived data y2are included can be approximated in a similar fashion,
+p(f;jy1;y2;x1;x2) =p()p(fj)p(y1jf;;x1)p(y2jf;;x2)=Z12
+=p()p(f6=a;bja;b;)p(bja;)p(aj)p(y1jf;;x1)p(y2jf;;x2)=Z12
+p()p(f6=a;bja;b;)t2(bja)t2()t1(a)t1()g1(a)g1()g2(b)g2()
+where bare new pseudo-outputs, and t2()s andg2()s are approximate contributions of p(bja;)and
+p(y2jf;;x2)to the posterior, respectively. As we have reused the approximate factors t1(a)andg1(a),
+the newly introduced pseudo-points bcan be thought of as pseudo-points private to the new data. This
+is the key diﬀerence of this work compared to the approach of Bui et al. [2017a], in which both old
+and new data share a same set of pseudo-points. The advantages of the approach based on private
+pseudo-points are potentially two-fold: (i) it is conceptually simpler to focus the approximation eﬀort to
+handle the new data points while keeping the approximation for previous data ﬁxed, as a new data batch
+may require only a small number of representative pseudo-points, and (ii) the number of parameters
+(variational parameters and private pseudo-inputs) is much smaller, leading to arguably easier problem
+to initialize and optimize.
+The approximate factors t2()andg2()can be found by employing the PVI algorithm in section 2.
+Alternatively, in the continual learning setting where data points do not need to be revisited, we can
+convert the factor-based variational approximation above to a global variational approximation,
+p(f;jy1;y2;x1;x2)p()p(f6=a;bja;b;)t2(bja)t2()t1(a)t1()g1(a)g1()g2(b)g2()
+=p(f6=a;bja;b;)q2(bja)q1(a)q2()
+whereq2(bja) =t2(bja)g2(b),q2() =p()t1()g1()t2()g2(), andq2(bja)andq2()are parameterized
+and optimized, along with the location of b. While this does not change the ﬁxed-point solution
+compared to the PVI algorithm, it allows existing sparse global VI implementations such as that in
+GPﬂow [Matthews et al., 2017] to be easily extended and deployed.
+7 Experiments
+Having discussed the connections to the literature and developed two novel applications of PVI, we
+validate the proposed methods by running a suite of continual and federated learning experiments on
+Bayesian neural network and Gaussian process models.
+7.1 Distributed Federated Variational Inference for Neural Networks
+In this section, we demonstrate that Partitioned Variational Inference is well-suited for federated
+approximate training of Bayesian neural networks, allowing both synchronous or lock-free asynchronous
+model updates across many machines. In particular, we consider the MNIST ten-class classiﬁcation
+problem and assume that the training points are partitioned into Kdisjoint shards. Two levels of data
+homogeneity across memory shards are considered: homogeneous [or iid, e.g. each shard has training
+points of all classes] and inhomogeneous [or non-iid, e.g. when K= 10, each shard has training points of
+only one class]. We evaluate diﬀerent training methods using a Bayesian neural network with one hidden
+layer of 200 rectiﬁed linear units. We place a diagonal standard Normal prior over the parameters,
+p() =N(; 0;I), and initialize the mean of the variational approximations as suggested by Glorot
+and Bengio [2010]. For distributed training methods, the data set is partitioned into 10 subsets or
+shards (K= 10), and 10 compute nodes (workers) with each able to access one memory shard. The
+implementation of diﬀerent inference strategies was done in Tensorﬂow [Abadi et al., 2016] and the
+21
+communication between workers is managed using Ray [Moritz et al., 2017]. We use Adam [Kingma
+and Ba, 2014] for the inner loop optimization for partitioned, distributed methods or the outer loop
+optimization for global VI, and mini-batches of 200 data points. In the next few paragraphs, we brieﬂy
+detail the methods compared in this section and their results.
+Global VI We ﬁrst evaluate global VI with a diagonal Gaussian variational approximation for the
+weights in the neural network. In particular, it is assumed that there is only one compute node (with
+either one core or ten cores) that can access the entire data set. This compute node maintains a
+global variational approximation to the exact posterior, and adjusts this approximation using the noisy
+gradients of the variational free-energy in eq. (18). We simulate the data distribution by sequentially
+showing mini-batches that can potentially have all ten classes (iid) or that have data of only one class
+(non-iid). Figures 13 and 14 in the appendix show the full performance statistics on the test set during
+training for diﬀerent learning rates and data homogeneity levels. The performance depends strongly on
+the learning rate, especially when the mini-batches are non-iid. Faster convergence early in training does
+not guarantee a better eventual model as measured by test performance, for the iid setting. Note that
+GVI for the non-iid setting can arrive at a good test error rate, albeit requiring a much smaller learning
+rate and a substantially larger training time. In addition, global VI is not communication-eﬃcient, as
+the global parameters are updated as often as data mini-batches are considered. The best performing
+method for the iid/non-iid settings is selected from all of the learning rates considered and they are
+shown in ﬁgs. 4 and 5.
+Bayesian committee machine The Bayesian committee machine (BCM) is a simple baseline which
+is naturally applicable to partitioned data [Tresp, 2000]. The BCM performs (approximate) inference
+for each data shard independently of other data shards and aggregate the sub-posteriors at the end.
+In particular, global VI with a diagonal Gaussian variational approximation is applied independently
+to the data in each shard yielding approximate local posteriors fqk()gK
+k=1. The aggregation step
+involves multiplying KGaussian densities. The only shared information across diﬀerent members of
+the committee is the prior. This baseline, therefore, assesses the beneﬁts from coordination between the
+workers. We consider two prior sharing strategies as follows,
+BCM — same: p(jx;y)/p()KY
+k=1p(ykj;xk) =QK
+k=1[p()p(ykj;xk)]
+[p()]K 1QK
+k=1qk()
+[p()]K 1;
+BCM — split: p(jx;y)/p()KY
+k=1p(ykj;xk) =KY
+k=1[[p()]Nk=Np(ykj;xk)]KY
+k=1qk():
+BCM is fully parallelizable (one worker independently performs inference for one shard) and is
+communication-eﬃcient (only one round of communication is required at the end of the training).
+However, there are several potential disadvantages: (i) it is not clear whether the prior sharing schemes
+discussed above will over-regularize or under-regularize the network compared to the original batch
+training scheme, and (ii) since each shard develops independent approximations and the model is
+unidentiﬁable, it is unclear if the simple combination rules above are appropriate. For example, diﬀerent
+members of the committee might learn equivalent posteriors up to a permutation of the hidden units.
+Although initializing each approximate posterior qk()in the same way can mitigate this eﬀect, the
+lack of a shared context is likely to be problematic. We evaluate BCM for both iid and non-iid settings,
+with diﬀerent learning rates for the Adam optimizer for each worker and show the full results in ﬁgs. 15
+and 16. It is perhaps surprising that BCM works well in the iid data setting, although the best error
+rate of 4%is still much higher than state-of-the-art results on the MNIST classiﬁcation task ( 1%).
+However, the concern above about the potential pitfalls when multiplying diﬀerent sub-posteriors is
+22
+validated in the non-iid setting, and in the iid setting when each worker is trained for a long time before
+performing the aggregation step. The best results in both settings are selected and shown in ﬁgs. 4
+and 5.
+Partitioned VI As discussed in section 5, PVI is a natural ﬁt to training probabilistic models
+on federated data and is ﬂexible such that various communication and scheduling strategies can be
+employed. In this section, we test three approaches discussed in section 5:
+Sequential PVI with only one pass through the data set: The number of training epochs and
+learning rates for each worker are varied, and the full results are included in ﬁgs. 17 and 18.
+The results show that while this strategy is eﬀective for the iid setting, it performs poorly in
+the non-iid setting. This issue is known in the continual learning literature where incremental
+learning of a single-head network is known to be challenging. Episodic memory [see e.g. Zenke
+et al., 2017, Nguyen et al., 2018] or generative replay [Shin et al., 2017] is typically used to address
+this problem. The performance for the best hyperparameter settings are shown in ﬁgs. 4 and 5.
+PVI with synchronous model updates: In this experiment, each worker runs one epoch of Global
+VI between message passing steps, and the parameter server waits for all workers to ﬁnish before
+aggregating information and sending it back to the workers. We explore diﬀerent learning rates
+for the inner loop optimization and various damping rates for the parameter server, and show
+the full results in ﬁgs. 19 and 20. While the performance on the test set depends strongly on the
+learning rate and damping factor, if these values are appropriately chosen, this update strategy
+can achieve competitive performance ( <2%). By analyzing the homogeneity of the data and
+updates across workers, some forms of heuristics could be used to choose the learning rate and
+damping factor — we leave this for future work. We pick the best performing runs and compare
+with other methods in ﬁgs. 4 and 5.
+PVI with lock-free asynchronous updates: Similar to the synchronous PVI experiment, we vary
+the learning rate and damping factor and include the full results in ﬁgs. 22 and 23. The test
+performance of this method is generally worse compared the synchronous update scheme, since the
+context/cavity distribution could be changed while a worker is running and the next parameter
+update performed by this worker could overwrite the updates made by other workers. While we
+do not simulate conditions that favour this scheduling scheme such that unreliable communication
+channels or unbalanced data across memory shards, we expect this strategy to perform well
+compared to other methods in these scenarios. The best hyperparameters are selected and their
+performance are shown in ﬁgs. 4 and 5.
+Discussion The best performance for each method discussed above are shown in ﬁgs. 4 and 5,
+demonstrating the accuracy-training time and accuracy-communication cost frontiers. In the iid data
+setting (ﬁg. 4), distributed training methods can achieve comparable performance in the same training
+time compared to that of global VI. However, methods based on data partitioning are much more
+communication-eﬃcient, for example, PVI-sync uses about 10 times fewer messages than GVI when both
+methods attain a 3 %test error. The results for PVI-seq with one pass through the data demonstrates
+its eﬃciency, but highlights the need to revisit data multiple times to obtain better error rate and
+log-likelihood. BCM shows promising performance, but is outperformed by all other methods, suggesting
+that communication between workers and setting the right approximate prior (context) for each partition
+are crucial.
+Figure 5 shows the non-iid data regime is substantially more challenging, as simple training methods
+including BCM and PVI-seq with one pass perform poorly and other distributed methods require more
+23
+extreme hyperparameter settings (e.g. much smaller learning rate and higher damping factor), much
+longer training time, and higher communication cost to obtain a performance comparable to that in the
+iid regime. We note that the performance of PVI is signiﬁcantly better than a recent result by Zhao et al.
+[2018], who achieved a 10% error rate on the same non-iid data setting. Moreover, unlike this work, we
+use a fully-connected neural network (rather than a convolutional one) and do not communicate data
+between the workers (no data synchronization). As in the iid setting, the performance of PVI-async is
+hindered by stale updates, compared to PVI-sync, despite early faster convergence. While GVI with 10
+cores is the best performer in terms of predictive performance, it is the least communication-eﬃcient due
+to the need to frequently pass gradients between the central parameter server and compute nodes. This,
+however, suggests that the performance of PVI could be further improved by more frequent updates
+between workers, essentially trading oﬀ the communication cost for more accurate prediction.
+24
+210100error /%BCM - split prior, 10 subsets
+BCM - same prior, 10 subsets
+GVI - 1 core
+GVI - 10 cores
+PVI - seq, one pass, 10 workers
+PVI - async, 10 workers
+PVI - sync, 10 workers
+100101102103104
+train time /s10−1100nll /nat
+(a)Error and NLL vs train time
+210100error /%
+100101102103104105
+[worker !server] communication messages10 1100nll /natBCM - split prior, 10 subsets
+BCM - same prior, 10 subsets
+GVI - 1 core
+GVI - 10 cores
+PVI - seq, one pass, 10 workers
+PVI - async, 10 workers
+PVI - sync, 10 workers (b)Error and NLL vs communication cost
+Figure 4: Performance on the test set in the federated MNIST experiment with an iid distribution of training points across ten workers. The test performance
+is measured using the classiﬁcation error [error] and the negative log-likelihood [nll], and for both measures, lower is better. All methods are assessed using the
+performance vs train time and performance vs communication cost plots — closer to the bottom left of the plots is better. Methods used for benchmarking are:
+Bayesian Committee Machines (BCM) with the standard Normal prior [same] and with a weakened prior [split], Global VI (GVI) with one and ten compute cores, PVI
+with sequential updates and only one pass through the data [equivalent to Variational Continual Learning], PVI with lock-free asynchronous updates (PVI - async),
+and PVI with synchronous updates (PVI - sync). For ease of presentation, the x-axes for the plots start at 1. See text for more details. Best viewed in colour.
+25
+(a)Error and NLL vs train time
+ (b)Error and NLL vs communication cost
+Figure 5: Performance on the test set in the federated MNIST experiment with a non-iid distribution of training points across ten workers, i.e. each worker has access
+to digits of only one class. The test performance is measured using the classiﬁcation error [error] and the negative log-likelihood [nll], and for both measures, lower is
+better. All methods are assessed using the performance vs train time and performance vs communication cost plots — closer to the bottom left of the plots is better.
+Methods used for benchmarking are: Bayesian Committee Machines (BCM) with the standard Normal prior [same] and with a weakened prior [split], Global VI (GVI)
+with one and ten compute cores, PVI with sequential updates and only one pass through the data [equivalent to Variational Continual Learning], PVI with lock-free
+asynchronous updates (PVI - async), and PVI with synchronous updates (PVI - sync). For ease of presentation, the x-axes for the plots start at 1. See text for more
+details. Best viewed in colour.
+26
+7.2 Improving Continual Learning for Sparse Gaussian Processes
+We evaluate the performance of the continual learning method for sparse Gaussian process models
+discussed in section 6 on a toy classiﬁcation problem and a real-world regression problem. The diﬀerent
+inference strategies were implemented in Tensorﬂow [Abadi et al., 2016] and GPﬂow [Matthews et al.,
+2017].
+7.2.1 A comparison on a toy data set
+A toy streaming data set was created using the bananadata set, which comprises 400 two-dimensional
+inputs and corresponding binary targets. The data set is ﬁrst ordered using one input dimension
+and then split into three equal batches. We consider two sparse variational approaches for inferring
+the latent function with 10 pseudo-points for each batch: (i) maximum-likelihood estimation for the
+hyperparameters — this is similar to the method of Bui et al. [2017a] but using private pseudo-points,
+as described in appendix C, and (ii) online variational inference for the hyperparameters, as discussed
+in section 6. The key results are shown in ﬁg. 6, which includes the predictions after observing each
+data batch and the (distributional) hyperparameter estimates for both methods. We also include the
+histograms of the hyperparameter samples obtained by running MCMC for both the latent function
+and hyperparameters on the whole data set. As expected, the sparse variational methods underestimate
+the width of the distributions over the hyperparameters. The maximum-likelihood estimates for the
+hyperparameters tend to be smaller and to change faster when moving from one batch to another
+compared the VI estimates. Consequently, the prediction using the ML hyperparameters tends to have
+sharper decision boundaries. We include in appendix C a failure case of the ML approach where the
+hyperparameter values are overﬁtto a data batch, while the VI approach is more robust and maintains
+better prediction quality.
+7.2.2 Learning inverse dynamics of a robot arm
+We next test the proposed method on learning inverse dynamics of a robot arm. The data set is
+generated using a Barrett WAM arm with seven degrees-of-freedom — seven joints to which control
+torques can be applied and the joints’ angles, speeds and accelerations can be recorded accordingly
+[Nguyen-Tuong et al., 2009]. The aim is to learn the inverse dynamics of the arm, i.e. to accurately
+predict the forces used at diﬀerent joints given the joints’ current characteristics. We treat this task as
+a regression problem with 7 independent outputs and 21 inputs. The data set consists of 12,000 points
+for training and 3,000 points for prediction.
+To simulate the streaming setting, we ﬁrst sort the data points using a joint’s location and form
+24 batches of 500 points each. As there are seven joints in the arm, seven streaming data sets were
+created, each corresponding to one joint being used for sorting. For the proposed method in section 6,
+10 pseudo-points are allocated and optimized for each batch, and as such, there are 240 pseudo-points
+in total at the end of training. We predict on the test set after sequentially showing a data batch to the
+model and compute the standardized mean squared errors (SMSEs). The results, averaged over multiple
+runs corresponding to diﬀerent inputs used for sorting, are shown in ﬁg. 7. Two additional methods were
+considered: (i) full GP with limited memory of 1500 data points, retrained from scratch after seeing
+each data batch, and (ii) streaming sparse GPs using variational inference for both latent function and
+hyperparameters with 240 pseudo-points being shared over all batches and re-optimized after every
+batch. For both sparse GP methods, online variational inference is used for the hyperparameters. The
+results demonstrate the proposed method with private pseudo-points is most eﬀective and stable during
+training among all methods considered. For example, for the third degree-of-freedom, the ﬁnal SMSEs
+were 0:100+ 0:004for the proposed method with private pseudo-points, 0:313+ 0:079for the method
+with global pseudo-points, and 1:021+ 0:113for exact GP with limited memory. While the method
+27
+Figure 6: Experimental results on a toy streaming data set: predictions after sequentially observing
+diﬀerent data batches [left] and corresponding hyperparameter estimates [right]. Three methods were
+considered for this task: MCMC for both the latent function ( f) and hyperparameters (hypers) with no
+sparsiﬁcation, variational inference for both fand hypers with inducing points, and sparse variational
+inference for fand maximum likelihood estimation for hypers. Best viewed in colour.
+with shared pseudo-points has more pseudo-points for earlier batches and is expected to perform better
+theoretically, this experiment shows its inferior performance due to the need to reinitialize and optimize
+all pseudo-points at every batch. The full GP with limited memory approach performs poorly and
+exhibits forgetting as more batches arrived and old data are excluded from the memory. In addition,
+we also tried the streaming inference scheme of Bui et al. [2017a], which only retains a point estimate
+of the hyperparameters after each batch, but this did not perform well, demonstrating that being
+distributional over the hyperparameters is crucial.
+8 Conclusion
+This paper provided a general and unifying view of variational inference, Partitioned Variational
+Inference, for probabilistic models. We showed that the PVI framework ﬂexibly subsumes many existing
+variational inference methods as special cases and allows a wealth of techniques to be connected. We
+also demonstrated how PVI allows novel algorithmic developments and practical applications. This is
+illustrated through the development of a streaming variational inference scheme for Gaussian process
+models and a communication eﬃcient algorithm for training Bayesian neural networks on federated
+data.
+28
+0.20.40.60.81.01.2SMSEDOF = 1
+0.00.10.20.30.40.5DOF = 2
+0.20.40.60.81.01.2DOF = 3
+0.20.40.60.81.01.2DOF = 4
+0 10 20
+batch0.250.500.751.001.251.50SMSEDOF = 5
+0 10 20
+batch0.51.01.52.02.5DOF = 6
+0 10 20
+batch0.51.01.52.02.5DOF = 7streaming, private u streaming, shared u full, limited mem.Figure 7: Experimental results of learning inverse dynamics of a robot arm, i.e. predicting the forces
+applied to the joints of the arm given the locations, speeds, and accelerations of the joints. Three
+methods were considered for this task: streaming sparse variational GP with private pseudo-points,
+streaming sparse variational GP with shared pseudo-points, and full GP with limited memory. Full
+details are included in the text. Best viewed in colour.
+One of the key contributions of this work is the connection of deterministic local message passing
+methods with global optimization-based schemes. Each of these diﬀerent branches of approximate
+inference has been arguably developed exclusively of each other, for example, existing probabilistic
+programming toolkits tend to work primarily with one approach but not both [see e.g. Tran et al., 2017,
+Minka et al., 2018]. This paper suggests these methods are inter-related and practitioners could beneﬁt
+from a uniﬁed framework, i.e. there are ways to expand the existing probabilistic programming packages
+to gracefully handle both approaches. Additionally, the PVI framework could be used to automatically
+choose a granularity level and an optimization scheme that potentially oﬀer a better inference method
+for the task or the model at hand. It is, however, unclear how ﬂexible variational approximations such
+as mixtures of exponential family distributions [see e.g. Sudderth et al., 2010] or normalizing ﬂows
+[Rezende and Mohamed, 2015] can be eﬃciently and tractably accommodated in the PVI framework.
+We leave these directions as future work.
+The experiments in section 7.1 demonstrated that PVI is well-suited to learning with decentralized
+29
+data. Deployment of PVI in this setting is practical as its implementation only requires a straightforward
+modiﬁcation of existing global VI implementations. We have also explored how this algorithm allows
+data parallelism — each local worker stores a complete copy of the model — and communication eﬃcient,
+uncertainty-aware updates between workers. A potential future extension of the proposed approach is
+model parallelism. That is, in addition to decentralizing the data and computation across the workers,
+the model itself is partitioned. As commonly done in many deep learning training algorithms, model
+parallelism could be achieved by assigning the parameters (and computation) of diﬀerent layers of the
+network to diﬀerent devices. Another potential research direction is coordinator-free, peer-to-peer only
+communication between workers. This could be achieved by a worker passing each update to several
+randomly selected other workers, who then apply the changes, rather than to a central parameter server.
+References
+Martín Abadi, Paul Barham, Jianmin Chen, Zhifeng Chen, Andy Davis, Jeﬀrey Dean, Matthieu
+Devin, Sanjay Ghemawat, Geoﬀrey Irving, Michael Isard, et al. Tensorﬂow: a system for large-scale
+machine learning. In Proceedings of the 12th USENIX Symposium on Operating Systems Design and
+Implementation , 2016.
+Cedric Archambeau and Beyza Ermis. Incremental variational inference for latent Dirichlet allocation.
+arXiv preprint arXiv:1507.05016 , 2015.
+David Barber and Christopher M. Bishop. Ensemble learning in Bayesian neural networks. In Neural
+Networks and Machine Learning , 1998.
+Matthew James Beal. Variational algorithms for approximate Bayesian inference . PhD thesis, UCL,
+2003.
+David M Blei, Andrew Y Ng, and Michael I Jordan. Latent dirichlet allocation. Journal of Machine
+Learning Research , 3(Jan):993–1022, 2003.
+Charles Blundell, Julien Cornebise, Koray Kavukcuoglu, and Daan Wierstra. Weight uncertainty in
+neural network. In International Conference on Machine Learning , pages 1613–1622, 2015.
+Keith Bonawitz, Vladimir Ivanov, Ben Kreuter, Antonio Marcedone, H Brendan McMahan, Sarvar
+Patel, Daniel Ramage, Aaron Segal, and Karn Seth. Practical secure aggregation for privacy-
+preserving machine learning. In Proceedings of the 2017 ACM SIGSAC Conference on Computer and
+Communications Security , pages 1175–1191. ACM, 2017.
+Tamara Broderick, Nicholas Boyd, Andre Wibisono, Ashia C. Wilson, and Michael I. Jordan. Streaming
+variational Bayes. In Advances in Neural Information Processing Systems , 2013.
+Thang D. Bui, Cuong V. Nguyen, and Richard E. Turner. Streaming sparse Gaussian process approxi-
+mations. In Advances in Neural Information Processing Systems , 2017a.
+Thang D. Bui, Josiah Yan, and Richard E. Turner. A unifying framework for Gaussian process pseudo-
+point approximations using power expectation propagation. Journal of Machine Learning Research ,
+18(104):1–72, 2017b.
+Arslan Chaudhry, Puneet K Dokania, Thalaiyasingam Ajanthan, and Philip HS Torr. Riemannian walk
+forincrementallearning: Understandingforgettingandintransigence. arXiv preprint arXiv:1801.10112 ,
+2018.
+30
+Jianmin Chen, Xinghao Pan, Rajat Monga, Samy Bengio, and Rafal Jozefowicz. Revisiting distributed
+synchronous SGD. arXiv preprint arXiv:1604.00981 , 2016.
+Lehel Csató and Manfred Opper. Sparse online Gaussian processes. Neural Computation , 2002.
+Nando de Freitas, Mahesan Niranjan, Andrew H. Gee, and Arnaud Doucet. Sequential Monte Carlo
+methods to train neural network models. Neural Computation , 2000.
+Jeﬀrey Dean, Greg Corrado, Rajat Monga, Kai Chen, Matthieu Devin, Mark Mao, Andrew Senior,
+Paul Tucker, Ke Yang, Quoc V Le, et al. Large scale distributed deep networks. In Advances in
+Neural Information Processing Systems , pages 1223–1231, 2012.
+Marc Peter Deisenroth. Eﬃcient reinforcement learning using Gaussian processes . PhD thesis, University
+of Cambridge, 2010.
+Cynthia Dwork and Aaron Roth. The algorithmic foundations of diﬀerential privacy. Foundations and
+Trends Rin Theoretical Computer Science , 9(3–4):211–407, 2014.
+Timo Flesch, Jan Balaguer, Ronald Dekker, Hamed Nili, and Christopher Summerﬁeld. Comparing
+continual task learning in minds and machines. Proceedings of the National Academy of Sciences , 115
+(44):E10313–E10322, 2018.
+Yarin Gal and Zoubin Ghahramani. Dropout as a Bayesian approximation: Representing model
+uncertainty in deep learning. In International Conference on Machine Learning , 2016.
+Andrew Gelman, Aki Vehtari, Pasi Jylänki, Christian Robert, Nicolas Chopin, and John P Cunningham.
+Expectation propagation as a way of life. arXiv preprint arXiv:1412.4869 , 2014.
+Zoubin Ghahramani and H. Attias. Online variational Bayesian learning. In NIPS Workshop on Online
+Learning , 2000.
+Xavier Glorot and Yoshua Bengio. Understanding the diﬃculty of training deep feedforward neural
+networks. In International Conference on Artiﬁcial Intelligence and Statistics , pages 249–256, 2010.
+Ian J. Goodfellow, Mehdi Mirza, Da Xiao, Aaron Courville, and Yoshua Bengio. An empirical
+investigation of catastrophic forgetting in gradient-based neural networks. In International Conference
+on Learning Representations , 2014.
+Alex Graves. Practical variational inference for neural networks. In Advances in Neural Information
+Processing Systems , 2011.
+Leonard Hasenclever, Stefan Webb, Thibaut Lienart, Sebastian Vollmer, Balaji Lakshminarayanan,
+Charles Blundell, and Yee Whye Teh. Distributed bayesian learning with stochastic natural gradient
+expectation propagation and the posterior server. Journal of Machine Learning Research , 18(106):
+1–37, 2017. URL http://jmlr.org/papers/v18/16-478.html .
+TylerLHayes, Ronald Kemker, NathanDCahill, andChristopherKanan. Newmetricsandexperimental
+paradigms for continual learning. In Proceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition Workshops , pages 2031–2034, 2018.
+James Hensman, Magnus Rattray, and Neil D. Lawrence. Fast variational inference in the conjugate
+exponential family. In Advances in Neural Information Processing Systems , pages 2888–2896, 2012.
+James Hensman, Nicolo Fusi, and Neil D Lawrence. Gaussian processes for big data. In Uncertainty in
+Artiﬁcial Intelligence , page 282, 2013.
+31
+James Hensman, Alexander G. D. G. Matthews, and Zoubin Ghahramani. Scalable variational Gaussian
+process classiﬁcation. In International Conference on Artiﬁcial Intelligence and Statistics , 2015.
+José Miguel Hernández-Lobato and Ryan P. Adams. Probabilistic backpropagation for scalable learning
+of Bayesian neural networks. In International Conference on Machine Learning , 2015.
+José Miguel Hernández-Lobato, Yingzhen Li, Mark Rowland, Daniel Hernández-Lobato, Thang D.
+Bui, and Richard E. Turner. Black-box -divergence minimization. In International Conference on
+Machine Learning , 2016.
+Geoﬀrey E Hinton and Drew Van Camp. Keeping the neural networks simple by minimizing the
+description length of the weights. In Conference on Computational Learning Theory , pages 5–13,
+1993.
+Matthew D Hoﬀman, David M Blei, Chong Wang, and John Paisley. Stochastic variational inference.
+Journal of Machine Learning Research , 14(1):1303–1347, 2013.
+Antti Honkela, Tapani Raiko, Mikael Kuusela, Matti Tornio, and Juha Karhunen. Approximate
+Riemannian conjugate gradient learning for ﬁxed-form variational bayes. Journal of Machine Learning
+Research , 11(Nov):3235–3268, 2010.
+Tommi S Jaakkola and Michael I Jordan. Improving the mean ﬁeld approximation via the use of
+mixture distributions. In Learning in graphical models , pages 163–173. Springer, 1998.
+Mohammad E Khan, Pierre Baqué, François Fleuret, and Pascal Fua. Kullback-Leibler proximal
+variational inference. In Advances in Neural Information Processing Systems , pages 3402–3410, 2015.
+Mohammad Emtiyaz Khan and Wu Lin. Conjugate-computation variational inference : Converting
+variational inference in non-conjugate models to inferences in conjugate models. In International
+Conference on Artiﬁcial Intelligence and Statistics , 2018.
+Mohammad Emtiyaz Khan, Reza Babanezhad, Wu Lin, Mark Schmidt, and Masashi Sugiyama. Faster
+stochastic variational inference using proximal-gradient methods with general divergence functions.
+InConference on Uncertainty in Artiﬁcial Intelligence , pages 319–328, 2016.
+Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International
+Conference on Learning Representations , 2014.
+Diederik P Kingma and Max Welling. Auto-encoding variational Bayes. In International Conference on
+Learning Representations , 2014.
+Diederik P Kingma, Tim Salimans, and Max Welling. Variational dropout and the local reparameteri-
+zation trick. In Advances in Neural Information Processing Systems , pages 2575–2583, 2015.
+James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins, Andrei A.
+Rusu, Kieran Milan, John Quan, Tiago Ramalho, Agnieszka Grabska-Barwinska, Demis Hassabis,
+Claudia Clopath, Dharshan Kumaran, and Raia Hadsell. Overcoming catastrophic forgetting in
+neural networks. Proceedings of the National Academy of Sciences , 2017.
+David A. Knowles and Tom Minka. Non-conjugate variational message passing for multinomial and
+binary regression. In Advances in Neural Information Processing Systems , pages 1701–1709, 2011.
+Alp Kucukelbir, Dustin Tran, Rajesh Ranganath, Andrew Gelman, and David M Blei. Automatic
+diﬀerentiation variational inference. Journal of Machine Learning Research , 18(1):430–474, 2017.
+32
+Neil D Lawrence. Gaussian process latent variable models for visualisation of high dimensional data. In
+Advances in Neural Information Processing Systems , pages 329–336, 2004.
+Yingzhen Li, José Miguel Hernández-Lobato, and Richard E. Turner. Stochastic expectation propagation.
+InAdvances in Neural Information Processing Systems , pages 2323–2331, 2015.
+Zhizhong Li and Derek Hoiem. Learning without forgetting. In European Conference on Computer
+Vision, 2016.
+Vincenzo Lomonaco and Davide Maltoni. Core50: a new dataset and benchmark for continuous object
+recognition. In Conference on Robot Learning , pages 17–26, 2017.
+David JC MacKay. Information theory, inference and learning algorithms . Cambridge University Press,
+2003.
+Alexander G. D. G. Matthews, James Hensman, Richard E Turner, and Zoubin Ghahramani. On
+sparse variational methods and the Kullback-Leibler divergence between stochastic processes. In
+International Conference on Artiﬁcial Intelligence and Statistics , 2016.
+Alexander G De G Matthews, Mark Van Der Wilk, Tom Nickson, Keisuke Fujii, Alexis Boukouvalas,
+Pablo León-Villagrá, Zoubin Ghahramani, and James Hensman. GPﬂow: A Gaussian process library
+using TensorFlow. Journal of Machine Learning Research , 18(1):1299–1304, 2017.
+Michael McCloskey and Neal J. Cohen. Catastrophic interference in connectionist networks: The
+sequential learning problem. Psychology of Learning and Motivation , 1989.
+Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Arcas.
+Communication-eﬃcient learning of deep networks from decentralized data. In International Confer-
+ence on Artiﬁcial Intelligence and Statistics , pages 1273–1282, 2017.
+Lars Mescheder, Sebastian Nowozin, and Andreas Geiger. Adversarial variational bayes: Unifying
+variational autoencoders and generative adversarial networks. In International Conference on Machine
+Learning , pages 2391–2400, 2017.
+T. Minka, J.M. Winn, J.P. Guiver, Y. Zaykov, D. Fabian, and J. Bronskill. /Infer.NET 0.3, 2018.
+Microsoft Research Cambridge. http://dotnet.github.io/infer.
+Thomas P Minka. Expectation propagation for approximate Bayesian inference. In Conference on
+Uncertainty in Artiﬁcial Intelligence , pages 362–369, 2001.
+Thomas P. Minka. Power EP. Technical report, Microsoft Research Cambridge, 2004.
+Philipp Moritz, Robert Nishihara, Stephanie Wang, Alexey Tumanov, Richard Liaw, Eric Liang, William
+Paul, Michael I Jordan, and Ion Stoica. Ray: A distributed framework for emerging AI applications.
+arXiv preprint arXiv:1712.05889 , 2017.
+Radford M. Neal. Bayesian learning via stochastic dynamics. In Advances in Neural Information
+Processing Systems , pages 475–482, 1993.
+Radford M Neal. Bayesian learning for neural networks , volume 118. Springer Science & Business
+Media, 2012.
+Cuong V. Nguyen, Yingzhen Li, Thang D. Bui, and Richard E. Turner. Variational continual learning.
+InInternational Conference on Learning Representations , 2018.
+33
+Duy Nguyen-Tuong, Jan R Peters, and Matthias Seeger. Local Gaussian process regression for real
+time online model learning. In Advances in Neural Information Processing Systems , pages 1193–1200,
+2009.
+Manfred Opper. Online learning in neural networks. chapter A Bayesian Approach to Online Learning,
+pages 363–378. Cambridge University Press, 1998.
+Simon T O’Callaghan and Fabio T Ramos. Gaussian process occupancy maps. The International
+Journal of Robotics Research , 31(1):42–62, 2012.
+Neal Parikh and Stephen Boyd. Proximal algorithms. Foundations and Trends Rin Optimization , 1(3):
+127–239, 2014.
+Joaquin Quiñonero-Candela and Carl E. Rasmussen. A unifying view of sparse approximate Gaussian
+process regression. Journal of Machine Learning Research , 2005.
+Rajesh Ranganath, Dustin Tran, and David Blei. Hierarchical variational models. In International
+Conference on Machine Learning , pages 324–333, 2016.
+GarveshRaskuttiandSayanMukherjee. Theinformationgeometryofmirrordescent. IEEE Transactions
+on Information Theory , 61(3):1451–1457, March 2015.
+Carl E. Rasmussen and Christopher K. I. Williams. Gaussian Processes for Machine Learning . The
+MIT Press, 2006.
+Roger Ratcliﬀ. Connectionist models of recognition memory: Constraints imposed by learning and
+forgetting functions. Psychological Review , 1990.
+Danilo Rezende and Shakir Mohamed. Variational inference with normalizing ﬂows. In International
+Conference on Machine Learning , pages 1530–1538, 2015.
+Danilo Jimenez Rezende, Shakir Mohamed, and Daan Wierstra. Stochastic backpropagation and
+approximate inference in deep generative models. In International Conference on Machine Learning ,
+pages 1278–1286, 2014.
+Tim Salimans and David A Knowles. Fixed-form variational posterior approximation through stochastic
+linear regression. Bayesian Analysis , 8(4):837–882, 2013.
+Tim Salimans, David A Knowles, et al. Fixed-form variational posterior approximation through
+stochastic linear regression. Bayesian Analysis , 8(4):837–882, 2013.
+Tim Salimans, Diederik Kingma, and Max Welling. Markov chain Monte Carlo and variational inference:
+Bridging the gap. In International Conference on Machine Learning , pages 1218–1226, 2015.
+Hugh Salimbeni, Stefanos Eleftheriadis, and James Hensman. Natural gradients in practice: Non-
+conjugate variational inference in Gaussian process models. In International Conference on Artiﬁcial
+Intelligence and Statistics , 2018.
+Masa-Aki Sato. Online model selection based on the variational Bayes. Neural Computation , 2001.
+Jeﬀrey C. Schlimmer and Douglas Fisher. A case study of incremental concept induction. In The
+National Conference on Artiﬁcial Intelligence , 1986.
+Steven L Scott, Alexander W Blocker, Fernando V Bonassi, Hugh A Chipman, Edward I George, and
+Robert E McCulloch. Bayes and big data: The consensus Monte Carlo algorithm. International
+Journal of Management Science and Engineering Management , 11(2):78–88, 2016.
+34
+Ari Seﬀ, Alex Beatson, Daniel Suo, and Han Liu. Continual learning in generative adversarial nets.
+arXiv:1705.08395 , 2017.
+Rishit Sheth and Roni Khardon. A ﬁxed-point operator for inference in variational Bayesian latent
+Gaussian models. In Arthur Gretton and Christian C. Robert, editors, International Conference on
+Artiﬁcial Intelligence and Statistics , volume 51 of Proceedings of Machine Learning Research , pages
+761–769, Cadiz, Spain, 09–11 May 2016a. PMLR.
+Rishit Sheth and Roni Khardon. Monte carlo structured SVI for non-conjugate models. arXiv preprint
+arXiv:1612.03957 , 2016b.
+Rishit Sheth, Yuyang Wang, and Roni Khardon. Sparse variational inference for generalized GP models.
+In Francis Bach and David Blei, editors, International Conference on Machine Learning , volume 37,
+pages 1302–1311, 2015.
+Hanul Shin, Jung Kwon Lee, Jaehong Kim, and Jiwon Kim. Continual learning with deep generative
+replay. In Advances in Neural Information Processing Systems , pages 2990–2999, 2017.
+Sharad Singhal and Lance Wu. Training multilayer perceptrons with the extended Kalman algorithm.
+InAdvances in Neural Information Processing Systems , 1989.
+Alex J. Smola, S.V.N. Vishwanathan, and Eleazar Eskin. Laplace propagation. In Advances in Neural
+Information Processing Systems , 2004.
+Erik B Sudderth, Alexander T Ihler, Michael Isard, William T Freeman, and Alan S Willsky. Nonpara-
+metric belief propagation. Communications of the ACM , 53(10):95–103, 2010.
+Richard S. Sutton and Steven D. Whitehead. Online learning with random representations. In
+International Conference on Machine Learning , 1993.
+The Royal Society. Machine learning: The power and promise of computers that learn by example.
+Technical report, The Royal Society, 2017.
+Lucas Theis and Matthew D Hoﬀman. A trust-region method for stochastic variational inference with
+applications to streaming data. In International Conference on Machine Learning , 2015.
+Tijmen Tieleman and Geoﬀrey E Hinton. Lecture 6.5—RmsProp: Divide the gradient by a running
+average of its recent magnitude. COURSERA: Neural Networks for Machine Learning, 2012.
+Michalis K. Titsias. Variational learning of inducing variables in sparse Gaussian processes. In
+International Conference on Artiﬁcial Intelligence and Statistics , pages 567–574, 2009.
+Dustin Tran, Matthew D. Hoﬀman, Rif A. Saurous, Eugene Brevdo, Kevin Murphy, and David M. Blei.
+Deep probabilistic programming. In International Conference on Learning Representations , 2017.
+Volker Tresp. A Bayesian committee machine. Neural computation , 12(11):2719–2741, 2000.
+Richard E. Turner and Maneesh Sahani. Two problems with variational expectation maximisation for
+time-series models. In D. Barber, T. Cemgil, and S. Chiappa, editors, Bayesian Time series models ,
+chapter 5, pages 109–130. Cambridge University Press, 2011.
+Matt P. Wand. Fully simpliﬁed multivariate Normal updates in non-conjugate variational message
+passing. Journal of Machine Learning Research , 15:1351–1369, 2014.
+35
+Bo Wang and DM Titterington. Lack of consistency of mean ﬁeld and variational Bayes approximations
+for state space models. Neural Processing Letters , 20(3):151–170, 2004.
+Xiangyu Wang and David B Dunson. Parallelizing MCMC via Weierstrass sampler. arXiv preprint
+arXiv:1312.4605 , 2013.
+John Winn and Tom Minka. Probabilistic programming with Infer.NET. Machine Learning Summer
+School, 2009.
+John Winn, Christopher M. Bishop, and Tommi Jaakkola. Variational message passing. Journal of
+Machine Learning Research , 6:661–694, 2005.
+Friedemann Zenke, Ben Poole, and Surya Ganguli. Continual learning through synaptic intelligence. In
+International Conference on Machine Learning , pages 3987–3995, 2017.
+Chen Zeno, Itay Golan, Elad Hoﬀer, and Daniel Soudry. Bayesian gradient descent: Online variational
+Bayes learning with increased robustness to catastrophic forgetting and weight pruning, 2018.
+Sixin Zhang, Anna E Choromanska, and Yann LeCun. Deep learning with elastic averaging SGD. In
+Advances in Neural Information Processing Systems , pages 685–693, 2015.
+Yue Zhao, Meng Li, Liangzhen Lai, Naveen Suda, Damon Civin, and Vikas Chandra. Federated learning
+with non-IID data, 2018.
+36
+A Proofs
+A.1 Relating Local KL minimization to Local Free-energy Minimization: Proof
+of Property 1
+Substituting the tilted distribution bp(i)()into the KL divergence yields,
+KL
+q()kbp(i)()
+=Z
+dq() logq()bZit(i 1)
+bi()
+q(i 1)()p(ybij)= logbZi Z
+dq() logq(i 1)()p(ybij)
+q()t(i 1)
+bi():
+HenceF(i)(q()) = logbZi KL 
+q()kbp(i)()
+.
+A.2 Showing Valid normalization of q(): Proof of Property 2
+This property holds for i= 0. By induction, assuming q(i 1)() =p()Q
+mt(i 1)
+m(), we have:
+p()Y
+mt(i)
+m() =p()t(i)
+bi()Y
+m6=bit(i)
+m() =p()q(i)()
+q(i 1)()t(i 1)
+bi()Y
+m6=bit(i 1)
+m()
+=q(i)()
+q(i 1)()p()Y
+mt(i 1)
+m() =q(i)():
+Hence, the property holds for all i.
+A.3 Maximizationoflocalfree-energiesimpliesmaximizationofglobalfree-energy:
+Proof of Property 3
+(a) We have:
+X
+mFm(q()) =X
+mZ
+dq() logp(ymj)
+tm()=Z
+dq() logp()Q
+mp(ynj)
+p()Q
+mtm()=F(q()):
+(b)Letqand
+qbethevariationalparametersof q()andq()respectively. Wecanwrite q() =q(;q)
+andq() =q(;
+q) =p()Q
+mtm(;
+q). First, we show that at convergence, the derivative of the
+global free-energies equals the sum of the derivatives of the local free-energies. The derivative of the
+local free-energyFm(q())w.r.t.qis:
+dFm(q())
+dq=d
+dqZ
+dq(;q) logq(;
+q)p(ymj)
+q(;q)tm(;q)
+=d
+dqZ
+dq(;q) logp(ymj)
+tm(;q)+d
+dqZ
+dq(;q) logq(;
+q)
+q(;q)
+=d
+dqZ
+dq(;q) logp(ymj)
+tm(;q)+Z
+ddq(;q)
+dqlogq(;
+q)
+q(;q)  :0Z
+ddq(;q)
+dq:
+Thus, at convergence when q=
+q,
+dFm(q())
+dq
+q=q=d
+dqZ
+dq(;q) logp(ymj)
+tm(;q)
+q=q:
+37
+Summing both sides over all m,
+X
+mdFm(q())
+dq
+q=q=d
+dqZ
+dq(;q) logQ
+mp(ymj)Q
+mtm(;q)
+q=q
+=d
+dqZ
+dq(;q) logp()Q
+mp(ymj)
+q(;q)
+q=q:
+Now consider the derivative of the global free-energy F(q()):
+dF(q())
+dq=d
+dqZ
+dq(;q) logp()Q
+mp(ymj)
+q(;q)
+=Z
+ddq(;q)
+dqlogp()Q
+mp(ymj)
+q(;q)  :0Z
+ddq(;q)
+dq:
+Hence,
+dF(q())
+dq
+q=q=Z
+ddq(;q)
+dqlogp()Q
+mp(ymj)
+q(;q)
+q=q=X
+mdFm(q())
+dq
+q=q:
+For allm, sinceq() = argmaxq()2QFm(q()), we havedFm(q())
+dq
+q=q= 0, which implies:
+dF(q())
+dq
+q=q=X
+mdFm(q())
+dq
+q=q= 0:
+Thus,q()is an extremum of F(q()).
+Now we show that q()is a maximum of F(q())by considering the Hessiand2F(q())
+dqd|
+qof the
+global free-energy at convergence. Similar to the derivative case, we now show that the Hessian of the
+global free-energies equals the sum of the Hessians of the local free-energies. The Hessian of the local
+free-energyFm(q())w.r.t.qis:
+d2Fm(q())
+dqd|
+q=d2
+dqd|
+qZ
+dq(;q) logq(;
+q)p(ymj)
+q(;q)tm(;q)
+=d2
+dqd|
+qZ
+dq(;q) logp(ymj)
+tm(;q)+d2
+dqd|
+qZ
+dq(;q) logq(;
+q)
+q(;q)
+=d2
+dqd|
+qZ
+dq(;q) logp(ymj)
+tm(;q)+Z
+dd2q(;q)
+dqd|
+qlogq(;
+q)
+q(;q)
+ 
+ :0d
+dqZ
+ddq(;q)
+d|
+q:
+At convergence when q=
+q,
+d2Fm(q())
+dqd|
+q
+q=q=d2
+dqd|
+qZ
+dq(;q) logp(ymj)
+tm(;q)
+q=q:
+Summing both sides over all m,
+X
+md2Fm(q())
+dqd|
+q
+q=q=d2
+dqd|
+qZ
+dq(;q) logQ
+mp(ymj)Q
+mtm(;q)
+q=q
+=d2
+dqd|
+qZ
+dq(;q) logp()Q
+mp(ymj)
+q(;q)
+q=q:
+38
+Now consider the Hessian of the global free-energy F(q()):
+d2F(q())
+dqd|
+q=d2
+dqd|
+qZ
+dq(;q) logp()Q
+mp(ymj)
+q(;q)
+=Z
+dd2q(;q)
+dqd|
+qlogp()Q
+mp(ymj)
+q(;q) 
+ :0d
+dqZ
+ddq(;q)
+d|
+q:
+Hence,
+d2F(q())
+dqd|
+q
+q=q=Z
+dd2q(;q)
+dqd|
+qlogp()Q
+mp(ymj)
+q(;q)
+q=q=X
+md2Fm(q())
+dqd|
+q
+q=q:
+For allm, sinceq() =argmaxq()2QFm(q()), the Hessiand2Fm(q())
+dqd|
+q
+q=qis negative deﬁnite, which
+implies that the Hessiand2F(q())
+dqd|
+q
+q=qof the global free-energy is also negative deﬁnite. Therefore,
+q()is a maximum of F(q()).
+A.4 Derivation of ﬁxed point equations (property 4)
+Assume that the approximate likelihoods ftm()gM
+m=1are in the un-normalized exponential family. That
+is,tm() =exp(|
+mT() +cm)for some constant cm. In this section we absorb the constant into the
+natural parameters |
+m [cm;|
+m]and add a corresponding unit element into the suﬃcient statistics
+T()| [1;T()|]. To lighten notation we still denote the suﬃcient statistic vector as T()so ,
+tm() =tm(;m) = exp(|
+mT()); (22)
+wheremis the natural parameters and T()is the augmented suﬃcient statistics. We also assume that
+the priorp()and the variational distributions q(i)()are normalized exponential family distributions.
+To derive the ﬁxed point updates for the local variational inference algorithm, we consider maximizing
+thelocalvariationalfreeenergy F(i)(q())in(2). Assumingthatatiteration i, thevariationaldistribution
+q(i 1)()obtained from the previous iteration has the form:
+q(i 1)() = exp(|
+prevT() A(prev)); (23)
+and the target distribution q()that we optimize has the form:
+q() = exp(|
+qT() A(q)); (24)
+whereA()is the log-partition function. Let =prev q (i 1)
+bi, we can writeF(i)(q())as:
+F(i)(q()) =A(q) A(prev) +Eq(logp(ybij)) +|Eq(T()):
+Take the derivative of F(i)(q())w.r.t.qand note thatdA(q)
+dq= Eq(T()), we have:
+dF(i)(q())
+dq=d
+dqEq(logp(ybij)) +d2A(q)
+dqdq:
+Set this derivative to zero, we obtain:
+q=C 1d
+dqEq(logp(ybij)) +prev (i 1)
+bi; (25)
+39
+where C:=d2A(q)
+dqdq=covq()[T()T|()]is the Fisher Information. Note that from Property 2,
+q=0+P
+m6=bi(i 1)
+m +(i)
+biandprev=0+P
+m(i 1)
+m, where0is the natural parameters for the
+priorp(). Hence, from (25), a ﬁxed point update for Algorithm 1 only needs to update (i)
+bilocally
+using:
+(i)
+bi=C 1d
+dqEq(logp(ybij)): (26)
+The Fisher Information can be written as C=dq
+dqwhereq=Eq(T())is the mean parameter of q().
+This leads to a cancellation of the Fisher information,
+(i)
+bi=d
+dqEq(logp(ybij)): (27)
+A.5 Equivalence of local and global ﬁxed-points: Proof of property 5
+Here we show that running parallel ﬁxed-point updates of local-VI with Mdata groups has equivalent
+dynamics for q()as running the ﬁxed points for batch VI ( M= 1). The local-VI ﬁxed point updates
+(property 4) are given by,
+(i)
+bi=d
+dq(i 1)Eq(i 1)(logp(ybij)): (28)
+Here we have explicitly denoted the dependence of the approximate posterior on the iteration number i
+as the dynamics of this is the focus. When M=Nand a parallel ﬁxed point update of all the natural
+parameters,f(i)
+ngN
+n=1, is performed, the natural parameters of q()are updated as follows,
+(i)
+q=0+MX
+m=1(i)
+n=0+MX
+m=1d
+dq(i 1)Eq(i 1)(logp(ybij))
+=0+NX
+n=1d
+dq(i 1)Eq(i 1)(logp(ynj)): (29)
+Here, in the last line, we have used the fact that the data are independent conditioned on . Now
+consider application of the ﬁxed-point updates to the batch case ( M= 1)
+(i)
+q=0+=0+d
+dq(i 1)Eq(logp(yj)) =0+NX
+n=1d
+dq(i 1)Eq(i 1)(logp(ynj))(30)
+Therefore the updates for q()are identical in the two cases. Naïve implementation of local-VI requires
+Msets of natural parameters to be maintained, whereas parallel updating means this is unnecessary,
+but equivalent to ﬁxed-point global VI.
+A.6 Relationsbetweenmethodsemployingstochasticapproximationofﬁxed-points
+/ natural gradient updates
+The damped simpliﬁed ﬁxed-point updates for global VI are,
+(i)
+q= (1 )(i 1)
+q +
+0+d
+dqEq(logp(yj))
+: (31)
+40
+Hoﬀman et al. [2013], Sheth and Khardon [2016b] employ stochastic mini-batch approximation of
+Eq(logp(yj)) =P
+nEq()(logp(ynj)) =NEpdata(y);q()(logp(ynj))by sub-sampling the data distribu-
+tionyliidpdata(y)wherepdata(y) =1
+NPN
+n=1(y yn). This approximation yields,
+(i)
+q= (1 )(i 1)
+q +
+0+Ld
+dqEq(logp(ylj))
+: (32)
+Where ylare a mini-batch containing N=Ldata points. Li et al. [2015] show that their stochastic power
+EP algorithm recovers precisely these same updates when !0(this is related to property 6). The
+relation to EP-like algorithms can be made more explicit by writing 32 as
+(i)
+q=(i 1)
+q +0d
+dqEq(logp(ylj)) (i 1)
+like=L
+: (33)
+Where0=Lis a rescaled learning rate and (i 1)
+like=(i 1)
+q (i 1)
+0is the portion of the approximate
+posterior natural parameters that approximates the likelihoods. As such, (i 1)
+like=Lis the contribution a
+mini-batch likelihood makes on average to the posterior. So, interpreting the update in these terms,
+the new approximate posterior is equal to the old approximate posterior with 0of the average mini-
+batch likelihood approximation removed and 0of the approximation from the current mini-batch,
+d
+dqEq(logp(ymj)), added in place of it.
+Khan and Lin [2018] take a diﬀerent approach employing damped simpliﬁed ﬁxed-point updates
+for local VI M=Nand then using an update schedule that selects a mini-batch at random and then
+updates the local natural parameters for these data-points in parallel. That is for all data points in the
+mini-batch they apply
+(i)
+n= (1 )(i 1)
+n +d
+dqEq(logp(ynj)): (34)
+This local update incurs a memory overhead that is Ntimes larger due to the need maintain Nsets of
+local parameters rather than just one. However, if the mini-batch partition is ﬁxed across epochs, then
+it is suﬃcient to maintain Mnatural parameters instead, corresponding to one for each mini-batch,
+(i)
+m= (1 )(i 1)
+m +d
+dqEq(logp(ymj)): (35)
+Interestingly, both of these local updates (34 and 35) result in a subtly diﬀerent update to qas the
+stochastic global update above (33),
+(i)
+q=(i 1)
+q d
+dqEq(logp(ymj)) (i 1)
+m
+: (36)
+Here the deletion step is explicitly revealed again, but now it involves removing the natural
+parameters of the mth approximate likelihood (i 1)
+mrather than the average mini-batch likelihood
+approximation (i 1)
+like=L.
+A summary of work employing these two types of stochastic approximation is provided in ﬁgure 8.
+Each variety of update has its own pros and cons (compare 33 to 36). The stochastic global update
+33 does not support general online learning and distributed asynchronous updates, but it is more
+memory eﬃcient and faster to converge in the batch setting.
+Consider applying both methods to online learning where ylorymcorrespond to the new data seen
+at each stage and 0andare user-determined learning rates for the two algorithms. General online
+learning poses two challenges for the stochastic global update 33. First, the data are typically not iid
+41
+local VIM=N
+M=1stochastic
+schedule
+fully local
+mini-batchapproximation global*[1] Beal, 2003
+[2] Winn et al. 2005
+[3] Knowles & Minka 2004
+[4] Hoffman et al. 2013  
+[5] Hensman et al. 2013
+[6] Sheth & Khardon 2016b
+[7] Salimans & Knowles 2013
+[8] Li et al. (2015)
+[9] Khan et al. 2018
+*   global + stochastic schedule = global
+**  fully local + mini-batch = fully local[4,5,6,7,8][9]
+[1][2,3]**Figure 8: Forms of stochastic approximation in the local VI framework and the relationship to previous
+work. The granularity of the approximation of the approximation is controlled though M. Mini-batch
+approximation may be used inside each local variational free-energy. A stochastic schedule can be
+used to randomize the order in which groups of data points are visited. All algorithms have the same
+ﬁxed-points (the mini-batch approximation learning rate has to obey the Robbin’s Munro conditions).
+(due to covariate or data set shift over time). Second, general online learning does not allow all old data
+points to be revisited, demanding incremental updates instead. This means that when a new batch of
+data is received we must iterate on just these data to reﬁne the approximate posterior, before moving on
+and potentially never returning. Iterating 33 on this new data is possible, but it would have disastrous
+consequences as it again breaks the iid mini-batch assumption and would just result in qﬁtting the
+new data and forgetting the old previously seen data. A single update could be made, but this will
+normally mean that the approach is data-ineﬃcient and slow to learn. Iterating the local updates, on
+the other hand, 34 or 35 works nicely as these naturally incorporate a deletion step that removes just
+the contribution from the current mini-batch and can, therefore, be iterated to our heart’s content.
+Similar arguments can be made about the distributed setting too. Stochastic global updates could
+be used in the distributed setting, with each worker querying a server for the current natural parameters
+q, computing l=d
+dqEq(logp(ylj)) like=Land communicating this to a server. The server’s
+role is to update the global parameters (new)
+q =(old)
+q+ land to send these new parameters to
+the workers. The diﬃculty is that this setup must obey the iid assumption so i) the data must be
+distributed across the workers in an iid way, and ii) the updates must be returned by each worker with
+the same regularity. In contrast, the stochastic local updates can be used in a very similar way without
+these restrictions.
+The stochastic global update 32 does have two important advantages over the local updates 36.
+First, the memory footprint is Ltimes smaller only requiring a single set of natural parameters to be
+maintained rather than Mof them. Second, it can be faster to converge when the mini-batches are iid.
+Contrast what happens when new data are seen for the ﬁrst time in the two approaches. For simplicity
+assume0== 1. In the second approach, (i 1)
+m = 0as the data have not been seen before, but
+the ﬁrst approach eﬀectively uses (i 1)
+m =(i 1)
+like=L. That is, the ﬁrst approach eﬀectively estimates
+the approximate likelihood for new data, based on those for previously seen data. This is a sensible
+approximation for homogeneous mini-batches. A consequence of this is that the learning rate 0can be
+much larger than (potentially greater than unity) resulting in faster convergence of the approximate
+posterior. It would be interesting to consider modiﬁcations of the local updates (36) that estimate the
+mth approximate likelihood based on information from all other data partitions. For example, in the
+ﬁrst pass through the data, the approximate likelihoods for unprocessed mini-batches could be updated
+to be equal to the last approximate likelihood or to the geometric average of previous approximate
+likelihoods. Alternatively, ideas from inference networks could be employed for this purpose.
+42
+A.7 The relationship between natural gradient, mirror-descent, trust-region and
+proximal methods
+Each step of gradient ascent of parameters on a costCcan be interpreted as the result of an
+optimization problem derived from linearizing the cost function around the old parameter estimate,
+C()C((i 1))+rC((i 1))( (i 1))whererC((i 1)) =dC()
+dj=(i 1)andaddingasoftconstraint
+on the norm of the parameters:
+(i)=(i 1)+dC()
+d,(i)= argmax
+rC((i 1)) 1
+2jj (i 1)jj2
+2
+Here the terms in the linearized cost that do not depend on have been dropped as they do not eﬀect
+the solution of the optimization problem. The linearization of the cost ensures that there is an analytic
+solution to the optimization and the soft constraint ensures that we do not move too far from the
+previous setting of the parameters into a region where the linearization is inaccurate.
+This reframing of gradient ascent reveals that it is making an Euclidean assumption about the
+geometry parameter space and suggests generalizations of the procedure that are suitable for diﬀerent
+geometries. In our case, the parameters are natural parameters of a distribution and measures of
+proximity that employ the KL divergence are natural.
+The main result of this section is that the following optimization problems:
+KL proximal method: (i)
+q= argmax
+qrF(i)(q(i 1)())q 1
+KL
+q()kq(i 1)()
+(37)
+KL trust region: (i)
+q= argmax
+qrF(i)(q(i 1)())qs.t.KL
+q()kq(i 1)()
+(38)
+KLstrust region: (i)
+q= argmax
+qrF(i)(q(i 1)())qs.t.KLs
+q()kq(i 1)()
+(39)
+mirror descent: (i)
+q= argmax
+qrF(i)(q(i 1)())q 1
+KL
+q(i 1)()kq()
+(40)
+All yield the same updates as the damped ﬁxed point equations / natural gradient ascent:
+(i)
+bi= (1 )(i 1)
+bi+d
+d(i 1)
+qEq(i 1)(logp(ybij)) (41)
+= (1 )(i 1)
+bi+"
+d(i 1)
+q
+d(i 1)
+q# 1d
+d(i 1)
+qEq(i 1)(logp(ybij)): (42)
+In the ﬁrst three cases (37 - 39), this equivalence only holds exactly in the general case if the parameter
+changes (i)
+q=(i)
+q (i 1)
+qare small.
+Here the KL proximal method is the straightforward generalization of the gradient ascent example
+that replaces the Euclidean norm by the exclusive KL divergence. The KL trust region method
+uses a hard constraint on the same KL instead, but rewriting this as a Lagrangian recovers the KL
+proximal method with 1=being the Lagrange multiplier. The KLstrust region method , often used
+to justify natural gradient ascent, employs the symmetrized KL divergence instead of the exclusive
+KL. The symmetrized KL is the average of the exclusive and inclusive KLs, KLs 
+q()kq(i 1)()
+=
+1
+2KL 
+q()kq(i 1)()
++1
+2KL 
+q(i 1)()kq()
+.Mirror descent , in its most general form, uses a
+Bregman divergence to control the extent to which the parameters change rather than a KL divergence.
+However, when applied to exponential families, the Bregman divergence becomes the inclusive KL
+divergence yielding the form above [Raskutti and Mukherjee, 2015, Khan et al., 2016, Khan and
+Lin, 2018]. Note that this last method operates in the mean parameter space and the equivalence is
+43
+attained by mapping the mean parameter updates back to the natural parameters. Mirror descent has
+the advantage of not relying on the small parameter change assumption to recover natural gradient
+ascent. Having explained the rationale behind these approaches we will now sketch how they yield the
+ﬁxed-point updates.
+The equivalence of the KL proximal method can be shown by diﬀerentiating the cost wrt qand
+substituting in the following expressions:
+rF(i)(q(i 1)()) =d
+dq(i 1)Eq(i 1)(logp(ybij)) dq(i 1)
+dq(i 1)(i 1)
+bi;
+dKL 
+q()kq(i 1)()
+dq=dq
+dq
+q (i 1)
+q
+dq(i 1)
+dq(i 1)
+q (i 1)
+q
+:
+In the second line above the approximation results from the assumption of small parameter change
+(i)
+q(or alternatively local constancy of the Fisher information). Equating the derivatives to zero and
+rearranging recovers the ﬁxed point equations.
+The equivalence of the KL trust region method is now simple to show as the associated Lagrangian,
+L(q) =rF(i)(q(i 1)())q 1
+ 
+KL 
+q()kq(i 1)()
+ 
+, is theproximal method up to an additive
+constant.
+TheKLstrust region method can also be rewritten as a Lagrangian L(q) =rF(i)(q(i 1)())q 
+1
+ 
+KLs 
+q()kq(i 1)()
+ 
+. For small changes in the approximate posterior natural parameters
+(i)
+q=(i)
+q (i 1)
+q, the symmetrized KL can be approximated using a second order Taylor expansion,
+KLs
+q()kq(i 1)()
+1
+2
+q (i 1)
+q>dq(i 1)
+dq(i 1)
+q (i 1)
+q
+: (43)
+This is the same form as the exclusive KL takes, the inclusive and exclusive KL divergences being
+locally identical around their optima. Taking derivatives of the Lagrangian and setting them to zero
+recovers the ﬁxed point equations again.
+Themirror descent method can be shown to yield the ﬁxed points by noting that
+rF(i)(q(i 1)()) =d
+dq(i 1)Eq(i 1)(logp(ybij)) bi;
+dKL 
+q(i 1)()kq()
+dq=q (i 1)
+q:
+Diﬀerentiating the mirror descent objective and substituting these results in recovers usual update. The
+last result above can be found using convex duality. For a full derivation and more information on the
+relationship between mirror descent and natural gradients see Raskutti and Mukherjee [2015].
+It is also possible to deﬁne optimization approaches analogous to the above that do not linearize the
+free-energy term and instead perform potentially multiple updates of the nested non-linear optimization
+problems [Theis and Hoﬀman, 2015, Khan et al., 2015, 2016].
+A.8 The equivalence of the simpliﬁed ﬁxed-point updates and Power EP !0:
+Proof of property 6
+Assume PEP is using unnormalized distributions throughout:
+1.p(i)
+() =q(i 1)()
+p(ybij)
+t(i 1)
+bi()
+% form tilted
+44
+2.q() = proj(p(i)
+())% moment match
+3.q(i)() = 
+q(i 1)()1 1=(q())1=% update posterior
+4.t(i)
+bi() =q(i)()
+q(i 1)()t(i 1)
+bi()% update approximate likelihood
+From (2,3,4), we have:
+logt(i)
+bi() =1
+
+log proj(p(i)
+()) logq(i 1)()
++ logt(i 1)
+bi(): (44)
+Using the augmented suﬃcient statistics T()as in A.4 and the fact that q()is unnormalized, we can
+write:
+logq() = log proj( p(i)
+()) =|
+qT(): (45)
+Letq=R
+q()T()dbe the mean parameters of q(). From the moment matching projection,
+q=R
+p(i)
+()T()d. Using Taylor series to expand log proj(p(i)
+())as a function of about= 0:
+log proj(p(i)
+()) = log proj( p(i)
+())
+=0+d
+dlog proj(p(i)
+())
+=0
++F();(46)
+whereF() =P1
+t=2t
+t!(dt
+dtlog proj (p(i)
+())
+=0)collects all the high order terms in the expansion.
+Since log proj(p(i)
+())
+=0= logq(i 1)(), the above equation becomes:
+log proj(p(i)
+()) = logq(i 1)() +d
+dlog proj(p(i)
+())
+=0
++F(): (47)
+Now considerd
+dlog proj(p(i)
+()), we have:
+d
+dlog proj(p(i)
+()) =T()|dq
+d=T()|dq
+dqdq
+d(48)
+=T()|dq
+dqd
+dZ
+p(i)
+()T()d (49)
+=T()|dq
+dqd
+dZ
+q(i 1)() 
+p(ybij)
+t(i 1)
+bi()!
+T()d (50)
+=T()|dq
+dqZ
+q(i 1)() 
+p(ybij)
+t(i 1)
+bi()!
+logp(ybij)
+t(i 1)
+bi()T()d (51)
+=T()|dq
+dqd
+dq(i 1)Z
+q(i 1)() 
+p(ybij)
+t(i 1)
+bi()!
+logp(ybij)
+t(i 1)
+bi()d;(52)
+whereq(i 1)is the natural parameters of q(i 1).
+Thus,
+d
+dlog proj(p(i)
+())
+=0=T()|dq(i 1)
+dq(i 1)d
+dq(i 1)Z
+q(i 1)() logp(ybij)
+t(i 1)
+bi()d (53)
+=T()|d
+dq(i 1)Z
+q(i 1)() logp(ybij)
+t(i 1)
+bi()d: (54)
+45
+Plug this into (47), we obtain:
+log proj(p(i)
+()) = logq(i 1)() +T()|d
+dq(i 1)Z
+q(i 1)() logp(ybij)
+t(i 1)
+bi()d+F():(55)
+From this equation and (44),
+logt(i)
+bi() =1
+ 
+T()|d
+dq(i 1)Z
+q(i 1)() logp(ybij)
+t(i 1)
+bi()d+F()!
++ logt(i 1)
+bi()(56)
+=T()|d
+dq(i 1)Z
+q(i 1)() logp(ybij)
+t(i 1)
+bi()d+F()
++ logt(i 1)
+bi() (57)
+=T()|d
+dq(i 1)Z
+q(i 1)() logp(ybij)d (58)
+ T()|d
+dq(i 1)Z
+q(i 1)() logt(i 1)
+bi()d+F()
++ logt(i 1)
+bi(): (59)
+Note that:
+T()|d
+dq(i 1)Z
+q(i 1)() logt(i 1)
+bi()d= logt(i 1)
+bi()d
+dq(i 1)Z
+T()|q(i 1)()d(60)
+= logt(i 1)
+bi()dq(i 1)
+dq(i 1)(61)
+= logt(i 1)
+bi(): (62)
+Hence, (59) becomes:
+T()|(i)
+bi=T()|d
+dq(i 1)Z
+q(i 1)() logp(ybij)d+F()
+; (63)
+which is equivalent to:
+T()|(i)
+bi=T()|d
+dqZ
+q() logp(ybij)d+F()
+: (64)
+Letq()be the normalized distribution of q(), i.e.q() =Zqq(). The ﬁxed point update for local VI
+is:
+(i)
+bi=d
+dqZ
+q() logp(ybij)d; (65)
+whereq=R
+T()|q()d=q=Zq. We have:
+d
+dqZ
+q() logp(ybij)d=dq
+dqd
+dqZ1
+Zqq() logp(ybij)d (66)
+= (  ZqI)1
+  Zqd
+dqZ
+q() logp(ybij)d (67)
+=d
+dqZ
+q() logp(ybij)d: (68)
+From this equation and the fact thatF()
+!0when!0, the ﬁxed point update for local VI satisﬁes
+the Power-EP update in (64) when !0.
+46
+B Gradients of the free-energy with respect to hyperparameters
+In this section, we derive the gradients of the global free energy wrt the hyperparameters when the
+local VI procedure has converged to the optimal approximate posterior (either through analytic, oﬀ-the-
+shelf or ﬁxed-point optimization). We provide two derivations: First, the standard one which is speciﬁc
+to approximate posteriors that are in the exponential family. Second, a derivation that applies for
+generalq()which also provides more insight.
+B.1 The standard derivation
+As shown in the previous sections, the global free energy is as follows,
+F(q()) =Z
+dq(;q) logp()Q
+mp(ymj)
+q(;q)
+=Z
+dq(;q)[logp() logq(;q)]
+| {z }
+F1+X
+mZ
+dq(;q) logp(ymj)
+|{z }
+F2:
+Note that,
+q(;q) = exp(|
+qT() A(q));
+p(;0) = exp(|
+0T() A(0));
+q=0+X
+mm:
+Hence,
+F1=A(q) A(0) X
+m|
+nEq()[T()] =A(0) A(q) X
+m|
+ndA(q)
+dq:
+DiﬀerentiatingF1andF2wrt a hyperparameter of the model, noting that the natural gradients of
+the local factors and the global variational approximation both depend on , gives,
+dF1
+d=dA(q)
+dq|dq
+d dA(0)
+d0|d0
+d X
+mdA(q)
+dq|dm
+d |
+md2A(q)
+dqdqdq
+d
+dF2
+d=X
+m@F2m
+@+@F2m
+@q|dq
+d
+Note thatq=0+P
+mm, leading to
+ X
+mdm
+d= dq
+d+d0
+d; (69)
+Here,
+@F2m
+@q=@
+@qEq(logp(ybij)): (70)
+and that at convergence 31,
+@F2m
+@q=dq
+dqq=d2A(q)
+dqdqm: (71)
+47
+Therefore,
+dFVFE
+d=dA(q)
+dq dA(0)
+d0|d0
+d+X
+m@F2m
+@(72)
+= (q 0)|d0
+d+X
+m@F2m
+@; (73)
+whereq=dA(q)
+dq=Eq()[T()]are themeanparameters.
+B.2 A more general derivation
+Considerthegeneralcasewheretheapproximateposteriorcomprisesaproductoftermsthatapproximate
+the likelihoods and one that approximates the prior,
+q(; ) =NY
+n=0tn(; ): (74)
+Here are the variational parameters (these may correspond to natural parameters. Again the scale
+of the approximate terms tn(; )will be set such that q(; )is normalized. Note this is a more
+general form of approximate posterior that allows the prior to be approximated if it lies outside of the
+variational family Q. If the prior lies within the variational family, the local updates will automatically
+set it equal to the prior recovering the treatment in the rest of the paper and meaning that the results
+presented here will still hold.
+The global free-energy depends on the model hyperparameters through the joint distribution
+p(y;j),
+F(;q(; )) =Z
+dq(; ) logp(y;j)
+q(; )(75)
+Now consider the optimal variational approximation for a ﬁxed setting of the hyperparameters,
+ opt() = argmax
+ Z
+dq(; ) logp(y;j)
+q(; ): (76)
+The collapsed variational bound can therefore be denoted, F(;q(; opt()))and it is this that we will
+optimize to ﬁnd the hyperparameters. Before we do so, note that we have been careful to represent
+the two distinct ways that the free-energy depends on the hyperparameters, i) through the log-joint’s
+dependence, ii) through the optimal approximate posterior’s implicit dependence via  opt()). In fact we
+can decouple these two contributions and consider evaluating the free-energy when the hyperparameters
+diﬀer,F(;q(; opt(0))), the collapsed bound being recovered when 0=.
+We are now in a position to compute derivatives of the collapsed free-energy using the insight above
+to split this into two terms,
+d
+dF(;q(; opt())) =d
+dF(;q(; opt(0)))
+0=+d
+d0F(;q(; opt(0)))
+0=: (77)
+48
+We now consider these two terms: First, the dependence through the log-joint distribution,
+d
+dF(;q(; opt(0)))
+0==d
+dZ
+dq(; (0)) logp(y;j)
+0=
+=MX
+m=1d
+dZ
+dq(; (0)) logp(ymj;)
+0=+Z
+dq(; (0))d
+dlogp(j)
+0=
+=MX
+m=1Eq()d
+dlogp(ymj;)
++Eq()d
+dlogp(j)
+: (78)
+Second, the dependence through the optimal approximate posterior’s implicit dependence on 
+d
+d0F(;q(; opt(0)))
+0==d opt(0)
+d0d
+d F(;q(; )
+0=; = opt(0)= 0: (79)
+Here we have substituted in the fact that were are at the collapsed bound and so the derivative wrt  
+is zero.
+So the term that arises from the dependence of the approximate posterior on the hyperparameters
+(terms 2) vanishes meaning the only contribution comes from the ﬁrst term. This is precisely the
+same term that would remain if we were to perform coordinate ascent (since then when updating the
+hyperparameters the approximate posterior would have been ﬁxed).
+d
+dF(;q(; opt())) =MX
+m=1Eq(; opt())d
+dlogp(ymj;)
++Eq(; opt())d
+dlogp(j)
+:(80)
+When the prior distribution is in the exponential family, the second term above becomes
+Eq(; opt())d
+dlogp(j)
+= (q 0)|d0
+d: (81)
+This recovers the expression in the previous section, although we have not assumed the approximate
+posterior is in the exponential family (here qand0are the average of the prior’s suﬃcient statistics
+under the approximate posterior and the prior respectively).
+Figure 9 provides some intuition for these results. Note that in the case where the approximating
+family includes the true posterior distribution, the collapsed bound is equal to the log-likelihood of the
+hyperparameters. So, the result shows that the gradient of the log-likelihood wrt the hyperparameters
+is equal to the gradient of the free-energy wrt the hyperparameters, treating qas ﬁxed. Often this
+is computed in the M-step of variational EM, but it is used in coordinate ascent, which can be slow
+to converge. Instead, this gradient can be passed to an optimizer to perform direct gradient-based
+optimization of the log-likelihood.
+C Streaming Gaussian process regression and classiﬁcation
+C.1 Online variational free-energy approach using shared pseudo-points with ap-
+proximate maximum likelihood learning for the hyperparameters
+We consider a variational inference scheme with an approximation posterior based on pseudo-points
+and that all streaming batches or groups of data points touch the same set of pseudo-points, that is,
+p(fjy)/p(f)RY
+r=1p(yrjf)p(f)RY
+r=1tr(u)/p(f6=uju)q(u) =q(f); (82)
+49
+= 0
+= Figure 9: Contours of the free-energy F(;q(; ))are shown in green as a function of the hyper-
+parameters and the variational parameters of the approximate posterior . The collapsed bound
+F(;q(; opt()))is shown in blue. The gradients of the free-energy with respect to the variational
+parameters are zero along the collapsed boundd
+d F(;q(; ))j = opt= 0, by deﬁnition. This means
+that the gradients of the collapsed free-energy as a function of the hyperparameters are equal to those
+of the free-energy itself,d
+dF(;q(; )) =d
+dF(;q(; opt())).
+whereRis the number of batches considered and tr(u)is the approximate contribution of the r-th
+batch to the posterior. This is the standard set up considered for sparse GPs in the literature, see
+e.g. Hensman et al. [2013], Bui et al. [2017b]. We next detail the speciﬁcs for the streaming settings
+[Bui et al., 2017a], when we allow the pseudo-points to move and adjust the hyperparameters as new
+data arrive.
+Leta=f(zold)andb=f(znew)be the pseudo-outputs or inducing points before and after seeing
+new data, where zoldandzneware the pseudo-inputs accordingly. Note that extra pseudo-points can be
+added or conversely, old pseudo-points can be removed, i.e. the cardinalities of aandbdo not need to
+be the same. The previous posterior, qold(f) =p(f6=aja;old)q(a), can be used to ﬁnd the approximate
+likelihood given by old observations as follows,
+p(yoldjf)qold(f)p(yoldjold)
+p(fjold)asqold(f)p(fjold)p(yoldjf)
+p(yoldjold): (83)
+Note that we have made the dependence of the hyperparameters explicit, as these will be optimized,
+together with the variational parameters, using the variational free-energy. Substituting the approximate
+likelihood above into the posterior that we want to target gives us:
+p(fjyold;ynew) =p(fjnew)p(yoldjf)p(ynewjf)
+p(ynew;yoldjnew)p(fjnew)qold(f)p(yoldjold)p(ynewjf)
+p(fjold)p(ynew;yoldjnew):(84)
+The new posterior approximation takes the same form as with the previous posterior, but with
+the new pseudo-points and new hyperparameters: qnew(f) =p(f6=bjb;new)q(b). This approximate
+50
+posterior can be obtained by minimizing the KL divergence,
+KL[qnew(f)jj^p(fjyold;new)] =Z
+dfqnew(f) logp(f6=bjb;new)qnew(b)
+p(yoldjold)
+p(ynew;yoldjnew)p(fjnew)p(ynewjf)qold(f)
+p(fjold)(85)
+= logZ2(new)
+Z1(old)+Z
+dfqnew(f)
+logp(ajold)qnew(b)
+p(bjnew)qold(a)p(ynewjf)
+:(86)
+The last equation above is obtained by noting that p(fjnew)=p(f6=bjb;new) =p(bjnew)and
+qold(f)
+p(fjold)=hhhhhhhp(f6=aja;old)qold(a)
+hhhhhhhp(f6=aja;old)p(ajold)=qold(a)
+p(ajold):
+Since the KL divergence is non-negative, the second term in (86)is the negative lower bound of
+the approximate online log marginal likelihood5, or the variational free energy, F(qnew(f)). We can
+decompose the bound as follows,
+F(qnew(f);new) =Z
+dfqnew(f)
+logp(ajold)qnew(b)
+p(bjnew)qold(a)p(ynewjf)
+= KL(q(b)jjp(bjnew)) Z
+dfqnew(f) logp(ynewjf)
+ Z
+daqnew(a) logqold(a)
+p(ajold):
+The ﬁrst two terms form the variational free-energy as if the current batch is the whole training data, and
+the last term constrains the posterior to take into account the old likelihood (through the approximate
+posterior and the prior).
+C.2 Online variational free-energy approach using private pseudo-points with ap-
+proximate maximum likelihood learning for the hyperparameters
+Instead of using a common set of pseudo-points for all data points or streaming batches, we can assign
+separate pseudo-points to each batch of data points as follows,
+p(fjy)/p(f)RY
+r=1p(yrjf)p(f)RY
+r=1tr(ur)/p(f6=uju)q(u) =q(f); (87)
+where urare the pseudo-points private to the r-th batch. As new data arrives, new pseudo-points
+will be added to summarize the new data, and the old pseudo-points, corresponding to the previously
+seen batches, will remain unchanged. This means we only need to add and adjust new pseudo-points
+and the new likelihood approximation for the new data points, as opposed to all pseudo-points and all
+corresponding likelihood approximations as done in the previous section.
+Similar to the online learning the previous section, we will try to approximate the running posterior
+in eq. (84),
+p(fjyold;ynew)p(fjnew)qold(f)p(ynewjf)
+p(fjold)p(yoldjold)
+p(ynew;yoldjnew); (88)
+where
+p(fjold) =p(f6=aja;old)p(ajold);
+qold(f) =p(f6=aja;old)q(a);
+5Note that this is only an approximation, as the hyperparameters are adjusted as new data arrive.
+51
+andarepresents all pseudo-points used for previous batches. Let bbe the new pseudo-points for the
+new data and tb(b)be the contribution of the new data points ynewtowards the posterior. The new
+approximate posterior is assumed to take the following form,
+qnew(f)/p(f6=aja;new)q(a)tb(b)
+=p(f6=a;bja;b;new)q(a)p(bja;new)tb(b);
+=p(f6=a;bja;b;new)q(a)q(bja); (89)
+where we have chosen q(bja)/p(bja;new)tb(b)and made the dependence on the hyperparameters
+newimplicit. Note that q(a)is the variational distribution over the previous pseudo-points, and such,
+we only need to parameterize and learn the conditional distribution q(bja).
+Similar to the previous section, writing down the KL divergence from the running posterior in
+eq. (88) to the approximate posterior in eq. (89), and ignoring constant terms result in the online
+variational free-energy as follows,
+F(qnew(f);new) =Z
+dfqnew(f) logp(fjnew)qold(f)p(ynewjf)
+p(fjold)qnew(f): (90)
+Note that,
+qold(f)
+p(fjold)=hhhhhhhp(f6=aja;old)q(a)
+hhhhhhhp(f6=aja;old)p(ajold)=q(a)
+p(ajold); (91)
+p(fjnew)
+qnew(f)=hhhhhhhhhhhhp(f6=aja;old)p(a;bjnew)
+hhhhhhhp(f6=aja;old)q(a;b)=p(a;bjnew)
+q(a;b): (92)
+This leads to,
+F(qnew(f);new) = KL[q(a;b)jjp(a;bjnew)] +Z
+dfqnew(f) logp(ynewjf)
+ H[q(a))] +Z
+daq(a) logp(aj): (93)
+Note again that we are only optimizing the variational parameters of q(bja)and the hyperparameters,
+and keeping q(a)ﬁxed.
+C.3 Online variational free-energy approach for both hyperparameters and the
+latent function with shared pseudo-points
+The variational approaches above, while maintaining an online distributional approximation for the
+latent function, only retain a point estimate of the hyperparameters. Imagine having observed the ﬁrst
+batch of data points in a regression task and trained the model on this batch, and that the second
+batch contains only one data point. In this case, maximum likelihood learning of the hyperparameters
+will tend to give very large observation noise, i.e. the noise is used to solely explain the new data and
+the latent function is largely ignored. Using the new model with the newly obtained hyperparameters
+will thus result in poor predictions on previously seen data points.
+We attempt to address this issue by maintaining a distributional approximation for the hyperparame-
+ters, as well as one for the latent function, and adjusting these approximations using variational inference
+as new data arrive. In particular, extending appendix C.1 by introducing a variational approximation
+over the hyperparameters gives,
+old approx. posterior: qold(f;) =p(f6=aja;)q(a)qold();
+new approx. posterior: qnew(f;) =p(f6=bjb;)q(b)qnew():
+52
+The likelihood of previously seen data points can be approximated via the approximate posterior as
+follows,
+p(yoldjf;)qold(f;)p(yold)
+p(fj)p():
+Similar to the previous section, the online variational free-energy can be obtained by applying Jensen’s
+inequality to the online log marginal likelihood, or by writing down the KL divergence as follows,
+KL[qnew(f;)jjp(f;jyall)] =Z
+dfdqnew(f;) logp(f6=bjb;)qnew(b)qnew()p(ynew;yold)
+p(fj)p()p(ynewjf;)p(yoldjf;)
+= logp(ynewjyold) +F(qnew(f;))
+where the online variational free-energy is,
+F(qnew(f;)) =Z
+dfdqnew(f;) logp(f6=bjb;)q(b)qnew()
+p(f6=aja;)q(a)qold()p(ynewjf;)
+=Z
+dfdqnew(f;) logp(a;)q(b)qnew()
+p(b;)q(a)qold()p(ynewjf;)
+= KL[qnew()jjqold()] +Z
+dq() (KL[q(b)jjp(bj)])
++Z
+dq()qnew(aj) logp(aj)
+q(a) Z
+dfdqnew(f;) logp(ynewjf;):
+Most terms in the variational free-energy above requires computing an expectation wrt the variational
+approximation q(), which is not available in closed-form even when q()takes a simple form such as a
+diagonal Gaussian. However, these expectations can be approximated by simple Monte Carlo with the
+reparameterization trick [Kingma and Welling, 2014, Rezende et al., 2014]. As in previous section, all
+other expectations can be handled tractably, either in closed-form or by using Gaussian quadrature.
+C.4 Online variational free-energy approach for both hyperparameters and the
+latent function with private pseudo-points
+As in appendix C.2, new pseudo-points can be allocated to new data as they arrive, and the current
+pseudo-points and their marginal variational approximation will remaine ﬁxed. The corresponding
+variational approximation for both the latent function and hyperparameters are:
+old approx. posterior: qold(f;) =p(f6=aja;)q(a)qold();
+new approx. posterior: qnew(f;) =p(f6=a;bja;b;)q(a)q(bja)qnew():
+The new approximate posterior above can be derived by approximating the likelihood factor of the
+new data in the running posterior as follows,
+^p(f;jy)/qold(f;)p(ynewjf;)
+=p(f6=aja;)q(a)qold()p(ynewjf;)
+=p(f6=a;bja;)q(a)qold()p(bja;b;)p(ynewjf;)
+p(f6=a;bja;b;)q(a)qold()t1(bja)t2()t3(b)t4();
+whereftig4
+i=1are the approximate factors representing the contribution of the conditional prior
+and the likelihood to the running posterior. In other words, q(bja)/t1(bja)t3(b)andqnew()/
+53
+qold()t2()t4(). Substituting the above variational approximation to the online variational free-energy
+gives us,
+F(qnew(f;)) =Z
+dfdqnew(f;) logp(f6=a;bja;b;)q(a)q(bja)qnew()
+p(f6=aja;)q(a)qold()p(ynewjf;)
+= KL[qnew()jjqold()] +Z
+dq() (KL[q(a;b)jjp(a;bj)])
+ Z
+dq() (KL[q(a)jjp(aj)]) Z
+dfdqnew(f;) logp(ynewjf;):(94)
+Similar to the previous section, all terms the free-energy above can be tractably handled in closed-form
+or by using simple Monte Carlo with the reparameterization trick [Kingma and Welling, 2014, Rezende
+et al., 2014].
+D Extra results for streaming Gaussian process regression and classi-
+ﬁcation experiments
+D.1 Binary classiﬁcation on a toy 2D data set
+In this section, we include several extra results on the toy 2D experiment presented in the main text.
+We use a Gaussian process prior with a zero mean function and an ARD exponentiated quadratic
+covariance function and thus there are three kernel hyperparameters to be tuned including the kernel
+variance and two lengthscale parameters. Several inference methods were considered: (i) MCMC for
+both the latent function and the hyperparameters, without any sparsiﬁcation, (ii) variational inference
+for the latent function and approximate maximum likelihood learning for the hyperparameters, and (iii)
+variational inference for both the latent function and the hyperparameters. We ﬁrst consider the batch,
+static setting, i.e. inference using the whole data set, and then the streaming setting with three equal
+batches for the variational methods. Figure 10 shows the predictions and the hyperparameter estimates
+for all methods once all training points are observed. The predictions seem qualitatively similar, though,
+for the approximate methods, only point estimates or overconﬁdent distributional estimates of the
+hyperparameters are obtained. The predictions made by the variational methods after sequentially
+observing the data batches, together with the hyperparameter estimates, are shown in ﬁg. 11. We also
+include a failure case when uncertainty over the hyperparameters are not retained and propagated, in
+ﬁg. 12. In this case, only ten data points were included in the second batch. One of the lengthscale
+hyperparameters was severely under-estimated when approximate maximum likelihood learning was
+used.
+E Full results of the federated learning experiments
+In this section, we include the full results of the federated learning experiment to train Bayesian neural
+networks on federated, decentralized data. As a reminder, Bayesian neural networks are an important
+model in modern machine learning toolkit, fusing the capacity of neural networks with the ﬂexibility of
+Bayesian inference. The goal of Bayesian learning for neural networks is to obtain the posterior of the
+network parameters given the training points and to use this for prediction as follows,
+posterior: p(jx;y) =p()QN
+n=1p(ynj;xn)
+p(yjx)=p()QK
+k=1QNk
+n=1p(yn;kj;xn;k)
+p(yjx);
+prediction: p(yjy;x;x) =Z
+p(jx;y)p(yj;x)d;
+54
+Figure 10: Results of the streaming GP experiment on a toy classiﬁcation data set: the performance of
+several batch and streaming methods after seeing all training points. In the batch case, we consider
+three inference methods: MCMC for both the latent variable and the hyperparameters, VI for both the
+latent function and the hyperparameters, and VI for the latent function and approximate maximum
+likelihood learning for the hyperparameters. The two latter methods are also tested in the streaming
+settings. We show the predictions made by the methods after training in the batch case, and after
+seeing all three batches in the streaming case. The (distributional) hyperparameter estimates are also
+included. Best viewed in colour.
+wherefxn;yngN
+n=1are the training points, is the network weights and biases. However, getting the
+exact posterior is analytically intractable and as such approximation methods are needed. In this
+section, we discuss several approximation strategies for training a Bayesian neural network on the
+standard MNIST ten-way classiﬁcation data set. In particular, we focus on a case where data are
+decentralized on diﬀerent machines, that is we further assume that Ntraining points are partitioned
+intoK= 10disjoint memory shards. Furthermore, two levels of data homogeneity across memory
+shards are considered: homogeneous [or iid, that is each shard has training points of all classes] and
+55
+Figure 11: Results of the streaming GP experiment on a toy classiﬁcation data set: the performance of
+the streaming methods after seeing each data batch. Two methods were considered: VI for both the
+latent function and the hyperparameters, and VI for the latent function and approximate maximum
+likelihood learning for the hyperparameters. We show the predictions made by the methods after seeing
+each data batch and the corresponding (distributional) hyperparameter estimates. Best viewed in
+colour.
+inhomogeneous [or non-iid, i.e. each shard has training points of only one class].
+We place a diagonal standard Normal prior over the parameters, p() =N(; 0;I), and initialize
+the mean of the variational approximations as suggested by Glorot and Bengio [2010]. For distributed
+training methods, the data set is partitioned into 10 subsets or shards, and 10 compute nodes (workers)
+with each able to access one memory shard. The implementation of diﬀerent inference strategies was
+done in Tensorﬂow [Abadi et al., 2016]) and the workload between workers is managed using Ray
+[Moritz et al., 2017].
+56
+Figure 12: Results of the streaming GP experiment on a toy classiﬁcation data set: a failure case of
+maximum likelihood learning for the hyperparameters. Two methods were considered: VI for both the
+latent function and the hyperparameters, and VI for the latent function and approximate maximum
+likelihood learning for the hyperparameters. We show the predictions made by the methods after seeing
+each data batch and the corresponding (distributional) hyperparameter estimates. Best viewed in
+colour.
+E.1 Global VI
+We ﬁrst considered global variational inference, as described in section 5, for getting an approximate
+posterior over the parameters. The variational lower bound (eq. (18)) is optimized using Adam [Kingma
+and Ba, 2014]. We considered one compute node (with either one core or ten cores) that can access
+the entire data set, and simulates the data distribution by sequentially showing mini-batches that can
+potentially have all ten classes (iid) or that have data of only one class (non-iid). The full performance
+on the test set during training for diﬀerent learning rate hyperparameters of the Adam optimizer
+are shown in ﬁgs. 13 and 14. Notice that in the iid setting, larger learning rates tend to yield faster
+convergence but can give a slightly poorer predictive performance on the test set at the end of training
+(see ﬁg. 14 with a learning rate of 0.005). The non-iid is arguably more diﬃcult and the performance
+57
+can oscillate if the learning rate is too large.
+E.2 Bayesian committee machine
+We next considered an embarrassingly parallel scheme based on the Bayesian committee machine
+Tresp [2000]. In particular, two prior sharing strategies as described in section 7.1, BCM - same prior
+and BCM - split prior, were considered. Each worker has access to one memory shard and performs
+global variational inference independently. While the workers were running, we occasionally polled the
+approximate posteriors from all workers, merged them using BCM and computed the test performance
+using the merged posterior. We report the test performance during training for diﬀerent prior sharing
+schemes in both iid and non-iid settings in ﬁgs. 15 and 16, respectively. Note that, we also varied
+the learning rate of Adam for each worker. Both prior sharing strategies in combination with BCM
+performs surprisingly well in the iid setting. However, they fell short in the non-iid setting as the
+Gaussian sub-posteriors can potentially have diﬀerent supports and, if this the case, multiplying them
+will not give a good global approximation.
+E.3 Sequential, one-pass PVI
+We next considered a sequential training scheme using PVI. Each worker, in turn, performs global
+variational inference with the prior being the posterior of the last trained worker. Learning using this
+schedule is identical to the Variational Continual Learning approach of Nguyen et al. [2018]. We varied
+the learning rates of Adam (used to optimize the variational lower bound for each worker) and the
+number of epochs of data used for each worker. The test performance was recorded after each worker
+ﬁnished its training, and the full results for the iid and non-iid settings are shown in ﬁgs. 17 and 18,
+respectively. This schedule performs well in the iid setting, but struggles when the data across workers
+are non-iid.
+E.4 PVI with synchronous updates
+We considered PVI with synchronous updates, i.e. the central parameter waits for all workers to ﬁnish
+before gathering the approximate likelihoods together and then sending out the new approximate
+posterior. As typically done in (parallel) Power-EP, we also considered damped updates, i.e. the new
+approximate likelihood is a linear combination of the old approximate likelihood and the factor provided
+by a worker. We explored diﬀerent damping factors (higher means slower updates), and diﬀerent
+learning rates for the optimization at the local worker. The full results on the test set during training
+are shown in ﬁgs. 19 and 20 for the iid and non-iid settings, respectively.
+E.5 PVI with asynchronous updates
+Finally, we allowed the parameter server to update the approximate posterior as soon as a worker has
+ﬁnished its computation. This schedule can potentially cause stale updates. However, this is more
+suitable to cases when the communication between the workers and the parameter server is unreliable,
+or when the distribution of data across workers is skewed, i.e. one worker might have a lot more data
+points than others and consequently might require a longer time to ﬁnish a computation round. As in
+the synchronous case, we varied the damping factor and learning rate. The full results are shown in
+ﬁgs. 22 and 23 for the iid and non-iid settings, respectively.
+58
+210100error /%
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+100101102103104
+train time /s10−1100nll /nat
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+(a) one compute node with one core and iid mini-batches
+210100error /%
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+100101102103104
+train time /s100101nll /nat
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050 (b) one compute node with one core and non-iid mini-batches
+Figure 13: The performance of global VI on the test set in the iid [left] and non-iid [right] settings, when the compute node has only one core.
+Diﬀerent traces correspond to diﬀerent learning rate hyperparameters of Adam.
+59
+(a) one compute node with ten cores and iid mini-batches
+(b) one compute node with ten cores and non-iid mini-batches
+Figure 14: The performance of global VI on the test set in the iid and non-iid settings, when the compute node has ten cores. Diﬀerent traces
+correspond to diﬀerent learning rate hyperparameters of Adam.
+60
+210100error /%
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100
+100101102103104
+train time /s100nll /nat
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100
+(a) BCM with the same N(0;1)prior across 10 workers and iid data
+210100error /%
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100
+100101102103104
+train time /s100nll /nat
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100(b) BCM with the prior N(0;1)being split equally across 10 workers and iid
+data
+Figure 15: Performance of BCM with two prior sharing strategies on the iid setting, for various learning rates. Best viewed in colour.
+61
+210100error /%
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100
+100101102103104
+train time /s2×1003×1004×100nll /nat
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100
+(a) BCM with the same N(0;1)prior across workers and non-iid data
+210100error /%
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100
+100101102103104
+train time /snll /nat
+lrate=0.0010
+lrate=0.0050
+lrate=0.0100 (b) BCM with the prior N(0;1)being split equally across workers and non-iid
+data
+Figure 16: Performance of BCM with two prior sharing strategies on the non-iid setting, for various learning rates. Best viewed in colour.
+62
+210100error /%lrate=0.001
+no epochs = 1
+no epochs = 10
+no epochs = 20no epochs = 50
+no epochs = 100
+210100error /%lrate=0.005
+100101102103104
+train time /s210100error /%lrate=0.010
+(a) Error
+10−1100nll /natlrate=0.001
+no epochs = 1
+no epochs = 10
+no epochs = 20no epochs = 50
+no epochs = 100
+10−1100nll /natlrate=0.005
+100101102103104
+train time /s10−1100nll /natlrate=0.010 (b) NLL
+Figure 17: Performance of sequential PVI with only one pass through all memory shards when the data are iid. The number of epochs for
+each worker and the learning rate hyperparameter of Adam were varied. Best viewed in colour.
+63
+210100error /%lrate=0.001
+no epochs = 1
+no epochs = 10
+no epochs = 20no epochs = 50
+no epochs = 100
+210100error /%lrate=0.005
+100101102103104
+train time /s210100error /%lrate=0.010
+(a) Error
+3×1004×100nll /natlrate=0.001
+no epochs = 1
+no epochs = 10
+no epochs = 20no epochs = 50
+no epochs = 100
+101
+3×1004×1006×100nll /natlrate=0.005
+100101102103104
+train time /s101
+3×1004×1006×100nll /natlrate=0.010(b) NLL
+Figure 18: Performance of sequential PVI with only one pass through all memory shards when the data are non-iid. The number of epochs for
+each worker and the learning rate hyperparameter of Adam were varied. Best viewed in colour.
+64
+210100error /%damping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+210100error /%damping=0.900
+100101102103
+train time /s210100error /%damping=0.800
+(a) Error
+10−1100nll /natdamping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+10−1100nll /natdamping=0.900
+100101102103
+train time /s10−1100nll /natdamping=0.800 (b) NLL
+Figure 19: Performance of PVI with synchronous updates when the data are iid. In this experiment, each worker communicates with the
+central server after one epoch. The learning rate hyperparameter of Adam and the damping factor were varied. Best viewed in colour.
+65
+210100error /%damping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+210100error /%damping=0.900
+100101102103
+train time /s210100error /%damping=0.800
+(a) Error
+100
+3×10−14×10−16×10−12×100nll /natdamping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+100nll /natdamping=0.900
+100101102103
+train time /s100101nll /natdamping=0.800(b) NLL
+Figure 20: Performance of PVI with synchronous updates when the data are non-iid. In this experiment, each worker communicates with the
+central server after one epoch. The learning rate hyperparameter of Adam and the damping factor were varied. Best viewed in colour.
+66
+10−210−1100101102error /%
+test
+train
+100101102103104
+train time /s10−210−1100nll /natFigure 21: For certain hyperparameter settings, PVI with synchronous updates worryingly exhibits
+over-ﬁtting.
+67
+210100error /%damping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+210100error /%damping=0.900
+100101102103
+train time /s210100error /%damping=0.800
+(a) Error
+100nll /natdamping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+100nll /natdamping=0.900
+100101102103
+train time /s100101nll /natdamping=0.800 (b) NLL
+Figure 22: Performance of PVI with asynchronous, lock-free updates when the data are iid. In this experiment, each worker communicates
+with the central server after one epoch. The learning rate hyperparameter of Adam and the damping factor were varied. Best viewed in colour.
+68
+210100error /%damping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+210100error /%damping=0.900
+100101102103
+train time /s210100error /%damping=0.800
+(a) Error
+100
+6×10−12×100nll /natdamping=0.950
+lrate=0.0001
+lrate=0.0005lrate=0.0010
+lrate=0.0050
+100
+6×10−12×100nll /natdamping=0.900
+100101102103
+train time /s100
+6×10−12×1003×1004×100nll /natdamping=0.800(b) NLL
+Figure 23: Performance of PVI with asynchronous, lock-free updates when the data are non-iid. In this experiment, each worker communicates
+with the central server after one epoch. The learning rate hyperparameter of Adam and the damping factor were varied. Best viewed in colour.
+69
+E.6 Stochastic Natural Gradient Variational Inference for Bayesian Neural Net-
+works
+In this experiment, we stress-test various optimization methods for global variational inference for
+Bayesian neural networks. In particular, we consider two methods: (i) stochastic natural-gradient global
+VI with a ﬁxed learning rate (SNGD, see eq. (13)), and (ii) stochastic ﬂatgradient global VI with an
+adaptive learning rate provided by Adam [Kingma and Ba, 2014]. Two Bayesian neural networks with
+one hidden layer of 200 or 500 Relu hidden units, and the standard MNIST ten-class classiﬁcation
+problem are employed for this experiment. The network is trained using mini-batches of 200 data
+points and 800 or 1000 epochs. Both optimization methods considered have similar running time. The
+full results are included in ﬁgs. 24, 25, 27 and 28 and key results are shown in ﬁgs. 26 and 29. It
+can be noticed from ﬁgs. 26 and 29 that the best versions of SNDG and Adam perform similarly in
+terms of both classiﬁcation errors and convergence speed/data eﬃciency. However, both methods do
+require tuning of the learning rate hyperparameter. As already observed in the global VI experiment in
+section 7.1, signs of fast convergence early during training when using Adam do not necessarily result
+in a good predictive performance at the end.
+As mentioned in the main text, while natural gradients has been shown to be eﬀective in the batch,
+global VI settings [Honkela et al., 2010], the result presented here could be seen as a negative result
+for natural-gradient based methods — a stochastic natural-gradient/ﬁxed-point method with ﬁxed
+learning rate does not outperform an adaptive stochastic ﬂat-gradient method. However, it might not
+be surprising as Adam adjusts its step-sizes based on approximate second-order information of the
+objective. This also suggests a future research venue to develop eﬀective adaptive optimization schemes
+for stochastic natural-gradient variational inference.
+70
+100101102103
+epoch101102error /%train, adam, lr=0.001
+test, adam, lr=0.001
+train, adam, lr=0.005
+test, adam, lr=0.005
+train, adam, lr=0.01
+test, adam, lr=0.01
+train, adam, lr=0.02
+test, adam, lr=0.02
+train, adam, lr=0.03
+test, adam, lr=0.03train, sngd, lr=0.0001
+test, sngd, lr=0.0001
+train, sngd, lr=0.00015
+test, sngd, lr=0.00015
+train, sngd, lr=0.0002
+test, sngd, lr=0.0002
+train, sngd, lr=0.00025
+test, sngd, lr=0.00025
+train, sngd, lr=0.0003
+test, sngd, lr=0.0003Figure 24: Classiﬁcation error rates on the train and test sets during training using Adam and Stochastic
+Natural Gradient (SNGD) methods on the MNIST classiﬁcation task with a Bayesian neural network
+with one hidden layer of 200 rectiﬁed linear units. The ﬁnal performance of all settings are shown in
+ﬁg. 26. For both Adam and SNGD, the performance highly depends on the learning rate, but the best
+learning rates for both methods give similar train and test results and yield similar convergence. Note
+that while Adam adaptively changes the learning rate based on the gradient statistics, SNGD employs
+a ﬁxed step size. See text for more details. Best viewed in colour.
+71
+100101102103
+epoch10−1100nll /nattrain, adam, lr=0.001
+test, adam, lr=0.001
+train, adam, lr=0.005
+test, adam, lr=0.005
+train, adam, lr=0.01
+test, adam, lr=0.01
+train, adam, lr=0.02
+test, adam, lr=0.02
+train, adam, lr=0.03
+test, adam, lr=0.03train, sngd, lr=0.0001
+test, sngd, lr=0.0001
+train, sngd, lr=0.00015
+test, sngd, lr=0.00015
+train, sngd, lr=0.0002
+test, sngd, lr=0.0002
+train, sngd, lr=0.00025
+test, sngd, lr=0.00025
+train, sngd, lr=0.0003
+test, sngd, lr=0.0003Figure 25: Negative log-likelihoods on the train and test sets during training using Adam and Stochastic
+Natural Gradient (SNGD) methods on the MNIST classiﬁcation task with a Bayesian neural network
+with one hidden layer of 200 rectiﬁed linear units. The ﬁnal performance of all settings are shown in
+ﬁg. 26. For both Adam and SNGD, the performance highly depends on the learning rate, but the best
+learning rates for both methods give similar train and test results and yield similar convergence. Note
+that while Adam adaptively changes the learning rate based on the gradient statistics, SNGD employs
+a ﬁxed step size. See text for more details. Best viewed in colour.
+72
+Figure 26: Performance on the train set [left] and test set [right] after 1000 epochs using Adam and Stochastic Natural Gradient (SNGD)
+methods on the MNIST classiﬁcation task with a Bayesian neural network with one hidden layer of 200 rectiﬁed linear units, and the typical
+performance traces as training progress [inset plots]. This ﬁgure summarizes the full results in ﬁgs. 24 and 25. The performance is measured
+using the classiﬁcation error [error] and the negative log-likelihood [nll], and for both measures, lower is better and, as such, closer to the
+bottom left is better. For both Adam and SNGD, the performance highly depends on the learning rate, but the best learning rates for both
+methods give similar train and test results and yield similar convergence. Note that while Adam adaptively changes the learning rate based
+on the gradient statistics, SNGD employs a ﬁxed step size. See text for more details. Best viewed in colour.
+73
+100101102103
+epoch100101102error /%train, adam, lr=0.001
+test, adam, lr=0.001
+train, adam, lr=0.005
+test, adam, lr=0.005
+train, adam, lr=0.01
+test, adam, lr=0.01
+train, adam, lr=0.02
+test, adam, lr=0.02
+train, adam, lr=0.03
+test, adam, lr=0.03train, sngd, lr=0.0001
+test, sngd, lr=0.0001
+train, sngd, lr=0.00015
+test, sngd, lr=0.00015
+train, sngd, lr=0.0002
+test, sngd, lr=0.0002
+train, sngd, lr=0.00025
+test, sngd, lr=0.00025
+train, sngd, lr=0.0003
+test, sngd, lr=0.0003Figure 27: Classiﬁcation error rates on the train and test sets during training using Adam and Stochastic
+Natural Gradient (SNGD) methods on the MNIST classiﬁcation task with a Bayesian neural network
+with one hidden layer of 500 rectiﬁed linear units. The ﬁnal performance of all settings are shown in
+ﬁg. 29. For both Adam and SNGD, the performance highly depends on the learning rate, but the best
+learning rates for both methods give similar train and test results and yield similar convergence. Note
+that while Adam adaptively changes the learning rate based on the gradient statistics, SNGD employs
+a ﬁxed step size. See text for more details. Best viewed in colour.
+74
+100101102103
+epoch10−1100nll /nattrain, adam, lr=0.001
+test, adam, lr=0.001
+train, adam, lr=0.005
+test, adam, lr=0.005
+train, adam, lr=0.01
+test, adam, lr=0.01
+train, adam, lr=0.02
+test, adam, lr=0.02
+train, adam, lr=0.03
+test, adam, lr=0.03train, sngd, lr=0.0001
+test, sngd, lr=0.0001
+train, sngd, lr=0.00015
+test, sngd, lr=0.00015
+train, sngd, lr=0.0002
+test, sngd, lr=0.0002
+train, sngd, lr=0.00025
+test, sngd, lr=0.00025
+train, sngd, lr=0.0003
+test, sngd, lr=0.0003Figure 28: Negative log-likelihoods on the train and test sets during training using Adam and Stochastic
+Natural Gradient (SNGD) methods on the MNIST classiﬁcation task with a Bayesian neural network
+with one hidden layer of 500 rectiﬁed linear units. The ﬁnal performance of all settings are shown in
+ﬁg. 29. For both Adam and SNGD, the performance highly depends on the learning rate, but the best
+learning rates for both methods give similar train and test results and yield similar convergence. Note
+that while Adam adaptively changes the learning rate based on the gradient statistics, SNGD employs
+a ﬁxed step size. See text for more details. Best viewed in colour.
+75
+Figure 29: Performance on the train set [left] and test set [right] after 800 epochs using Adam and Stochastic Natural Gradient (SNGD)
+methods on the MNIST classiﬁcation task with a Bayesian neural network with one hidden layer of 500 rectiﬁed linear units, and the
+typical performance traces as training progress [inset plots]. This ﬁgure summarizes the full results in ﬁgs. 27 and 28. The performance
+is measured using the classiﬁcation error [error] and the negative log-likelihood [nll], and for both measures, lower is better and, as such,
+closer to the bottom left is better. Full training and test performance results are included in the appendix. For both Adam and SNGD, the
+performance highly depends on the learning rate, but the best learning rates for both methods give similar train and test results and yield
+similar convergence. Note that while Adam adaptively changes the learning rate based on the gradient statistics, SNGD employs a ﬁxed step
+size. See text for more details. Best viewed in colour.
+76

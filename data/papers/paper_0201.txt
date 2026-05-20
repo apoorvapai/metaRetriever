@@ -1,0 +1,1450 @@
+Title: SWAG: A Large-Scale Adversarial Dataset for Grounded Commonsense Inference
+
+Swag : A Large-Scale Adversarial Dataset for
+Grounded Commonsense Inference
+Rowan ZellersYonatan BiskRoy Schwartz~Yejin Choi~
+Paul G. Allen School of Computer Science & Engineering, University of Washington
+~Allen Institute for Artiﬁcial Intelligence
+frowanz,ybisk,roysch,yejin g@cs.washington.edu
+https://rowanzellers.com/swag
+Abstract
+Given a partial description like “she opened
+the hood of the car,” humans can reason about
+the situation and anticipate what might come
+next (“then, she examined the engine”). In this
+paper, we introduce the task of grounded com-
+monsense inference, unifying natural language
+inference and commonsense reasoning.
+We present Swag , a new dataset with 113k
+multiple choice questions about a rich spec-
+trum of grounded situations. To address the
+recurring challenges of the annotation arti-
+facts and human biases found in many exist-
+ing datasets, we propose Adversarial Filter-
+ing(AF), a novel procedure that constructs a
+de-biased dataset by iteratively training an en-
+semble of stylistic classiﬁers, and using them
+to ﬁlter the data. To account for the aggres-
+sive adversarial ﬁltering, we use state-of-the-
+art language models to massively oversam-
+ple a diverse set of potential counterfactuals.
+Empirical results demonstrate that while hu-
+mans can solve the resulting inference prob-
+lems with high accuracy (88%), various com-
+petitive models struggle on our task. We pro-
+vide comprehensive analysis that indicates sig-
+niﬁcant opportunities for future research.
+1 Introduction
+When we read a story, we bring to it a large body
+of implicit knowledge about the physical world.
+For instance, given the context “on stage, a woman
+takes a seat at the piano,” shown in Table 1, we
+can easily infer what the situation might look like:
+a woman is giving a piano performance, with a
+crowd watching her. We can furthermore infer her
+likely next action: she will most likely set her ﬁn-
+gers on the piano keys and start playing.
+This type of natural language inference requires
+commonsense reasoning, substantially broadening
+the scope of prior work that focused primarily onOn stage, a woman takes a seat at the piano. She
+a) sits on a bench as her sister plays with the doll.
+b) smiles with someone as the music plays.
+c) is in the crowd, watching the dancers.
+d) nervously sets her ﬁngers on the keys.
+A girl is going across a set of monkey bars. She
+a) jumps up across the monkey bars.
+b) struggles onto the monkey bars to grab her head.
+c) gets to the end and stands on a wooden plank.
+d) jumps up and does a back ﬂip.
+The woman is now blow drying the dog. The dog
+a) is placed in the kennel next to a woman’s feet.
+b) washes her face with the shampoo.
+c) walks into frame and walks towards the dog.
+d) tried to cut her face, so she is trying to do something
+very close to her face.
+Table 1 : Examples from Swag ; the correct an-
+swer is bolded . Adversarial Filtering ensures that
+stylistic models ﬁnd all options equally appealing.
+linguistic entailment (Chierchia and McConnell-
+Ginet, 2000). Whereas the dominant entailment
+paradigm asks if two natural language sentences
+(the ‘premise’ and the ‘hypothesis’) describe the
+same set of possible worlds (Dagan et al., 2006;
+Bowman et al., 2015), here we focus on whether a
+(multiple-choice) ending describes a possible ( fu-
+ture) world that can be anticipated from the situa-
+tion described in the premise, even when it is not
+strictly entailed. Making such inference necessi-
+tates a rich understanding about everyday physical
+situations, including object affordances (Gibson,
+1979) and frame semantics (Baker et al., 1998).
+A ﬁrst step toward grounded commonsense in-
+ference with today’s deep learning machinery is to
+create a large-scale dataset. However, recent work
+has shown that human-written datasets are suscep-
+tible to annotation artifacts : unintended stylistic
+patterns that give out clues for the gold labels (Gu-
+rurangan et al., 2018; Poliak et al., 2018). As a
+result, models trained on such datasets with hu-
+1arXiv:1808.05326v1  [cs.CL]  16 Aug 2018
+man biases run the risk of over-estimating the ac-
+tual performance on the underlying task, and are
+vulnerable to adversarial or out-of-domain exam-
+ples (Wang et al., 2018; Glockner et al., 2018).
+In this paper, we introduce Adversarial Filtering
+(AF), a new method to automatically detect and
+reduce stylistic artifacts. We use this method to
+construct Swag : an adversarial dataset with 113k
+multiple-choice questions. We start with pairs of
+temporally adjacent video captions, each with a
+context and a follow-up event that we know is
+physically possible. We then use a state-of-the-
+art language model ﬁne-tuned on this data to mas-
+sively oversample a diverse set of possible nega-
+tive sentence endings (or counterfactuals ). Next,
+we ﬁlter these candidate endings aggressively and
+adversarially using a committee of trained mod-
+els to obtain a population of de-biased endings
+with similar stylistic features to the real ones. Fi-
+nally, these ﬁltered counterfactuals are validated
+by crowd workers to further ensure data quality.
+Extensive empirical results demonstrate unique
+contributions of our dataset, complementing exist-
+ing datasets for natural langauge inference (NLI)
+(Bowman et al., 2015; Williams et al., 2018)
+and commonsense reasoning (Roemmele et al.,
+2011; Mostafazadeh et al., 2016; Zhang et al.,
+2017). First , our dataset poses a new challenge
+of grounded commonsense inference that is easy
+for humans (88%) while hard for current state-of-
+the-art NLI models ( <60%).Second , our pro-
+posed adversarial ﬁltering methodology allows for
+cost-effective construction of a large-scale dataset
+while substantially reducing known annotation ar-
+tifacts. The generality of adversarial ﬁltering al-
+lows it to be applied to build future datasets, en-
+suring that they serve as reliable benchmarks.
+2Swag : Our new dataset
+We introduce a new dataset for studying physically
+grounded commonsense inference, called Swag .1
+Our task is to predict which event is most likely to
+occur next in a video. More formally, a model is
+given a context c= (s;n): a complete sentence
+sand a noun phrase nthat begins a second sen-
+tence, as well as a list of possible verb phrase sen-
+tence endings V=fv1;:::;v4g. See Figure 1 for
+an example triple (s;n;vi). The model must then
+select the most appropriate verb phrase v^i2V.
+1Short for Situations WithAdversarial Generations.
+is	put	on	top	of	the					vegetables.				is	putting	vegetable	fruits.is	using	a	red	sponge	to	add					eggs	and	parsley.⋮is	placed	in	the	oven.The	mixer	creams	the	butter.	Sugar…Adversarially select generationsAnnotators ﬁlter endings to ensure agreementOversample endings from context+NPSugar is added to the mixing bowl.The mixer creams the butter.
+LSMDC
+NPVPcontextUsing video captions from
+t
+<latexit sha1_base64="0v+hFBOfvFXt34ta2NDUvy3djxg=">AAAC3XicdVJLb9NAEN6YVzGvFo5cLCIkxCGyERJwq6CHXhCtRGilJCrjzcRZZR/W7LhtauXaC4gTiJ/Eb+DfsEl9wAmMtNpvv3nPbF5q5TlNf3eia9dv3Ly1dTu+c/fe/QfbOw8/eVeRxL502tFxDh61sthnxRqPS0IwucajfPZuqT86RfLK2Y88L3FkoLBqoiRwoA75ZLub9tKVJJsga0BXNHJwstP5NRw7WRm0LDV4P8jSkkc1ECupcREPK48lyBkUOAjQgkE/qleVLpKngRknE0fhWE5W7N8eNRjv5yYPlgZ46td1S/JfukHFk9ejWtmyYrTyKtGk0gm7ZNl2MlaEkvU8AJCkQq2JnAKB5DCcVhZTaVbkzlqd1BK0bDMFQTlV8rzNEmqvLtpj+E9IchyWYIs2m5v2uyK9FswRbqbInZsx5D6wexj2Qvg+zOhDiQTs6Hk9BCoMnC/q5o7jOKw+W1/0Jui/6L3pZYcvu7tvmz+wJR6LJ+KZyMQrsSv2xYHoCylQfBHfxY/oc3QZfY2+XZlGncbnkWhJ9PMP9UXt7A==</latexit><latexit sha1_base64="0v+hFBOfvFXt34ta2NDUvy3djxg=">AAAC3XicdVJLb9NAEN6YVzGvFo5cLCIkxCGyERJwq6CHXhCtRGilJCrjzcRZZR/W7LhtauXaC4gTiJ/Eb+DfsEl9wAmMtNpvv3nPbF5q5TlNf3eia9dv3Ly1dTu+c/fe/QfbOw8/eVeRxL502tFxDh61sthnxRqPS0IwucajfPZuqT86RfLK2Y88L3FkoLBqoiRwoA75ZLub9tKVJJsga0BXNHJwstP5NRw7WRm0LDV4P8jSkkc1ECupcREPK48lyBkUOAjQgkE/qleVLpKngRknE0fhWE5W7N8eNRjv5yYPlgZ46td1S/JfukHFk9ejWtmyYrTyKtGk0gm7ZNl2MlaEkvU8AJCkQq2JnAKB5DCcVhZTaVbkzlqd1BK0bDMFQTlV8rzNEmqvLtpj+E9IchyWYIs2m5v2uyK9FswRbqbInZsx5D6wexj2Qvg+zOhDiQTs6Hk9BCoMnC/q5o7jOKw+W1/0Jui/6L3pZYcvu7tvmz+wJR6LJ+KZyMQrsSv2xYHoCylQfBHfxY/oc3QZfY2+XZlGncbnkWhJ9PMP9UXt7A==</latexit><latexit sha1_base64="0v+hFBOfvFXt34ta2NDUvy3djxg=">AAAC3XicdVJLb9NAEN6YVzGvFo5cLCIkxCGyERJwq6CHXhCtRGilJCrjzcRZZR/W7LhtauXaC4gTiJ/Eb+DfsEl9wAmMtNpvv3nPbF5q5TlNf3eia9dv3Ly1dTu+c/fe/QfbOw8/eVeRxL502tFxDh61sthnxRqPS0IwucajfPZuqT86RfLK2Y88L3FkoLBqoiRwoA75ZLub9tKVJJsga0BXNHJwstP5NRw7WRm0LDV4P8jSkkc1ECupcREPK48lyBkUOAjQgkE/qleVLpKngRknE0fhWE5W7N8eNRjv5yYPlgZ46td1S/JfukHFk9ejWtmyYrTyKtGk0gm7ZNl2MlaEkvU8AJCkQq2JnAKB5DCcVhZTaVbkzlqd1BK0bDMFQTlV8rzNEmqvLtpj+E9IchyWYIs2m5v2uyK9FswRbqbInZsx5D6wexj2Qvg+zOhDiQTs6Hk9BCoMnC/q5o7jOKw+W1/0Jui/6L3pZYcvu7tvmz+wJR6LJ+KZyMQrsSv2xYHoCylQfBHfxY/oc3QZfY2+XZlGncbnkWhJ9PMP9UXt7A==</latexit><latexit sha1_base64="0v+hFBOfvFXt34ta2NDUvy3djxg=">AAAC3XicdVJLb9NAEN6YVzGvFo5cLCIkxCGyERJwq6CHXhCtRGilJCrjzcRZZR/W7LhtauXaC4gTiJ/Eb+DfsEl9wAmMtNpvv3nPbF5q5TlNf3eia9dv3Ly1dTu+c/fe/QfbOw8/eVeRxL502tFxDh61sthnxRqPS0IwucajfPZuqT86RfLK2Y88L3FkoLBqoiRwoA75ZLub9tKVJJsga0BXNHJwstP5NRw7WRm0LDV4P8jSkkc1ECupcREPK48lyBkUOAjQgkE/qleVLpKngRknE0fhWE5W7N8eNRjv5yYPlgZ46td1S/JfukHFk9ejWtmyYrTyKtGk0gm7ZNl2MlaEkvU8AJCkQq2JnAKB5DCcVhZTaVbkzlqd1BK0bDMFQTlV8rzNEmqvLtpj+E9IchyWYIs2m5v2uyK9FswRbqbInZsx5D6wexj2Qvg+zOhDiQTs6Hk9BCoMnC/q5o7jOKw+W1/0Jui/6L3pZYcvu7tvmz+wJR6LJ+KZyMQrsSv2xYHoCylQfBHfxY/oc3QZfY2+XZlGncbnkWhJ9PMP9UXt7A==</latexit>
+t+1
+<latexit sha1_base64="FxZlrqRSpQ2+cqdlv/9iysHNvsc=">AAAC33icdVJLbxMxEHa2PMryasuRy4oICYEU7SIk6K2CHrggiiC0UhJVY2eysWKvV+PZ0rDKvRcQJxC/iN/Av8FJ98AmMJLlz9+8ZyxLoz2n6e9OtHXl6rXr2zfim7du37m7s7v30buKFPaVM45OJHg0usA+azZ4UhKClQaP5ezVUn98huS1Kz7wvMSRhbzQE62AA/Wen2SnO920l64k2QRZA7qikaPT3c6v4dipymLByoD3gywteVQDsVYGF/Gw8liCmkGOgwALsOhH9arWRfIwMONk4iicgpMV+7dHDdb7uZXB0gJP/bpuSf5LN6h48mJU66KsGAt1mWhSmYRdsmw8GWtCxWYeACjSodZETYFAcRhPK4utDGtyn1qd1AqMajM5QTnV6rzNEhqvP7fH8J+Q5DisocjbrLTtd0VmLZgj3EwhnZsxSB/YQwx7IXwTZvS2RAJ29LgeAuUWzhd1c8dxHFafrS96E/Sf9vZ72btn3YOXzR/YFvfFA/FIZOK5OBCvxZHoCyVy8UV8Fz8iGV1EX6Nvl6ZRp/G5J1oS/fwDJabuXA==</latexit><latexit sha1_base64="FxZlrqRSpQ2+cqdlv/9iysHNvsc=">AAAC33icdVJLbxMxEHa2PMryasuRy4oICYEU7SIk6K2CHrggiiC0UhJVY2eysWKvV+PZ0rDKvRcQJxC/iN/Av8FJ98AmMJLlz9+8ZyxLoz2n6e9OtHXl6rXr2zfim7du37m7s7v30buKFPaVM45OJHg0usA+azZ4UhKClQaP5ezVUn98huS1Kz7wvMSRhbzQE62AA/Wen2SnO920l64k2QRZA7qikaPT3c6v4dipymLByoD3gywteVQDsVYGF/Gw8liCmkGOgwALsOhH9arWRfIwMONk4iicgpMV+7dHDdb7uZXB0gJP/bpuSf5LN6h48mJU66KsGAt1mWhSmYRdsmw8GWtCxWYeACjSodZETYFAcRhPK4utDGtyn1qd1AqMajM5QTnV6rzNEhqvP7fH8J+Q5DisocjbrLTtd0VmLZgj3EwhnZsxSB/YQwx7IXwTZvS2RAJ29LgeAuUWzhd1c8dxHFafrS96E/Sf9vZ72btn3YOXzR/YFvfFA/FIZOK5OBCvxZHoCyVy8UV8Fz8iGV1EX6Nvl6ZRp/G5J1oS/fwDJabuXA==</latexit><latexit sha1_base64="FxZlrqRSpQ2+cqdlv/9iysHNvsc=">AAAC33icdVJLbxMxEHa2PMryasuRy4oICYEU7SIk6K2CHrggiiC0UhJVY2eysWKvV+PZ0rDKvRcQJxC/iN/Av8FJ98AmMJLlz9+8ZyxLoz2n6e9OtHXl6rXr2zfim7du37m7s7v30buKFPaVM45OJHg0usA+azZ4UhKClQaP5ezVUn98huS1Kz7wvMSRhbzQE62AA/Wen2SnO920l64k2QRZA7qikaPT3c6v4dipymLByoD3gywteVQDsVYGF/Gw8liCmkGOgwALsOhH9arWRfIwMONk4iicgpMV+7dHDdb7uZXB0gJP/bpuSf5LN6h48mJU66KsGAt1mWhSmYRdsmw8GWtCxWYeACjSodZETYFAcRhPK4utDGtyn1qd1AqMajM5QTnV6rzNEhqvP7fH8J+Q5DisocjbrLTtd0VmLZgj3EwhnZsxSB/YQwx7IXwTZvS2RAJ29LgeAuUWzhd1c8dxHFafrS96E/Sf9vZ72btn3YOXzR/YFvfFA/FIZOK5OBCvxZHoCyVy8UV8Fz8iGV1EX6Nvl6ZRp/G5J1oS/fwDJabuXA==</latexit><latexit sha1_base64="FxZlrqRSpQ2+cqdlv/9iysHNvsc=">AAAC33icdVJLbxMxEHa2PMryasuRy4oICYEU7SIk6K2CHrggiiC0UhJVY2eysWKvV+PZ0rDKvRcQJxC/iN/Av8FJ98AmMJLlz9+8ZyxLoz2n6e9OtHXl6rXr2zfim7du37m7s7v30buKFPaVM45OJHg0usA+azZ4UhKClQaP5ezVUn98huS1Kz7wvMSRhbzQE62AA/Wen2SnO920l64k2QRZA7qikaPT3c6v4dipymLByoD3gywteVQDsVYGF/Gw8liCmkGOgwALsOhH9arWRfIwMONk4iicgpMV+7dHDdb7uZXB0gJP/bpuSf5LN6h48mJU66KsGAt1mWhSmYRdsmw8GWtCxWYeACjSodZETYFAcRhPK4utDGtyn1qd1AqMajM5QTnV6rzNEhqvP7fH8J+Q5DisocjbrLTtd0VmLZgj3EwhnZsxSB/YQwx7IXwTZvS2RAJ29LgeAuUWzhd1c8dxHFafrS96E/Sf9vZ72btn3YOXzR/YFvfFA/FIZOK5OBCvxZHoCyVy8UV8Fz8iGV1EX6Nvl6ZRp/G5J1oS/fwDJabuXA==</latexit>(the videos are never used)Figure 1 : Overview of the data collection process.
+For a pair of sequential video captions, the second
+caption is split into noun and verb phrases. A lan-
+guage model generates many negative endings, of
+which a difﬁcult subset are human-annotated.
+Overview Our corpus consists of 113k multi-
+ple choice questions (73k training, 20k valida-
+tion, 20k test) and is derived from pairs of con-
+secutive video captions from ActivityNet Cap-
+tions (Krishna et al., 2017; Heilbron et al., 2015)
+and the Large Scale Movie Description Chal-
+lenge (LSMDC; Rohrbach et al., 2017). The two
+datasets are slightly different in nature and allow
+us to achieve broader coverage: ActivityNet con-
+tains 20k YouTube clips containing one of 203 ac-
+tivity types (such as doing gymnastics or playing
+guitar); LSMDC consists of 128k movie captions
+(audio descriptions and scripts). For each pair
+of captions, we use a constituency parser (Stern
+et al., 2017) to split the second sentence into noun
+and verb phrases (Figure 1).2Each question has a
+human-veriﬁed gold ending and 3 distractors.
+3 A solution to annotation artifacts
+In this section, we outline the construction of
+Swag . We seek dataset diversity while minimizing
+annotation artifacts , conditional stylistic patterns
+such as length and word-preference biases. For
+many NLI datasets, these biases have been shown
+to allow shallow models (e.g. bag-of-words) ob-
+tain artiﬁcially high performance.
+To avoid introducing easily “gamed” patterns,
+we present Adversarial Filtering (AF), a generally-
+applicable treatment involving the iterative reﬁne-
+ment of a set of assignments to increase the en-
+tropy under a chosen model family. We then dis-
+cuss how we generate counterfactual endings, and
+2We ﬁlter out sentences with rare tokens ( 3 occur-
+rences), that are short ( l5), or that lack a verb phrase.
+2
+Algorithm 1 Adversarial ﬁltering (AF) of negative sam-
+ples. During our experiments, we set Neasy= 2for reﬁning
+a population of N = 1023 negative examples to k= 9, and
+used a 80%/20% train/test split.
+while convergence not reached do
+Split the datasetDrandomly up into train-
+ing and testing portions DtrandDte.
+Optimize a model fonDtr.
+forindexiinDtedo
+Identify easy indices:
+Aeasy
+i=fj2Ai:f(x+
+i)>f(x 
+i;j)g
+ReplaceNeasyeasy indices j2Aeasy
+i
+with adversarial indices k62Aisatisfying
+f(x 
+i;k)>f(x 
+i;j).
+end for
+end while
+ﬁnally, the models used for ﬁltering.
+3.1 Formal deﬁnition
+In this section, we formalize what it means for
+a dataset to be adversarial . Intuitively, we say
+that an adversarial dataset for a model fis one
+on whichfwill not generalize, even if evaluated
+on test data from the same distribution. More for-
+mally, let our input space be Xand the label space
+beY. Our trainable classiﬁer f, taking parameters
+is deﬁned as f:X ! RjYj. Let our dataset
+of sizeNbe deﬁned asD=f(xi;yi)g1iN, and
+let the loss function over the dataset be L(f;D).
+We say that a dataset is adversarial with respect
+tofif we expect high empirical error Iover all
+leave-one-out train/test splits (Vapnik, 2000):
+I(D;f) =1
+NNX
+i=1L(f?
+i;f(xi;yi)g); (1)
+where?
+i= argmin
+L(f;Dnf (xi;yi)g);(2)
+with regularization terms omitted for simplicity.
+3.2 Adversarial ﬁltering (AF) algorithm
+In this section, we outline an approach for gen-
+erating an adversarial dataset D, effectively max-
+imizing empirical error Iwith respect to a fam-
+ily of trainable classiﬁers f. Without loss of
+generality, we consider the situation where we
+haveNcontexts , each associated with a single
+positive example (x+
+i;1)2XY , and a large
+population of context-speciﬁc negative examples
+(x 
+i;j;0)2XY , where 1jN for eachi. For
+instance, the negative examples could be incorrect
+relations in knowledge-base completion (Socher
+et al., 2013), or all words in a dictionary for asingle-word cloze task (Zweig and Burges, 2011).
+Our goal will be to ﬁlter the population of neg-
+ative examples for each instance ito a size of
+kN . This will be captured by returning a set
+ofassignmentsA, where for each instance the as-
+signment will be a k-subsetAi= [1:::N ]k.
+The ﬁltered dataset will then be:
+DAF=f(xi;1);f(x 
+i;j;0)gj2Aig1iN (3)
+Unfortunately, optimizing I(DAF;f)is difﬁcult
+asAis global and non-differentiable. To address
+this, we present Algorithm 1. On each iteration,
+we split the data into dummy ‘train’ and ‘test’
+splits. We train a model fon the training portion
+and obtain parameters , then use the remaining
+test portion to reassign the indices of A. For each
+context, we replace some number of ‘easy’ nega-
+tives inAthatfclassiﬁes correctly with ‘adver-
+sarial’ negatives outside of Athatfmisclassiﬁes.
+This process can be thought of as increasing
+the overall entropy of the dataset: given a strong
+modelfthat is compatible with a random subset
+of the data, we aim to ensure it cannot generalize
+to the held-out set. We repeat this for several it-
+erations to reduce the generalization ability of the
+model family fover arbitrary train/test splits.
+3.3 Generating candidate endings
+To generate counterfactuals for Swag , we use an
+LSTM (Hochreiter and Schmidhuber, 1997) lan-
+guage model (LM), conditioned on contexts from
+video captions. We ﬁrst pretrain on BookCorpus
+(Zhu et al., 2015), then ﬁnetune on the video cap-
+tion datasets. The architecture uses standard best
+practices and was validated on held-out perplex-
+ity of the video caption datasets; details are in the
+appendix. We use the LM to sample N =1023
+unique endings for a partial caption.3
+Importantly, we greedily sample the endings,
+since beam search decoding biases the generated
+endings to be of lower perplexity (and thus easily
+distinguishable from found endings). We ﬁnd this
+process gives good counterfactuals: the generated
+endings tend to use topical words, but often make
+little sense physically, making them perfect for our
+task. Further, the generated endings are marked
+as “gibberish” by humans only 9.1% of the time
+(Sec 3.5); in that case the ending is ﬁltered out.
+3To ensure that the LM generates unique endings, we split
+the data into ﬁve validation folds and train ﬁve separate LMs,
+one for each set of training folds. This means that each LM
+never sees the found endings during training.
+3
+0 20 40 60 80 100 120 140
+Iteration #0.00.10.20.30.40.50.6Test accuracy
+Baseline (random)
+CNN
+BoW
+POStag LSTM
+MLP
+EnsembleFigure 2 : Test accuracy by AF iteration, under the
+negatives given by A. The accuracy drops from
+around 60% to close to random chance. For efﬁ-
+ciency, the ﬁrst 100 iterations only use the MLP.
+3.4 Stylistic models for adversarial ﬁltering
+In creating Swag , we designed the model family
+fto pick up on low-level stylistic features that we
+posit should not be predictive of whether an event
+happens next in a video. These stylistic features
+are an obvious case of annotation artifacts (Cai
+et al., 2017; Schwartz et al., 2017).4Our ﬁnal clas-
+siﬁer is an ensemble of four stylistic models:
+1. A multilayer perceptron (MLP) given LM per-
+plexity features and context/ending lengths.
+2. A bag-of-words model that averages the word
+embeddings of the second sentence as features.
+3. A one-layer CNN, with ﬁlter sizes ranging from
+2-5, over the second sentence.
+4. A bidirectional LSTM over the 100 most com-
+mon words in the second sentence; uncommon
+words are replaced by their POS tags.
+We ensemble the models by concatenating their ﬁ-
+nal representations and passing it through an MLP.
+On every adversarial iteration, the ensemble is
+trained jointly to minimize cross-entropy.
+The accuracies of these models (at each itera-
+tion, evaluated on a 20% split of the test dataset
+before indices ofAget remapped) are shown in
+Figure 2. Performance decreases from 60% to
+close to random chance; moreover, confusing the
+perplexity-based MLP is not sufﬁcient to lower
+performance of the ensemble. Only once the other
+stylistic models are added does the ensemble ac-
+curacy drop substantially, suggesting that our ap-
+proach is effective at reducing stylistic artifacts.
+4A broad deﬁnition of annotation artifacts might include
+aspects besides lexical/stylistic features: for instance, certain
+events are less likely semantically regardless of the context
+(e.g. riding a horse using a hose). For this work, we erred
+more conservatively and only ﬁltered based on style.Imagine that you are watching a video clip. The clip has
+a caption, but it is missing the ﬁnal phrase. Please choose
+the best 2 caption endings, and classify each as:
+likely , if it completes the caption in a reasonable way;
+unlikely , if it sounds ridiculous or impossible;
+gibberish if it has such serious errors that it doesn’t
+feel like a valid English sentence.
+Example: Someone is shown sitting on a fence and talking
+to the camera while pointing out horses. Someone
+stands in front of a podium. ( likely ,second best )
+rides a horse using a hose. ( unlikely )
+is shown riding a horse. ( likely ,best)
+, the horse in a plaza ﬁeld. ( gibberish )
+Figure 3 : Mechanical Turk instructions (abridged).
+3.5 Human veriﬁcation
+The ﬁnal data-collection step is to have humans
+verify the data. Workers on Amazon Mechani-
+cal Turk were given the caption context, as well
+as six candidate endings: one found ending and
+ﬁve adversarially-sampled endings. The task was
+twofold: Turkers ranked the endings indepen-
+dently as likely , unlikely , or gibberish , and se-
+lected the best and second best endings (Fig 3).
+We obtained the correct answers to each con-
+text in two ways. If a Turker ranks the found end-
+ing as either best or second best (73.7% of the
+time), we add the found ending as a gold exam-
+ple, with negatives from the generations not la-
+belled best or gibberish . Further, if a Turker ranks
+a generated ending as best , and the found ending
+as second best , then we have reason to believe that
+the generation is good. This lets us add an addi-
+tional training example, consisting of the gener-
+ated best ending as the gold, and remaining gen-
+erations as negatives.5Examples with3non-
+gibberish endings were ﬁltered out.6
+We found after 1000 examples that the annota-
+tors tended to have high agreement, also generally
+choosing found endings over generations (see Ta-
+ble 2). Thus, we collected the remaining 112k ex-
+amples with one annotator each, periodically veri-
+fying that annotators preferred the found endings.
+4 Experiments
+In this section, we evaluate the performance of
+various NLI models on Swag . Recall that models
+5These two examples share contexts. To prevent biasing
+the test and validation sets, we didn’t perform this procedure
+on answers from the evaluation sets’ context.
+6To be data-efﬁcient, we reannotated ﬁltered-out exam-
+ples by replacing gibberish endings, as well as generations
+that outranked the found ending, with candidates from A.
+4
+Label distribution by
+ending typeInter-annotator
+agreement
+Labels Found end Gen. end  ppa
+Best 53.5% 9.3%
+0.43 72% Second Best 20.2% 15.9%
+Neither 26.3% 74.8%
+Likely 80.3% 33.3%
+0.39 64% Unlikely 19.0% 57.5%
+Gibberish 0.7% 9.1%
+Table 2 : Annotators tend to label the found ending
+as likely and within the top 2 (column 2), in other
+cases the example is ﬁltered out. Both label groups
+have high inter-annotator agreement, in terms of
+Krippendorff’s and pairwise percent agreement.
+for our dataset take the following form: given a
+sentence and a noun phrase as context c= (s;n),
+as well as a list of possible verb phrase endings
+V=fv1;:::;v4g, a modelfmust select a verb
+^ithat hopefully matches igold:
+^i= argmax
+if(s;n;vi) (4)
+To study the amount of bias in our dataset, we
+also consider models that take as input just the
+ending verb phrase vi, or the entire second sen-
+tence (n;vi). For our learned models, we train
+fby minimizing multi-class cross-entropy. We
+consider three different types of word representa-
+tions: 300d GloVe vectors from Common Crawl
+(Pennington et al., 2014), 300d Numberbatch vec-
+tors retroﬁtted using ConceptNet relations (Speer
+et al., 2017), and 1024d ELMo contextual repre-
+sentations that show improvement on a variety of
+NLP tasks, including standard NLI (Peters et al.,
+2018). We follow the ﬁnal dataset split (see Sec-
+tion 2) using two training approaches: training on
+the found data, and the found and highly-ranked
+generated data. See the appendix for more details.
+4.1 Unary models
+The following models predict labels from a single
+span of text as input; this could be the ending only,
+the second sentence only, or the full passage.
+a.fastText (Joulin et al., 2017): This library mod-
+els a single span of text as a bag of n-grams, and
+tries to predict the probability of an ending being
+correct or incorrect independently.7
+b.Pretrained sentence encoders We consider
+two types of pretrained RNN sentence encoders,
+SkipThoughts (Kiros et al., 2015) and InferSent
+7The fastText model is trained using binary cross-entropy;
+at test time we extract the prediction by selecting the ending
+with the highest positive likelihood under the model.(Conneau et al., 2017). SkipThoughts was trained
+by predicting adjacent sentences in book data,
+whereas InferSent was trained on supervised NLI
+data. For each second sentence (or just the end-
+ing), we feed the encoding into an MLP.
+c.LSTM sentence encoder Given an arbitrary
+span of text, we run a two-layer BiLSTM over it.
+The ﬁnal hidden states are then max-pooled to ob-
+tain a ﬁxed-size representation, which is then used
+to predict the potential for that ending.
+4.2 Binary models
+The following models predict labels from two
+spans of text. We consider two possibilties for
+these models: using just the second sentence,
+where the two text spans are n;vi, or using the
+context and the second sentence, in which case the
+spans are s;(n;vi). The latter case includes many
+models developed for the NLI task.
+d.Dual Bag-of-Words For this baseline, we treat
+each sentence as a bag-of-embeddings (c;vi). We
+model the probability of picking an ending iusing
+a bilinear model: softmax i(cWvT
+i).8
+e.Dual pretrained sentence encoders Here, we
+obtain representations from SkipThoughts or In-
+ferSent for each span, and compute their pairwise
+compatibility using either 1) a bilinear model or 2)
+an MLP from their concatenated representations.
+f.SNLI inference Here, we consider two mod-
+els that do well on SNLI (Bowman et al., 2015):
+Decomposable Attention (Parikh et al., 2016) and
+ESIM (Chen et al., 2017). We use pretrained ver-
+sions of these models (with ELMo embeddings)
+on SNLI to obtain 3-way entailment, neutral, and
+contradiction probabilities for each example. We
+then train a log-linear model using these 3-way
+probabilities as features.
+g.SNLI models (retrained) Here, we train ESIM
+and Decomposable Attention on our dataset: we
+simply change the output layer size to 1 (the po-
+tential of an ending vi) with a softmax over i.
+4.3 Other models
+We also considered the following models:
+h.Length : Although length was used by the ad-
+versarial classiﬁer, we want to verify that human
+validation didn’t reintroduce a length bias. For this
+baseline, we always choose the shortest ending.
+i.ConceptNet As our task requires world knowl-
+edge, we tried a rule-based system on top of the
+8We also tried using an MLP, but got worse results.
+5
+Ending only 2nd sentence only Context+2nd sentence
+found only found+gen found only found+gen found only found+gen
+Model Val Test Val Test Val Test Val Test Val Test Val Test
+miscRandom 25.0 25.0 25.0 25.0 25.0 25.0 25.0 25.0 25.0 25.0 25.0 25.0
+Length 26.7 27.0 26.7 27.0
+ConceptNet 26.0 26.0 26.0 26.0Unary modelsfastText 27.5 26.9 29.9 29.0 29.2 27.8 29.8 29.0 29.4 28.0 30.3 29.8
+Sentence
+encodersSkipThoughts 32.4 32.1 32.2 31.8 33.0 32.4 32.8 32.3
+InferSent 30.6 30.2 32.0 31.9 33.2 32.0 34.0 32.6
+LSTM
+sequence
+modelLSTM+GloVe 31.9 31.8 32.9 32.4 32.7 32.4 34.3 33.5 43.1 43.6 45.6 45.7
+LSTM+Numberbatch 32.4 32.6 32.3 31.9 31.9 31.9 34.1 32.8 39.9 40.2 41.2 40.5
+LSTM+ELMo 43.6 42.9 43.3 42.3 47.4 46.7 46.3 46.0 51.4 50.6 51.3 50.4Binary modelsDualBoWDualBoW+GloVe 31.3 31.3 31.9 31.2 34.5 34.7 32.9 33.1
+DualBoW+Numberbatch 31.9 31.4 31.6 31.3 35.1 35.1 34.2 34.1
+Dual
+sentence
+encodersSkipThoughts-MLP 34.6 33.9 36.2 35.5 33.4 32.3 37.4 36.4
+SkipThoughts-Bilinear 36.0 35.7 34.7 34.5 36.5 35.6 35.3 34.9
+InferSent-MLP 32.9 32.1 32.8 32.7 35.9 36.2 39.5 39.4
+InferSent-Bilinear 32.0 31.3 31.6 31.3 40.5 40.3 39.0 38.4
+SNLI
+inferenceSNLI-ESIM 36.4 36.1 36.2 36.0
+SNLI-DecompAttn 35.8 35.8 35.8 35.7
+SNLI
+models
+(retrained)DecompAttn+GloVe 29.8 30.3 31.1 31.7 47.4 47.6 48.5 48.6
+DecompAttn+Numberbatch 32.4 31.7 32.5 31.9 47.4 48.0 48.0 48.3
+DecompAttn+ELMo 43.4 43.4 40.6 40.3 47.7 47.3 46.0 45.4
+ESIM+GloVe 34.8 35.1 36.3 36.7 51.9 52.7 52.5 52.5
+ESIM+Numberbatch 33.1 32.6 33.0 32.4 46.5 46.4 44.0 44.6
+ESIM+ELMo 46.0 45.7 45.9 44.8 59.1 59.2 58.7 58.5
+Human1 turker 82.8
+3 turkers 85.1
+5 turkers 88.0
+Expert 85.0
+Table 3 : Performance of all models in accuracy (%). All models substantially underperform humans,
+although performance increases as more context is provided (left to right). We optionally train on found
+endings only, or found and human-validated generated endings (found+gen ).
+ConceptNet knowledge base (Speer et al., 2017).
+For an ending sentence, we use the spaCy depen-
+dency parser to extract the head verb and its de-
+pendent object. The ending score is given by the
+number of ConceptNet causal relations9between
+synonyms of the verb and synonyms of the object.
+j.Human performance To benchmark human
+performance, ﬁve Mechanical Turk workers were
+asked to answer 100 dataset questions, as did an
+‘expert’ annotator (the ﬁrst author of this paper).
+Predictions were combined using a majority vote.
+4.4 Results
+We present our results in Table 3. The best model
+that only uses the ending is the LSTM sequence
+model with ELMo embeddings, which obtains
+43.6%. This model, as with most models stud-
+ied, greatly improves with more context: by 3.1%
+when given the initial noun phrase, and by an ad-
+9We used the relations ‘Causes’, ‘CapableOf’, ‘Re-
+ceivesAction’, ‘UsedFor’, and ‘HasSubevent’. Though their
+coverage is low (30.4% of questions have an answer with 1
+causal relation), the more frequent relations in ConceptNet,
+such as ‘IsA’, at best only indirectly relate to our task.ditional 4% when also given the ﬁrst sentence.
+Further improvement is gained from models
+that compute pairwise representations of the in-
+puts. While the simplest such model, Dual-
+BoW, obtains only 35.1% accuracy, combining In-
+ferSent sentence representations gives 40.5% ac-
+curacy (InferSent-Bilinear). The best results come
+from pairwise NLI models: when fully trained on
+Swag , ESIM+ELMo obtains 59.2% accuracy.
+When comparing machine results to human re-
+sults, we see there exists a lot of headroom.
+Though there likely is some noise in the task, our
+results suggest that humans (even untrained) con-
+verge to a consensus. Our in-house “expert” an-
+notator is outperformed by an ensemble of 5 Turk
+workers (with 88% accuracy); thus, the effective
+upper bound on our dataset is likely even higher.
+5 Analysis
+5.1 Swag versus existing NLI datasets
+The past few years have yielded great advances in
+NLI and representation learning, due to the avail-
+ability of large datasets like SNLI and MultiNLI
+6
+be
+standwearsitplaywalklookholdseerunshowtakewatchjumphaveridetalkdogetputgo
+dressuseturnbeginmake
+continueworksmilepullthrow
+performmovecarryspeaktrystarthit
+comeclimb104
+103
+102
+101
+100Verb FrequenciesSNLI SWAG
+100
+101
+102
+103
+Number of cumulative verbs (ordered by frequency)0.00.20.40.60.81.0Verb CDFSNLI SWAGFigure 4 : Top: Distribution of the 40 top verbs in the union of SNLI and Swag . Our dataset shows a
+greater variety of dynamic verbs, such as “move”, as well as temporal verbs such as “start” and “come.”
+“Continue” is cut off for SNLI (it has frequency 610 5). Bottom: CDF for verbs in SNLI and Swag .
+(Bowman et al., 2015; Williams et al., 2018). With
+the release of Swag , we hope to continue this
+trend, particularly as our dataset largely has the
+same input/output format as other NLI datasets.
+We observe three key differences between our
+dataset and others in this space:
+First, as noted in Section 1, Swag requires a
+unique type of temporal reasoning. A state-of-the-
+art NLI model such as ESIM, when bottlenecked
+through the SNLI notion of entailment (SNLI-
+ESIM), only obtains 36.1% accuracy.10This im-
+plies that these datasets necessitate different (and
+complementary) forms of reasoning.
+Second, our use of videos results in wide cover-
+age of dynamic and temporal situations Compared
+with SNLI, with contexts from Flickr30K (Plum-
+mer et al., 2017) image captions, Swag has more
+active verbs like ‘pull’ and ‘hit,’ and fewer static
+verbs like ‘sit’ and ‘wear’ (Figure 4).11
+Third, our dataset suffers from few lexical bi-
+ases. Whereas fastText, a bag of n-gram model,
+obtains 67.0% accuracy on SNLI versus a 34.3%
+baseline (Gururangan et al., 2018), fastText ob-
+tains only 29.0% accuracy on Swag .12
+5.2 Error analysis
+We sought to quantify how human judgments dif-
+fer from the best studied model, ESIM+ELMo.
+We randomly sampled 100 validation questions
+10The weights of SNLI-ESIM pick up primarily on entail-
+ment probability (0.59), as with neutral (0.46), while contra-
+diction is negatively correlated (-.42).
+11Video data has other language differences; notably, char-
+acter names in LSMDC were replaced by ‘someone’
+12The most predictive individual words on SWAG are in-
+frequent in number: ‘dotted‘ with P (+jdotted ) = 77% with
+10.3 counts, and P ( jsimilar ) = 81% with 16.3 counts.
+(Counts from negative endings were discounted 3x, as there
+are 3 times as many negative endings as positive endings).Reason Explanation Freq.
+Situational The good ending is better in context . 53.7%
+Plausibility The bad ending is implausible regard-
+less of context .14.4%
+Novelty The bad ending seems redundant; it is
+entailed by the context.1.8%
+Weirdness The bad ending is semantically or
+grammatically malformed, e.g. ‘the
+man is getting out of the horse.’18.1%
+Ambiguous Both endings seem equally likely. 12.0%
+Table 4 : Justiﬁcations for ranking the gold answer
+over a wrong answer chosen by ESIM+ELMo.
+that ESIM+ELMo answered incorrectly, for each
+extracting both the gold ending and the model’s
+preferred ending. We asked 5 Amazon Mechanical
+Turk workers to pick the better ending (of which
+they preferred the gold endings 94% of the time)
+and to select one (or more) multiple choice reasons
+explaining why the chosen answer was better.
+The options, and the frequencies, are outlined in
+Table 4. The most common reason for the turkers
+preferring the correct answer is situational (52.3%
+of the time), followed by weirdness (17.5%)
+and plausibility (14.4%). This suggests that
+ESIM+ELMo already does a good job at ﬁltering
+out weird and implausible answers, with the main
+bottleneck being grounded physical understand-
+ing. The ambiguous percentage is also relatively
+low (12.0%), implying signiﬁcant headroom.
+5.3 Qualitative examples
+Last, we show several qualitative examples in Ta-
+ble 5. Though models can do decently well by
+identifying complex alignment patterns between
+the two sentences (e.g. being “up a tree” im-
+plies that “tree” is the end phrase), the incorrect
+model predictions suggest this strategy is insufﬁ-
+7
+A waiter brings a fork. The waiter
+a) starts to step away. (74.76%)
+b) adds spaghetti to the table. (21.57%)
+c) brings a bunch of pie to the food (2.67%)
+d) drinks from the mug in the bowl. (0.98%)He is up a tree. Someone
+a) stands underneath the tree. (97.44%)
+b) is at a pool table holding a cup. (1.14%)
+c) grabs a ﬂower from a paper. (0.96%)
+d) is eating some cereal. (0.45%)
+An old man rides a small bumper car. Several people
+a) get in the parking lot. (76.58%)
+b) wait in the car. (15.28%)
+c) get stuck with other bumper cars. (6.75%)
+d) are running down the road. (1.39%)He pours the raw egg batter into the pan. He
+a) drops the tiny pan onto a plate. (93.48%)
+b) lifts the pan and moves it around to shufﬂe the
+eggs. (4.94%)
+c) stirs the dough into a kite. (1.53%)
+d) swirls the stir under the adhesive. (0.05%)
+Table 5 : Example questions answered by the best model, ESIM+Elmo, sorted by model probability.
+Correct model predictions are in blue, incorrect model predictions are red. The right answers are bolded .
+cient. For instance, answering “An old man rides
+a small bumper car” requires knowledge about
+bumper cars and how they differ from regular cars:
+bumper cars are tiny, don’t drive on roads, and
+don’t work in parking lots, eliminating the alterna-
+tives. However, this knowledge is difﬁcult to ex-
+tract from existing corpora: for instance, the Con-
+ceptNet entry for Bumper Car has only a single
+relation: bumper cars are a type of vehicle. Other
+questions require intuitive physical reasoning: e.g,
+for “he pours the raw egg batter into the pan,”
+about what happens next in making an omelet.
+5.4 Where to go next?
+Our results suggest that Swag is a challenging
+testbed for NLI models. However, the adversarial
+models used to ﬁlter the dataset are purely stylis-
+tic and focus on the second sentence; thus, subtle
+artifacts still likely remain in our dataset. These
+patterns are ostensibly picked up by the NLI mod-
+els (particularly when using ELMo features), but
+the large gap between machine and human perfor-
+mance suggests that more is required to solve the
+dataset. As models are developed for common-
+sense inference, and more broadly as the ﬁeld of
+NLP advances, we note that AF can be used again
+to create a more adversarial version of Swag using
+better language models and AF models.
+6 Related Work
+Entailment NLI There has been a long his-
+tory of NLI benchmarks focusing on linguistic
+entailment (Cooper et al., 1996; Dagan et al.,
+2006; Marelli et al., 2014; Bowman et al., 2015;
+Lai et al., 2017; Williams et al., 2018). Re-
+cent NLI datasets in particular have supported
+learning broadly-applicable sentence representa-
+tions (Conneau et al., 2017); moreover, models
+trained on these datasets were used as componentsfor performing better video captioning (Pasunuru
+and Bansal, 2017), summarization (Pasunuru and
+Bansal, 2018), and generation (Holtzman et al.,
+2018), conﬁrming the importance of NLI research.
+The NLI task requires a variety of commonsense
+knowledge (LoBue and Yates, 2011), which our
+work complements. However, previous datasets
+for NLI have been challenged by unwanted an-
+notation artifacts, (Gururangan et al., 2018; Po-
+liak et al., 2018) or scale issues. Our work ad-
+dresses these challenges by constructing a new
+NLI benchmark focused on grounded common-
+sense reasoning, and by introducing an adversar-
+ial ﬁltering mechanism that substantially reduces
+known and easily detectable annotation artifacts.
+Commonsense NLI Several datasets have been
+introduced to study NLI beyond linguistic entail-
+ment: for inferring likely causes and endings given
+a sentence (COPA; Roemmele et al., 2011), for
+choosing the most sensible ending to a short story
+(RocStories; Mostafazadeh et al., 2016; Sharma
+et al., 2018), and for predicting likelihood of a hy-
+pothesis by regressing to an ordinal label (JOCI;
+(Zhang et al., 2017)). These datasets are relatively
+small: 1k examples for COPA and 10k cloze ex-
+amples for RocStories.13JOCI increases the scale
+by generating the hypotheses using a knowledge
+graph or a neural model. In contrast to JOCI where
+the task was formulated as a regression task on the
+degree of plausibility of the hypothesis, we frame
+commonsense inference as a multiple choice ques-
+tion to reduce the potential ambiguity in the labels
+and to allow for direct comparison between ma-
+chines and humans. In addition, Swag ’s use of ad-
+versarial ﬁltering increases diversity of situations
+and counterfactual generation quality.
+13For RocStories, this was by design to encourage learning
+from the larger corpus of 98k sensible stories.
+8
+Last, another related task formulation is sen-
+tence completion or cloze, where the task is to pre-
+dict a single word that is removed from a given
+context (Zweig and Burges, 2011; Paperno et al.,
+2016).14Our work in contrast requires longer tex-
+tual descriptions to reason about.
+Vision datasets Several resources have been in-
+troduced to study temporal inference in vision.
+The Visual Madlibs dataset has 20k image cap-
+tions about hypothetical next/previous events (Yu
+et al., 2015); similar to our work, the test portion
+is multiple-choice, with counterfactual answers re-
+trieved from similar images and veriﬁed by hu-
+mans. The question of ‘what will happen next?’
+has also been studied in photo albums (Huang
+et al., 2016), videos of team sports, (Felsen et al.,
+2017) and egocentric dog videos (Ehsani et al.,
+2018). Last, annotation artifacts are also a re-
+curring problem for vision datasets such as Vi-
+sual Genome (Zellers et al., 2018) and Visual QA
+(Jabri et al., 2016); recent work was done to cre-
+ate a more challenging VQA dataset by annotating
+complementary image pairs (Goyal et al., 2016).
+Reducing gender/racial bias Prior work has
+sought to reduce demographic biases in word em-
+beddings (Zhang et al., 2018) as well as in image
+recognition models (Zhao et al., 2017). Our work
+has focused on producing a dataset with minimal
+annotation artifacts, which in turn helps to avoid
+some gender and racial biases that stem from elic-
+itation (Rudinger et al., 2017). However, it is not
+perfect in this regard, particularly due to biases
+in movies (Schoﬁeld and Mehr, 2016; Sap et al.,
+2017). Our methodology could potentially be ex-
+tended to construct datasets free of (possibly inter-
+sectional) gender or racial bias.
+Physical knowledge Prior work has studied
+learning grounded knowledge about objects and
+verbs: from knowledge bases (Li et al., 2016), syn-
+tax parses (Forbes and Choi, 2017), word embed-
+dings (Lucy and Gauthier, 2017), and images and
+dictionary deﬁnitions (Zellers and Choi, 2017).
+An alternate thread of work has been to learn
+scripts: high-level representations of event chains
+(Schank and Abelson, 1975; Chambers and Juraf-
+sky, 2009). Swag evaluates both of these strands.
+14Prior work on sentence completion ﬁltered negatives
+with heuristics based on LM perplexities. We initially tried
+something similar, but found the result to still be gameable.7 Conclusion
+We propose a new challenge of physically situated
+commonsense inference that broadens the scope
+of natural language inference (NLI) with com-
+monsense reasoning. To support research toward
+commonsense NLI, we create a large-scale dataset
+Swag with 113k multiple-choice questions. Our
+dataset is constructed using Adversarial Filtering
+(AF), a new paradigm for robust and cost-effective
+dataset construction that allows datasets to be con-
+structed at scale while automatically reducing an-
+notation artifacts that can be easily detected by a
+committee of strong baseline models. Our adver-
+sarial ﬁltering paradigm is general, allowing po-
+tential applications to other datasets that require
+human composition of question answer pairs.
+Acknowledgements
+We thank the anonymous reviewers, members of
+the ARK and xlab at the University of Wash-
+ington, researchers at the Allen Institute for AI,
+and Luke Zettlemoyer for their helpful feed-
+back. We also thank the Mechanical Turk work-
+ers for doing a fantastic job with the human val-
+idation. This work was supported by the Na-
+tional Science Foundation Graduate Research Fel-
+lowship (DGE-1256082), the NSF grant (IIS-
+1524371, 1703166), the DARPA CwC program
+through ARO (W911NF-15-1-0543), the IARPA
+DIV A program through D17PC00343, and gifts
+by Google and Facebook. The views and conclu-
+sions contained herein are those of the authors and
+should not be interpreted as representing endorse-
+ments of IARPA, DOI/IBC, or the U.S. Govern-
+ment.
+A Appendix
+A.1 More detail about video datasets
+As mentioned in the main paper, we obtained con-
+texts and found endings from video data. The
+videos in the ActivityNet dataset are already bro-
+ken up into into clips. However, the LSMDC
+dataset contains captions for the entire movie, so
+it is possible that temporally adjacent captions de-
+scribe events that are far apart in time. Thus, we
+don’t include any pair of captions that have a time-
+difference of more than 25 seconds.
+In addition to the datasets we used, we also con-
+sidered the DiDeMo dataset, which consists of (of-
+ten several) referring expressions in a video (Hen-
+9
+dricks et al., 2017). However, many of the re-
+ferring expressions are themselves sentence frag-
+ments, (e.g. “ﬁrst time we see people” so we
+ultimately did not use this dataset.) Addition-
+ally, we considered the Visual Madlibs dataset (Yu
+et al., 2015), as it contains 10k hypothetical cap-
+tions written by Mechanical Turk workers about
+what might happen next given an image. How-
+ever, these captions are fundamentally different
+from the rest of the data (as they’re about what
+might ) happen next; as a result, they use different
+types of language. They also have different tenses
+versus the other datasets that we considered (e.g.
+past tense), as a result of the “Mad-libs” style of
+data collection.
+A.2 Details of the language model
+Our language model follows standard best prac-
+tices: the input and output embedding layers are
+tied (Inan et al., 2017; Press and Wolf, 2017),
+all embedding and hidden layers are set to 512,
+and we used recurrent dropout (Gal and Ghahra-
+mani, 2016) on the hidden states and embed-
+ding layer. We additionally train a backwards
+language model alongside the forward language
+model, and they share embedding parameters.
+This adds extra supervision to the embedding layer
+and gives us another way to score candidate gen-
+erations. We ﬁrst pretrain the language model
+for two epochs on pairs of two sentences in the
+Toronto Books dataset (Zhu et al., 2015), and then
+train on sentence pairs from ActivityNet Captions
+and LSMDC, validating on held-out perplexity.
+For optimization, we use Adam (Kingma and Ba,
+2015) with a learning rate of 10 3and clip gradi-
+ents to norm 1:0.
+All of the above details were validated using
+perplexity on a held-out set of the video datasets
+during early experimentation. Our ﬁnal develop-
+ment set forward perplexity was 31.2 and back-
+ward perplexity was 30.4. We tried more com-
+plicated language modeling architectures, such as
+from (J ´ozefowicz et al., 2016), but ended up not
+seeing an improvement due to overﬁtting.
+A.3 Language model features for the MLP,
+during adversarial ﬁltering
+We obtained LM perplexity features to be used
+during adversarial ﬁltering in the following ways,
+using both directions of the bidirectional language
+model. We extract perplexities for the context by
+itself (going forward), the ending given the con-text (going forward), the context given the ending
+(going backward), and the ending by itself (go-
+ing backward). We also extract the probability of
+the ﬁnal generated token going forward, since sen-
+tences sometimes reach the length limit of 25 to-
+kens and end unnaturally.
+A.4 Reﬁnining the generated answers to four
+distractors
+In the main paper, we noted that we started with
+1023 negatives per example, which the adversarial
+ﬁltering process ﬁltered down to 9. Five of these
+were passed to mechanical turk workers, and we
+were left with anywhere between 0 and 4 of these
+per example as “distractors.” (Note that we always
+were ﬁltering out the second best option that the
+was selected by the turkers). This means that for
+many of our examples (62%) we actually have a
+fourth distractor. In these cases, we sorted the dis-
+tractors by their “unlikely/likely” score, so that the
+fourth distractor was the one deemed most likely.
+We still provided the fourth distractor in the train-
+ing set to be possibly used in future work, however
+we didn’t train on it for simplicity.
+A.5 More information about Mechanical
+turk
+We used several tricks to keep the interannotator
+agreement high (with a pairwise percent agree-
+ment of 79% at classifying an ending as either in
+the Top 2). First, we had a screening HIT where
+turkers were given detailed instructions for the
+task, and only the best-scoring turk workers qual-
+iﬁed for the remaining HITs. Second, we periodi-
+cally dequaliﬁed turkers that had a low agreement
+with the gold endings: any turk worker with an ac-
+curacy of less than 55% of classifying the “gold”
+ending as the best or second best, over 10 or more
+HITs, had the qualiﬁcation taken away. We also
+gave small bonuses to turkers with high accuracy.
+During our crowdsourcing, we tried to pay the
+Turkers a fair wage (median $8.57 per hour) and
+they left positive comments for us on TurkOpti-
+con and TurkerView. The total dataset cost was
+$23,000, or an average of 20 cents per example.
+A.6 Implementation details of the models
+considered
+We implemented the neural models in PyTorch us-
+ing the AllenNLP library (Gardner et al., 2018).
+Our experiments use the Adam optimizer (Kingma
+and Ba, 2015), with a learning rate of 10 3and
+10
+Questions with only generated endings 25,618
+Questions with one original ending 87,939
+Questions in total 113,557
+Sentence pairs from ActivityNet 51,439
+Sentence pairs from LSMDC 62,118
+Unique contexts 92,221
+Unique endings 452,683
+Table 6 : Statistics of Swag .
+Freq Topic words
+5.0% ball, pull, hit, wall, inside, time, game, rope, team
+4.9% window, red, long, drink, bowl, ingredient, mix
+6.1% arm, speak, appear, climb, tree, roll, like, roof, edge
+4.0% water, bar, board, blue, boat, ﬂy, river, join, dive
+5.3% eye, smile, close, little, lean, cover, remove, lip
+4.6% walk, outside, street, wave, pass, beach, sidewalk
+5.7% ﬁeld, drop, slide, drive, right, kick, park, road, chest
+4.7% watch, dog, ﬂip, stick, land, demonstrate, trick, mat
+4.5% dance, lift, try, line, snow, gun, catch, hill, bend
+4.6% fall, crowd, pour, shake, ﬁnish, raise, grass, wooden
+5.9% perform, spin, house, stage, routine, fence, bow
+Table 7 : A visualization of the diversity of the
+dataset, using a topic model (Blei et al., 2003).
+gradient clipping, except for Decomposable At-
+tention and ESIM, where we use the AllenNLP
+default conﬁgurations.
+A.7 More info about dataset diversity
+The ﬁnal dataset has a vocabulary size of 21000.
+We also visualize the coverage of the dataset with
+a Topic model (see Table 7).
+A.8 Comparing the distribution of verbs with
+MultiNLI
+We also produced an extension to Figure 4 of the
+main paper, that involves verbs from MultiNLI, in
+Figure 5. We ended up not including it in the paper
+because we wanted to focus our comparison be-
+tween SNLI and Swag (as they are both grounded
+datasets). Interestingly, we ﬁnd that Swag has a
+less skewed cumulative distribution of verbs up
+to around 120, when afterwards MultiNLI has a
+slightly less skewed distribution. This is possi-
+bly due to the broader set of domains considered
+by MultiNLI, whereas we consider videos (which
+is also a broad domain! but still underrepresents
+words highly used in newswire text, for instance.)
+A.9 More examples
+We have more qualitative examples in Table 8.References
+Collin F Baker, Charles J Fillmore, and John B Lowe.
+1998. The berkeley framenet project. In Proceed-
+ings of the 17th international conference on Compu-
+tational linguistics-Volume 1 , pages 86–90. Associ-
+ation for Computational Linguistics.
+David M Blei, Andrew Y Ng, and Michael I Jordan.
+2003. Latent dirichlet allocation. Journal of ma-
+chine Learning research , 3(Jan):993–1022.
+Samuel R. Bowman, Gabor Angeli, Christopher Potts,
+and Christopher D. Manning. 2015. A large an-
+notated corpus for learning natural language infer-
+ence. In Proceedings of the 2015 Conference on
+Empirical Methods in Natural Language Process-
+ing, EMNLP 2015, Lisbon, Portugal, September 17-
+21, 2015 , pages 632–642.
+Zheng Cai, Lifu Tu, and Kevin Gimpel. 2017. Pay at-
+tention to the ending: Strong neural baselines for the
+roc story cloze task. In Proceedings of the 55th An-
+nual Meeting of the Association for Computational
+Linguistics (Volume 2: Short Papers) , volume 2,
+pages 616–622.
+Nathanael Chambers and Dan Jurafsky. 2009. Unsu-
+pervised Learning of Narrative Schemas and Their
+Participants. In Proceedings of the Joint Confer-
+ence of the 47th Annual Meeting of the ACL and the
+4th International Joint Conference on Natural Lan-
+guage Processing of the AFNLP: Volume 2 - Volume
+2, ACL ’09, pages 602–610, Stroudsburg, PA, USA.
+Association for Computational Linguistics.
+Qian Chen, Xiaodan Zhu, Zhen-Hua Ling, Si Wei, Hui
+Jiang, and Diana Inkpen. 2017. Enhanced lstm for
+natural language inference. In Proceedings of the
+55th Annual Meeting of the Association for Compu-
+tational Linguistics (Volume 1: Long Papers) , vol-
+ume 1, pages 1657–1668.
+Gennaro Chierchia and Sally McConnell-Ginet. 2000.
+Meaning and Grammar (2Nd Ed.): An Introduction
+to Semantics . MIT Press, Cambridge, MA, USA.
+Alexis Conneau, Douwe Kiela, Holger Schwenk, Lo ¨ıc
+Barrault, and Antoine Bordes. 2017. Supervised
+learning of universal sentence representations from
+natural language inference data. In Proceedings of
+the 2017 Conference on Empirical Methods in Nat-
+ural Language Processing , pages 670–680.
+Robin Cooper, Dick Crouch, JV Eijckl, Chris Fox,
+JV Genabith, J Japars, Hans Kamp, David Mil-
+ward, Manfred Pinkal, Massimo Poesio, et al. 1996.
+A framework for computational semantics (fracas).
+Technical report, Technical report, The FraCaS Con-
+sortium.
+Ido Dagan, Oren Glickman, and Bernardo Magnini.
+2006. The pascal recognising textual entailment
+challenge. In Machine learning challenges. evalu-
+ating predictive uncertainty, visual object classiﬁca-
+tion, and recognising tectual entailment , pages 177–
+190. Springer.
+11
+100
+101
+102
+103
+Vocabulary Size (with words sorted by frequency)0.00.20.40.60.81.0Verb CDFMultiNLI SNLI SWAGFigure 5 : Bottom: CDF for verbs in SNLI, Swag , and MultiNLI.
+The lady demonstrates wrapping gifts using her feet.
+The lady
+a) shows us the different shapes of the ornaments.
+(99.67%)
+b) continues playing when the lady talks to the camera.
+(0.26%)
+c) takes the desserts from the box and continues talking
+to the camera . (0.07%)
+d) cuts the paper with scissors. (0.01%)In a cafeteria, someone holds a combination tray and
+bowl in one hand. With the other, he
+a) heads into his own study. (80.67%)
+b) glances around and studies the photo of the blonde
+someone. (8.45%)
+c) struggles to serve himself food with chopsticks.
+(6.82%)
+d) opens the wall , revealing an expanse of bed within.
+(4.06%)
+As he approaches , his kayak ﬂips upside-down. As the
+view follows him, we
+a) see silhouetted black clouds making him zoom out
+of the trees, catching smoke. (42.54%)
+b) drift over a busy city street , like down buildings on
+the tarmac. (41.41%)
+c) ﬁnd someone climbing into a tawny grave atop a
+road drawn among german soldiers. (13.73%)
+d) notice another man seated on the rocks to the
+right in red with a white helmet. (2.32%)A man is bending over a sink. He
+a) takes a rag from over the sink, putting it in his mouth.
+(89.54%)
+b) is spraying a small dog with a hose. (6.07%)
+c) is carrying a shaving machine with a pressure
+washer. (4.29%)
+d) is putting a pair of shaving glass on the side of his
+face. (0.10%)
+People are walking next to the camels leading them. A
+building
+a) is shown riding the camels. (90.72%)
+b) is shown in the background. (8.39%)
+c) with a riﬂe is leading them. (0.87%)
+d) is then shown for several clip. (0.01%)A hockey game is in progress. two hockey players
+a) walked together in the middle of a ﬁeld. (48.11%)
+b) walk past with a goal. (44.00%)
+c) sit around a rope watching the other team. (5.30%)
+d) ram into each other and begin ﬁghting. (2.58%)
+Meanwhile, someone parries another giant ’s attacks.
+The giant
+a) strikes a ﬁght and thuds into someone as he rushes
+in, who brieﬂy ﬂees. (89.96%)
+b) knocks someone ’s sword out of his hand.
+(5.25%)
+c) spins him across the bars. (4.55%)
+d) throws stick to the bat, dragging around. (0.24%)A lady pours ice in a glass. The lady
+a) pours ice into the glass. (65.14%)
+b) measures the contents of the glass. (33.56%)
+c) pours lemon mixture into a glass and pours liquids
+into asian juice. (0.87%)
+d) adds 3 liquors and lemon juice. (0.43%)
+The stars emerge from behind the clouds. Someone
+a) backs away from the windows of the clip, as light-
+ning billows over the sky. (96.59%)
+b) walks back across the room with nothing of his own.
+(1.82%)
+c) stands on his boat and looks at a deep orange
+and red sunset. (1.47%)
+d) shoots the man ’s shoulder sideways, but neither do
+anything for a few seconds. (0.12%)Someone stands waiting with the bridesmaids. Every-
+onea) seems to be ecstatic. (78.33%)
+b) looks around as someone walks down the aisle,
+arm-in-arm with someone ’s uncle. (8.97%)
+c) holds someone ’s eyebrow. (8.84%)
+d) looks at her anxiously as someone walks and sits in
+his seat. (3.85%)
+Table 8 : More (incorrect) questions answered by the best model, ESIM+Elmo, sorted by model probabil-
+ity. The right answers are bolded .
+Kiana Ehsani, Hessam Bagherinezhad, Joseph Red-
+mon, Roozbeh Mottaghi, and Ali Farhadi. 2018.
+Who let the dogs out? modeling dog behavior from
+visual data. In The IEEE Conference on Computer
+Vision and Pattern Recognition (CVPR) .
+Panna Felsen, Pulkit Agrawal, and Jitendra Malik.
+2017. What will happen next? forecasting player
+moves in sports videos. In Proceedings of the IEEE
+Conference on Computer Vision and Pattern Recog-nition , pages 3342–3351.
+Maxwell Forbes and Yejin Choi. 2017. Verb physics:
+Relative physical knowledge of actions and objects.
+InProceedings of the 55th Annual Meeting of the
+Association for Computational Linguistics (Volume
+1: Long Papers) , volume 1, pages 266–276.
+Yarin Gal and Zoubin Ghahramani. 2016. A theoret-
+ically grounded application of dropout in recurrent
+12
+neural networks. In Advances in neural information
+processing systems , pages 1019–1027.
+Matt Gardner, Joel Grus, Mark Neumann, Oyvind
+Tafjord, Pradeep Dasigi, Nelson Liu, Matthew Pe-
+ters, Michael Schmitz, and Luke Zettlemoyer. 2018.
+Allennlp: A deep semantic natural language pro-
+cessing platform. arXiv preprint arXiv:1803.07640 .
+JJ Gibson. 1979. The ecological approach to visual
+perception. Houghton Mifﬂin Comp .
+Max Glockner, Vered Shwartz, and Yoav Goldberg.
+2018. Breaking nli systems with sentences that re-
+quire simple lexical inferences. In Proceedings of
+the 56th Annual Meeting of the Association for Com-
+putational Linguistics (Volume 2: Short Papers) ,
+pages 650–655, Melbourne, Australia. Association
+for Computational Linguistics.
+Yash Goyal, Tejas Khot, Douglas Summers-Stay,
+Dhruv Batra, and Devi Parikh. 2016. Making the
+V in VQA matter: Elevating the role of image un-
+derstanding in Visual Question Answering. arXiv
+preprint arXiv:1612.00837 .
+Suchin Gururangan, Swabha Swayamdipta, Omer
+Levy, Roy Schwartz, Samuel Bowman, and Noah A.
+Smith. 2018. Annotation artifacts in natural lan-
+guage inference data. In Proceedings of the 2018
+Conference of the North American Chapter of the
+Association for Computational Linguistics: Human
+Language Technologies, Volume 2 (Short Papers) ,
+pages 107–112. Association for Computational Lin-
+guistics.
+Fabian Caba Heilbron, Victor Escorcia, Bernard
+Ghanem, and Juan Carlos Niebles. 2015. Activ-
+itynet: A large-scale video benchmark for human
+activity understanding. In Proceedings of the IEEE
+Conference on Computer Vision and Pattern Recog-
+nition , pages 961–970.
+Lisa Anne Hendricks, Oliver Wang, Eli Shechtman,
+Josef Sivic, Trevor Darrell, and Bryan Russell. 2017.
+Localizing moments in video with natural language.
+InProceedings of the IEEE International Confer-
+ence on Computer Vision (ICCV) .
+Sepp Hochreiter and J ¨urgen Schmidhuber. 1997. Long
+short-term memory. Neural Comput. , 9(8):1735–
+1780.
+Ari Holtzman, Jan Buys, Maxwell Forbes, Antoine
+Bosselut, David Golub, and Yejin Choi. 2018.
+Learning to write with cooperative discriminators.
+InProceedings of the 56th Annual Meeting of the
+Association for Computational Linguistics (Volume
+1: Long Papers) , pages 1638–1649. Association for
+Computational Linguistics.
+Ting-Hao Kenneth Huang, Francis Ferraro, Nasrin
+Mostafazadeh, Ishan Misra, Aishwarya Agrawal, Ja-
+cob Devlin, Ross Girshick, Xiaodong He, Pushmeet
+Kohli, Dhruv Batra, et al. 2016. Visual storytelling.
+InProceedings of the 2016 Conference of the NorthAmerican Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies ,
+pages 1233–1239.
+Hakan Inan, Khashayar Khosravi, and Richard Socher.
+2017. Tying word vectors and word classiﬁers: A
+loss framework for language modeling. In ICLR .
+ICLR.
+Allan Jabri, Armand Joulin, and Laurens van der
+Maaten. 2016. Revisiting visual question answer-
+ing baselines. In European conference on computer
+vision , pages 727–739. Springer.
+Armand Joulin, Edouard Grave, Piotr Bojanowski, and
+Tomas Mikolov. 2017. Bag of tricks for efﬁcient
+text classiﬁcation. In Proceedings of the 15th Con-
+ference of the European Chapter of the Association
+for Computational Linguistics: Volume 2, Short Pa-
+pers, volume 2, pages 427–431.
+Rafal J ´ozefowicz, Oriol Vinyals, Mike Schuster, Noam
+Shazeer, and Yonghui Wu. 2016. Exploring the lim-
+its of language modeling. CoRR , abs/1602.02410.
+Diederik P. Kingma and Jimmy Ba. 2015. Adam: A
+method for stochastic optimization. In ICLR . ICLR.
+Ryan Kiros, Yukun Zhu, Ruslan R Salakhutdinov,
+Richard Zemel, Raquel Urtasun, Antonio Torralba,
+and Sanja Fidler. 2015. Skip-thought vectors. In
+Advances in neural information processing systems ,
+pages 3294–3302.
+Ranjay Krishna, Kenji Hata, Frederic Ren, Li Fei-Fei,
+and Juan Carlos Niebles. 2017. Dense-Captioning
+Events in Videos. In International Conference on
+Computer Vision (ICCV) .
+Alice Lai, Yonatan Bisk, and Julia Hockenmaier. 2017.
+Natural language inference from multiple premises.
+InProceedings of the Eighth International Joint
+Conference on Natural Language Processing (Vol-
+ume 1: Long Papers) , pages 100–109, Taipei, Tai-
+wan. Asian Federation of Natural Language Pro-
+cessing.
+Xiang Li, Aynaz Taheri, Lifu Tu, and Kevin Gimpel.
+2016. Commonsense knowledge base completion.
+InProceedings of the 54th Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers) , pages 1445–1455, Berlin, Germany.
+Association for Computational Linguistics.
+Peter LoBue and Alexander Yates. 2011. Types of
+common-sense knowledge needed for recognizing
+textual entailment. In Proceedings of the 49th An-
+nual Meeting of the Association for Computational
+Linguistics: Human Language Technologies: short
+papers-Volume 2 , pages 329–334. Association for
+Computational Linguistics.
+Li Lucy and Jon Gauthier. 2017. Are distributional
+representations ready for the real world? evaluat-
+ing word vectors for grounded perceptual meaning.
+InProceedings of the First Workshop on Language
+Grounding for Robotics , pages 76–85.
+13
+Marco Marelli, Stefano Menini, Marco Baroni, Luisa
+Bentivogli, Raffaella bernardi, and Roberto Zampar-
+elli. 2014. A sick cure for the evaluation of compo-
+sitional distributional semantic models. In Proceed-
+ings of the Ninth International Conference on Lan-
+guage Resources and Evaluation (LREC’14) , pages
+216–223, Reykjavik, Iceland. European Language
+Resources Association (ELRA). ACL Anthology
+Identiﬁer: L14-1314.
+Nasrin Mostafazadeh, Nathanael Chambers, Xiadong
+He, Devi Parikh, Dhruv Batra, Lucy Vanderwende,
+Pushmeet Kohli, and James Allen. 2016. A corpus
+and evaluation framework for deeper understanding
+of commonsense stories. In NAACL .
+Denis Paperno, Germ ´an Kruszewski, Angeliki Lazari-
+dou, Ngoc Quan Pham, Raffaella Bernardi, San-
+dro Pezzelle, Marco Baroni, Gemma Boleda, and
+Raquel Fernandez. 2016. The lambada dataset:
+Word prediction requiring a broad discourse context.
+InProceedings of the 54th Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers) , pages 1525–1534, Berlin, Germany.
+Association for Computational Linguistics.
+Ankur Parikh, Oscar T ¨ackstr ¨om, Dipanjan Das, and
+Jakob Uszkoreit. 2016. A decomposable attention
+model for natural language inference. In Proceed-
+ings of the 2016 Conference on Empirical Methods
+in Natural Language Processing , pages 2249–2255.
+Ramakanth Pasunuru and Mohit Bansal. 2017. Multi-
+task video captioning with video and entailment
+generation. In Proceedings of the 55th Annual Meet-
+ing of the Association for Computational Linguistics
+(Volume 1: Long Papers) , pages 1273–1283, Van-
+couver, Canada. Association for Computational Lin-
+guistics.
+Ramakanth Pasunuru and Mohit Bansal. 2018. Multi-
+reward reinforced summarization with saliency and
+entailment. In Proceedings of the 2018 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 2 (Short Papers) , pages 646–
+653. Association for Computational Linguistics.
+Jeffrey Pennington, Richard Socher, and Christopher
+Manning. 2014. Glove: Global vectors for word
+representation. In Proceedings of the 2014 confer-
+ence on empirical methods in natural language pro-
+cessing (EMNLP) , pages 1532–1543.
+Matthew Peters, Mark Neumann, Mohit Iyyer, Matt
+Gardner, Christopher Clark, Kenton Lee, and Luke
+Zettlemoyer. 2018. Deep contextualized word repre-
+sentations. In Proceedings of the 2018 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long Papers) , pages 2227–
+2237. Association for Computational Linguistics.
+Bryan A. Plummer, Liwei Wang, Chris M. Cervantes,
+Juan C. Caicedo, Julia Hockenmaier, and Svet-lana Lazebnik. 2017. Flickr30k entities: Col-
+lecting region-to-phrase correspondences for richer
+image-to-sentence models. Int. J. Comput. Vision ,
+123(1):74–93.
+Adam Poliak, Jason Naradowsky, Aparajita Haldar,
+Rachel Rudinger, and Benjamin Van Durme. 2018.
+Hypothesis Only Baselines in Natural Language In-
+ference. In Joint Conference on Lexical and Com-
+putational Semantics (StarSem) .
+Oﬁr Press and Lior Wolf. 2017. Using the output em-
+bedding to improve language models. In Proceed-
+ings of the 15th Conference of the European Chap-
+ter of the Association for Computational Linguistics:
+Volume 2, Short Papers , volume 2, pages 157–163.
+Melissa Roemmele, Cosmin Adrian Bejan, and An-
+drew S Gordon. 2011. Choice of Plausible Alterna-
+tives: An Evaluation of Commonsense Causal Rea-
+soning. In AAAI Spring Symposium: Logical For-
+malizations of Commonsense Reasoning .
+Anna Rohrbach, Atousa Torabi, Marcus Rohrbach,
+Niket Tandon, Christopher Pal, Hugo Larochelle,
+Aaron Courville, and Bernt Schiele. 2017. Movie
+Description. International Journal of Computer Vi-
+sion, 123(1):94–120.
+Rachel Rudinger, Chandler May, and Benjamin
+Van Durme. 2017. Social bias in elicited natural lan-
+guage inferences. In Proceedings of the First ACL
+Workshop on Ethics in Natural Language Process-
+ing, pages 74–79.
+Maarten Sap, Marcella Cindy Prasettio, Ari Holtzman,
+Hannah Rashkin, and Yejin Choi. 2017. Connota-
+tion frames of power and agency in modern ﬁlms.
+InProceedings of the 2017 Conference on Empiri-
+cal Methods in Natural Language Processing , pages
+2329–2334.
+Roger C. Schank and Robert P. Abelson. 1975. Scripts,
+plans, and knowledge. In Proceedings of the 4th
+International Joint Conference on Artiﬁcial Intelli-
+gence - Volume 1 , IJCAI’75, pages 151–157, San
+Francisco, CA, USA. Morgan Kaufmann Publishers
+Inc.
+Alexandra Schoﬁeld and Leo Mehr. 2016. Gender-
+distinguishing features in ﬁlm dialogue. In Proceed-
+ings of the Fifth Workshop on Computational Lin-
+guistics for Literature , pages 32–39.
+Roy Schwartz, Maarten Sap, Ioannis Konstas, Li Zilles,
+Yejin Choi, and Noah A. Smith. 2017. The ef-
+fect of different writing tasks on linguistic style: A
+case study of the ROC story cloze task. In Proc. of
+CoNLL .
+Rishi Sharma, James Allen, Omid Bakhshandeh, and
+Nasrin Mostafazadeh. 2018. Tackling the story end-
+ing biases in the story cloze test. In Proceedings of
+the 56th Annual Meeting of the Association for Com-
+putational Linguistics (Volume 2: Short Papers) ,
+volume 2, pages 752–757.
+14
+Richard Socher, Danqi Chen, Christopher D Manning,
+and Andrew Ng. 2013. Reasoning with neural ten-
+sor networks for knowledge base completion. In
+Advances in neural information processing systems ,
+pages 926–934.
+Robert Speer, Joshua Chin, and Catherine Havasi.
+2017. Conceptnet 5.5: An open multilingual graph
+of general knowledge. In AAAI Conference on Arti-
+ﬁcial Intelligence , pages 4444–4451.
+Mitchell Stern, Jacob Andreas, and Dan Klein. 2017. A
+minimal span-based neural constituency parser. In
+Proceedings of the 55th Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers) , volume 1, pages 818–827.
+Vladimir Vapnik. 2000. The Nature of Statistical
+Learning Theory , 2 edition. Information Science
+and Statistics. Springer-Verlag, New York.
+Alex Wang, Amapreet Singh, Julian Michael, Felix
+Hill, Omer Levy, and Samuel R Bowman. 2018.
+Glue: A multi-task benchmark and analysis platform
+for natural language understanding. arXiv preprint
+arXiv:1804.07461 .
+Adina Williams, Nikita Nangia, and Samuel Bowman.
+2018. A broad-coverage challenge corpus for sen-
+tence understanding through inference. In Proceed-
+ings of the 2018 Conference of the North American
+Chapter of the Association for Computational Lin-
+guistics: Human Language Technologies, Volume 1
+(Long Papers) , pages 1112–1122. Association for
+Computational Linguistics.
+Licheng Yu, Eunbyung Park, Alexander C. Berg, and
+Tamara L. Berg. 2015. Visual Madlibs: Fill in the
+blank Image Generation and Question Answering.
+ICCV .
+Rowan Zellers and Yejin Choi. 2017. Zero-shot activ-
+ity recognition with verb attribute induction. In Pro-
+ceedings of the 2017 Conference on Empirical Meth-
+ods in Natural Language Processing (EMNLP) .
+Rowan Zellers, Mark Yatskar, Sam Thomson, and
+Yejin Choi. 2018. Neural motifs: Scene graph pars-
+ing with global context. In Conference on Computer
+Vision and Pattern Recognition .
+Brian Hu Zhang, Blake Lemoine, and Margaret
+Mitchell. 2018. Mitigating unwanted biases with ad-
+versarial learning. In Conference on Artiﬁcial Intel-
+ligence, Ethics and Society .
+Sheng Zhang, Rachel Rudinger, Kevin Duh, and Ben-
+jamin Van Durme. 2017. Ordinal Common-sense
+Inference. Transactions of the Association for Com-
+putational Linguistics , 5:379–395.
+Jieyu Zhao, Tianlu Wang, Mark Yatskar, Vicente Or-
+donez, and Kai-Wei Chang. 2017. Men also like
+shopping: Reducing gender bias ampliﬁcation us-
+ing corpus-level constraints. In Proceedings of the
+2017 Conference on Empirical Methods in Natural
+Language Processing , pages 2979–2989.Yukun Zhu, Ryan Kiros, Richard Zemel, Ruslan
+Salakhutdinov, Raquel Urtasun, Antonio Torralba,
+and Sanja Fidler. 2015. Aligning books and movies:
+Towards story-like visual explanations by watch-
+ing movies and reading books. In arXiv preprint
+arXiv:1506.06724 .
+Geoffrey Zweig and Christopher JC Burges. 2011. The
+microsoft research sentence completion challenge.
+Technical report, Citeseer.
+15

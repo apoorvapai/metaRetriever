@@ -1,0 +1,1569 @@
+Title: UL2: Unifying Language Learning Paradigms
+
+UL2: Unifying Language Learning Paradigms
+Yi Tay∗Mostafa Dehghani
+Vinh Q. Tran]Xavier Garcia]Jason Wei]Xuezhi Wang]Hyung Won Chung]
+Siamak Shakeri]Dara Bahri[Tal Schuster[Huaixiu Steven Zheng4
+Denny Zhou4Neil Houlsby4Donald Metzler4
+Google Brain
+Abstract
+Existing pre-trained models are generally geared towards a particular class of problems. To date, there
+seemstobestillnoconsensusonwhattherightarchitectureandpre-trainingsetupshouldbe. Thispaper
+presents a uniﬁed framework for pre-training models that are universally eﬀective across datasets and
+setups. We begin by disentangling architectural archetypes with pre-training objectives – two concepts
+thatarecommonlyconﬂated. Next,wepresentageneralizedanduniﬁedperspectiveforself-supervision
+inNLPandshowhowdiﬀerentpre-trainingobjectivescanbecastasoneanotherandhowinterpolating
+between diﬀerent objectives can be eﬀective. We then propose Mixture-of-Denoisers (MoD), a pre-training
+objective that combines diverse pre-training paradigms together. We furthermore introduce a notion of
+mode switching, wherein downstream ﬁne-tuning is associated with speciﬁc pre-training schemes. We
+conductextensiveablativeexperimentstocomparemultiplepre-trainingobjectivesandﬁndthatourmethod
+pushes the Pareto-frontier by outperforming T5 and/or GPT-like models across multiple diverse setups.
+Finally,byscalingourmodelupto20Bparameters,weachieveSOTAperformanceon50well-established
+supervisedNLPtasksrangingfromlanguagegeneration(withautomatedandhumanevaluation),language
+understanding, text classiﬁcation, question answering, commonsense reasoning, long text reasoning, struc-
+tured knowledge grounding and information retrieval. Our model also achieve strong results at in-context
+learning,outperforming175BGPT-3(publishedpaperresults)onzero-shotSuperGLUEandtriplingthe
+performance of T5-XXL on one-shot summarization. On zero-shot MMLU, UL2 20B outperforms T0 and T5
+models. Additionally,weshowthatUL220Bworkswellwithchain-of-thoughtpromptingandreasoning,
+making it an appealing choice for research into reasoning at a small to medium scale of 20B parameters.
+Finally,weapplyFLANinstructiontuningtotheUL220Bmodel,achievingMMLUandBig-Benchscores
+competitive to FLAN-PaLM 62B. We release Flax-based T5X model checkpoints for the UL2 20B model and
+Flan-UL2 20B model at https://github.com/google-research/google-research/tree/master/ul2 .
+∗Yi and Mostafa are co-leads of this project and are denoted with.]denotes technical research contributors. [denotes data &
+infrastructure contributions.4denotes advising contributions. Don, denoted withis the last author. Full contributions of all authors
+at the end of paper. Correspondence to yitay@google.com ordehghani@google.com .
+1arXiv:2205.05131v3  [cs.CL]  28 Feb 2023
+Contents
+1 Introduction 4
+2 Background: Pre-trained Language Models 6
+2.1 Pre-trained Language Models . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.2 Pre-training Objectives for Large Language Models . . . . . . . . . . . . . . . . . . . . . . . . 7
+2.3 Uniﬁed Pre-training Proposals . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3 Unifying Language Learning Paradigms (UL2) 7
+3.1 Pre-training . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3.1.1 Uniﬁed Perspective for Pre-training Tasks . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+3.1.2 Mixture of Denoisers . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+3.1.3 Mode Switching . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+3.2 Model Architecture . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+4 Ablative Experiments 11
+4.1 Baselines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+4.2 Experimental Setup . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+4.2.1 Datasets and Tasks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+4.2.2 Metrics and Holistic Evaluation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+4.2.3 Implementation Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+4.3 Overview of Ablative Experimental Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+4.3.1 Decoder Vs Encoder-Decoder . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+4.3.2 Is GPT and/or T5 the optimal setup? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+4.3.3 On the Performance of UniLM and SCLM . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+4.3.4 On the Performance of the Proposed UL2 . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+4.4 Mode Switching Ablations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+4.5 Mixture-of-Denoisers Ablations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+4.6 Modestly Scaling Model Size and Pretraining Data . . . . . . . . . . . . . . . . . . . . . . . . . 16
+5 Scaling to 20B Parameters 16
+5.1 Pretraining and Model Conﬁguration . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+5.2 Experiments at 20B scale . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+5.2.1 Setup and Implementation Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+5.2.2 Datasets for Supervised Finetuning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+5.2.3 Summary of Supervised Finetuning Results . . . . . . . . . . . . . . . . . . . . . . . . . 19
+2
+5.2.4 Results on Supervised Finetuning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+5.2.5 Tradeoﬀs between Finetuning and Prompt-based Zero-shot Learning (SuperGLUE) . 21
+5.2.6 Generative Few-shot: XSUM Summarization . . . . . . . . . . . . . . . . . . . . . . . . 21
+5.2.7 UL2 for chain-of-thought prompting . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+5.2.8 Massively Multitask Language Understanding . . . . . . . . . . . . . . . . . . . . . . . 23
+5.3 Instruction Tuned UL2 20B with FLAN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+5.3.1 Few-shot MMLU and Big-Bench Results after Flan training of UL2 . . . . . . . . . . . 24
+5.3.2 Comparisons on using Chain-of-thought vs Direct Prompting . . . . . . . . . . . . . . 25
+6 Conclusion 25
+7 Acknowledgements 26
+8 Author Contributions 26
+9 Appendix 36
+9.1 Model Release . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36
+9.2 Implementation Details and UL2 code . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36
+9.3 Details of Supervised Finetuning SOTA runs . . . . . . . . . . . . . . . . . . . . . . . . . . . . 38
+9.4 Details of Prompts for few-shot and zero-shot . . . . . . . . . . . . . . . . . . . . . . . . . . . . 39
+3
+1 Introduction
+There is a wide spectrum of pre-trained model options for NLP researchers and practitioners these days
+(Devlin et al., 2018; Brown et al., 2020; Raﬀel et al., 2019; Radford et al., 2019; Liu et al., 2019; Yang et al.,
+2019; Thoppilan et al., 2022; Fedus et al., 2021; Du et al., 2021; Chowdhery et al., 2022). When faced with the
+question of what model should one use, the answer is often it depends , followed by on what task?
+Answering this can be overwhelming, comprising of a number of ﬁne-grained follow-up questions like,
+‘encoder-only or encoder-decoder?’ ,‘span corruption or language model?’ . Pressing further, the answer always
+seemstodependonthetargetdownstreamtask. Thispaperquestionsandrethinksthisthoughtprocess,
+speciﬁcallyansweringthequestionsof whyshouldthechoiceofthepre-trainedLMdependonthedownstreamtask?
+andhow can we pre-train models that work universally well across many tasks? .
+This paper proposes a step towards making a universally applicable language model possible. We present a
+frameworkfor UnifyingLanguageLearningParadigms orUL2inshort,thatisconsistentlyeﬀectiveacrossa
+verydiversesetoftasksandsetups. Figure1showsanexampleofhowUL2canperformuniversallywell,
+unlike other models that often have to make a trade-oﬀ.
+0 2 4 6 8 10
+1-Shot GEM XSum, SGD, TOT Avg. Rouge-L6062646668707274Finetuned SuperGLUE Score
+GPT-like
+(Dec)PrefixLM (Dec)SpanCorrupt (Dec)
+UL2 (Dec)PrefixLM (EncDec)T5 (EncDec)
+UniLM (EncDec)UL2 (EncDec)
+Figure 1: In both decoder-only and encoder-decoder setups, UL2 strikes a signiﬁcantly improved balance in
+performance between ﬁne-tuned discriminative tasks and prompt-based 1-shot open-ended text generation
+thanpreviousmethods. Note: DecandEncDecarecomputematchedbutEncDecmodelshavedoublethe
+parameters.
+Theappealofauniversalmodelisclear,i.e.,asthisnotonlyallowsconcentratedeﬀortinimprovingandscaling
+asinglemodel,insteadofdiversifyingresourcesacross Nmodels. Moreover,underresourceconstrained
+settings where only a few models can be served (e.g., on device), it would be preferable to have a single
+pretrained model that can perform well on many types of tasks.
+AtthecoreofUL2isathenewlyproposedMixture-of-Denoisers(MoD),apre-trainingobjectivethatenables
+strongperformanceacrosstasks. MoDisamixtureofseveralwell-establisheddenoisingobjectivesalongwith
+4
+newones;namelyX-denoising(extremedenoising)whichconsidersextremespanlengthsandcorruption
+rates, S-denoising (sequential denoising) that strictly follows sequence order, and R-denoising (regular
+denoising)thatisastandardspancorruptionobjectiveintroducedin(Raﬀeletal.,2019). WeshowthatMoD
+is conceptually simple but highly eﬀective for a diverse set of tasks.
+Our approach exploits the realization that most (if not all) well-studied pre-training objectives diﬀer in the
+type of context a model is conditioned on. For example, the span corruption objective is akin to invoking
+multipleregionsofpreﬁxlanguagemodeling(PLM)(Liuetal.,2018;Raﬀeletal.,2019)wherebypreﬁxesare
+contiguoussegmentsofnon-corruptedtokensandtargetshavefullaccesstopreﬁxesofallPLMsegments. The
+setting where the span approaches the full sequence length is approximately a language modeling objective
+conditioned on long-range context. Thus, we are able to design a pre-training objective that smoothly
+interpolatesthesediﬀerentparadigms(spancorruptionvslanguagemodelingvspreﬁxlanguagemodeling).
+It is also easy to see that each denoiser is diﬃcult in diﬀerent ways. They also diﬀer in the nature of
+extrapolation (or interpolation). For example, bounding a model by bidirectional context (or the future) (ie..,
+spancorruption)makesthetaskeasierandbecomesmoreakintofactcompletion. Meanwhile,PreﬁxLM/LM
+objectives are generally more ‘open ended‘ . These behaviours can be easily observed by monitoring the cross
+entropy losses of these diﬀerent denoising objectives.
+Given the MoD formulation, we conjecture that it is beneﬁcial for our model to not only distinguish between
+diﬀerent denoisers during pre-training but also to adaptively switch modes when learning downstream
+tasks. Weintroducemodeswitching,anewconceptthatassociatespre-trainingtaskswithdedicatedsentinel
+tokens and allows dynamic mode switching via discrete prompting. Our model is able to switch modes
+between R,S and X denoisers on-demand after being pre-trained.
+We then disentangle the architecture from the self-supervision scheme. While it might be a common
+misconception, as previously noted in Raﬀel et al. (2019), that a pre-trained model is strongly characterized
+by its backbone architecture (e.g., decoder-only vs. encoder-decoder), we ﬁnd that the choice of the denoiser
+hassigniﬁcantlymoreimpact. MoDsupportseitherbackbone,similartohowT5’sspancorruptionmaybe
+trained with a decoder-only model. As such, UL2 is agnostic to architecture. We argue that the choice of
+backbone architecture is mainly a trade-oﬀ across diﬀerent eﬃciency metrics.
+We conduct systematic and ablative experiments on a suite of 9 diverse tasks aimed to capture diﬀerent
+problemformulations(supervisedandprompt-basedin-contextfew-shotlearning). Weexperimentwiththe
+SuperGLUEsuite(Wangetal.,2019),andthreetasksfromtheGEMbenchmark(Gehrmannetal.,2021).
+Inaddition,weevaluateonopentextgeneration,aswellasprompt-basedone-shotsettingsonalltasks. In
+this ablativesetup, ourexperimental resultsshow thatUL2 outperformsT5 andGPT-like baselines onall 9
+setups. Onaverage,UL2outperformsaT5baselineby +43:6%andalanguagemodelby +76:1%. Among
+alltheothercompetitivebaselinesconsidered,UL2istheonlymethodthatoutperformsT5andGPT-like
+models on all tasks.
+We scale UL2 up to a moderate scale setting of approximately 20B (19.5 to be exact) parameters and run
+experimentsacrossaverydiversesuiteof50+NLPtasksrangingfromlanguagegeneration(withautomated
+and human evaluation), language understanding, text classiﬁcation, question answering, commonsense
+reasoning,longtextreasoning,structuredknowledgegroundingandinformationretrieval. Ourresultsshow
+that UL2 achieves SOTA on a vast majority of tasks and setups.
+Finally,weconductzero/few-shotexperimentswithUL2andshowthatUL2outperformsGPT-3175Bon
+zeroshotSuperGLUE.Whencomparedwithnewerstate-of-the-artmodelslikeGLaM(Duetal.,2021),PaLM
+(Chowdheryetal.,2022)andST-MoE(Zophetal.,2022),UL2remainscompetitiveatacompute-matched
+setup despite only training on C4 corpus which is known to be less eﬀective than specially curated datasets
+used in (Du et al., 2021; Chowdhery et al., 2022). We delve into understanding trade-oﬀs between zero-shot
+and ﬁnetuning performance and show that UL2 is Pareto-eﬃcient with respect to both learning paradigms.
+Onone-shotsummarization,UL2triplestheperformanceofanLMadaptedT5XXLmodelandiscompetitive
+with (or outperforms) PaLM and LaMDA at the same compute cost. We release T5X-based Flax checkpoints
+of the trained UL2 model.
+5
+2 Background: Pre-trained Language Models
+In this section, we discuss background surrounding pretrained language models, pretraining objectives and
+other uniﬁed pretraining proposals.
+2.1 Pre-trained Language Models
+Learningpre-trainedrepresentationsforlanguageisafar-reachingpillarofmodernNLPresearch,dating
+back to (Mikolov et al., 2013; Pennington et al., 2014; Neumann et al., 2018; Dai & Le, 2015; Howard & Ruder,
+2018). The ﬁrst pre-trained Transformer, GPT, was proposed by (Radford et al., 2019) and was trained
+as a causal language model. Subsequently, BERT (Devlin et al., 2018) demonstrated the importance of
+bidirectional modeling for many downstream tasks. BERT introduced masked language modeling (MLM), a
+denoising objective that reconstructs the input in-place using bidirectional receptive ﬁelds. XLNet Yang et al.
+(2019)introducedthePermutationLanguageModelingtoaccountfordependenciesbetweenmaskedtokens
+duringtraining. Anumberofadditionalpapers(e.g.,RoBERTA(Liuetal.,2019),SpanBERT(Joshietal.,
+2020)) suggested further improvements to the pre-training process.
+At the same time, two-stack encoder-decoder architectures such as T5 (Raﬀel et al., 2019) gained popularity
+due to their improved performance on classiﬁcation and sequence-to-sequence (“seq2seq”) tasks. However,
+sofar,thesemodelshaveshownlimitedperformanceonopen-textgenerationandprompt-basedinference
+(i.e.,in-contextlearning),whichmotivatestheuseofdecoder-onlymodelsthataretrainedwithdiﬀerent
+objectives (e.g., GPT-3 (Brown et al., 2020), GLaM (Du et al., 2021), LaMDa (Thoppilan et al., 2022) and
+PaLM(Chowdheryetal.,2022)). Inthiswork,weaimtobridgetheperformancegapbetweenthetwoby
+means of a general training paradigm that suits both architectures.
+Decoder-only vs Encoder-only The key similarities of decoder-only and encoder-only architectures is that
+decoder-onlyarchitecturesoperatewithan input-to-target paradigmor targets-only paradigmifCausalLM
+isusedoverPreﬁxLMused. Forbotharchitectures,theobjectiveisalwaystopredictthenexttoken(LM)
+and are therefore autoregressive models. Notably this is diﬀerent from position-wise masked LM denoising
+(sometimesknownas autoencoding ),whichhavebeenpopularizedbyencoder-onlyBERT-stylemodels. These
+classofmodels areveryrestrictedintheirgenerative capabilities. On topofthat,taskspeciﬁc classiﬁcation
+headsarealsotypicallyemployedfordownstreamtasks. Becauseofthecumbersomenessoftaskspeciﬁc
+classiﬁcationheads,westronglydonotrecommendusingthisclassofautoencodingmodelsmovingforward
+andconsiderthemsomewhatdeprecated. Caveatsdoapply. Forinstance,regressionistheprobablyonly
+reasonwhyonewouldaddataskspeciﬁchead(Leesetal.,2022),ortosqueezeoutsomeeﬃciencygains
+fromeliminatingafullvocabulary. Eitherway,onecanalwaysstartfromaencoder-decoderandchopoﬀ
+the decoder later so there is no good reason to use an encoder-only model. Hence the only real objective
+consideration here is between decoder-only and encoder-decoder architectures.
+Decoder-only vs Encoder-Decoder The line between decoder-only and encoder-decoder models is less
+clear. PreﬁxLMmodelsare almostencoder-decodermodelswithsharedparameters(butnotquite). From
+an inductive bias point of view, there are multiple diﬀerences. Encoder-Decoder models process input and
+targets independently with a diﬀerent set of parameters. This is a form of sparsity where diﬀerent set of
+parametersareusedfordiﬀerenttokens. Encoder-Decodermodelsalsohaveacrossattentioncomponent
+that connects input tokens to target tokens. Meanwhile, decoder-only models process inputs and targets by
+concatenating them. Hence, the representations of inputs and targets are concurrently build layer by layer as
+the input/targetspropagate up the network. Conversely, the decoder inEncoder-decoder models generally
+only looks at the fully processed encoder input. Overall, the inductive bias of PreﬁxLM decoder-only models
+andEncoder-Decodermodelscouldbeprettysimilarmodulothesubtlediﬀerencesstatedabove. Thedistinct
+propertyisthatEncoder-Decodermodelsaregenerallyapproximately2xparametersofadecoder-onlymodel
+when compute-matched.
+6
+Sparse Models Onasidenote,therehavealsobeenalsoanemergingtrendofsparsepretrainedmodels
+that achieve state-of-the-art performance. Sparse mixture-of-expert models such as the Switch Transformer
+(Fedus et al., 2021), GLaM (Du et al., 2021) and/or GShard (Lepikhin et al., 2020) have also demonstrated a
+lotofpromise. Whileorthogonaltothetopicofpretrainingobjectives, sparsemodelsachieveaverydiﬀerent
+ﬂop-per-parameter ratio compared to dense models - a core recurring motif in the debate surrounding
+encoder-decoder models vs decoder-only models.
+2.2 Pre-training Objectives for Large Language Models
+Whilerecentresearchdemonstratesthe potentialoflarge supervised multi-taskpre-training(Aribandietal.,
+2021; Sanh et al., 2021; Wang et al., 2022a), most pre-training objectives rely on the vast availability of
+unsupervised data and use self-training techniques. As mentioned above, diﬀerent architectures typically
+leveragediﬀerentobjectives. Decoder-onlymodelsaretypicallytrainedwithcausallanguagemodelobjectives
+to mimic auto-regressive generation (Radford et al., 2019). Raﬀel et al. (2019) explored many objectives
+for encoder-decoder models and found span corruption to be eﬀective. (Wang et al., 2022a) conducts a
+systematic study of diﬀerent architectures combined with three diﬀerent pretraining objectives (causal
+LM, preﬁxLM and span corruption) and analyzed their impact on zero-shot generalization. Related to
+ourproposedX-denoisers,(Wettigetal.,2022)studiestheeﬀectofcorruptionrateinBERT-stylemasked
+language modeling and hypothesizes that this improves sample eﬃciency along with beneﬁtting larger
+models. Notably, the beneﬁts of heightened corruption rates as a standalone denoiser is still unclear, as noted
+by (Raﬀel et al., 2019) and also apparent in our own ablations. Pre-training (or denoising) is generally
+applied onthe subwordlevel (Raﬀel etal., 2019; Devlinet al., 2018)but it is worth to note that it has also
+been applied on the character or byte-level (Xue et al., 2021; Tay et al., 2021c). In these setups, the corrupted
+spans are generally much larger than subword-based denoising.
+2.3 Uniﬁed Pre-training Proposals
+UniLM (Dong et al., 2019) proposed to train on multiple language modeling objectives using a single
+Transformer model. Speciﬁcally, UniLM trains on unidirectional LM, bidirectional LM and seq2seq LM. This
+is quite similar to combining auto-regressive LMs with BERT and preﬁx-LM models. Notably, UniLM trains
+using a cloze-type formulation which adds explicit mask tokens to the inputs. Losses are then computed by
+the diﬀerence of the predicted token and target token in a position-wise fashion. Aside from pretraining
+uniﬁcation,therehavebeenarecenttrendofthematicuniﬁcation,i.e.,unifyingcommontasksintoonemodel.
+ExamplesoftheseincludeUNICORN(Lourieetal.,2021)forcommonsensereasoning,UniﬁedQA(Khashabi
+et al., 2020, 2022) for question answering and UniﬁedSKG (Xie et al., 2022) for Structured Knowledge
+Grounding.
+3 Unifying Language Learning Paradigms (UL2)
+This section describes the UL2 framework and the proposed pre-training objectives which we study for the
+remainder of the paper.
+3.1 Pre-training
+This section discusses the proposed pre-training objective.
+7
+R-denoiser(short spans & low corruption)X-denoiser(extreme denoising)
+S-denoiser(sequential denoising / prefix language modeling)Decoder-only PrefixLMEncoder-DecoderInputs-to-targets“Autoregressive” modelsX-denoiser(long spans & low corruption)X-denoiser(short spans & high corruption)X-denoiser(long spans & high corruption)
+Mixture-of-DenoisersIn-context LearningSupervisedFinetuning
+Language UnderstandingLanguage GenerationORLearning Paradigms
+Task ParadigmsStructured Knowledge GroundingLong Range ReasoningZero-ShotFigure 2: An overview of UL2 pretraining paradigm. UL2 proposes a new pretraining objective that works
+well on a diverse suite of downstream tasks.
+Inputs:He dealt in archetypes before anyone knew such things existed, and his ability to take an emotion or a situation and push it to the limit helped create a cadre of plays that have been endlessly staged –and copied. Apart from  this, Romeo and Juliet inspiredMalorie Blackman's Noughts& Crosses, there are references to Hamlet in Lunar Park by Bret Easton Ellis and The Tempest was the cue for The Magus by John Fowles.He dealt in archetypes before anyone knew such things existed, and his ability to take an emotion or a situation and push it to the limit helped create a cadre of plays that have been endlessly staged –and copied. Apart from  this, Romeo and Juliet inspiredMalorie Blackman's Noughts& Crosses, there are references to Hamlet in Lunar Park by Bret Easton Ellis and The Tempest was the cue for The Magus by John Fowles.He dealt in archetypes before anyone knew such things existed, and his ability to take an emotion or a situation and push it to the limit helped create a cadre of plays that have been endlessly staged –and copied. Apart from  this, Romeo and Juliet inspiredMalorie Blackman's Noughts& Crosses, there are references to Hamlet in Lunar Park by Bret Easton Ellis and The Tempest was the cue for The Magus by John Fowles.Inputs:
+Target:He dealt in archetypes before anyone knew such things existed, and his ability to take an emotion or a situation and push it to the limit helped create a cadre of plays that have been endlessly staged –and copied. Apart from this, Romeo and Juliet inspiredMalorie Blackman's Noughts& Crosses, there are references to Hamlet in Lunar Park by Bret Easton Ellis and The Tempest was the cue for The Magus by John Fowles.3545235452<S><S><S><S><E><B><E><B>959516
+3224
+<E><B>2416<S><S>24<S>24<S>3235452<S><B>3453344245354523453344245<S><S><S><S><S><S><S><S><S><S><S><S><S>S-DenoisingX-DenoisingR-Denoising
+<E>[R][X]Inputs:
+Target:Inputs:
+Target:Target:[S][X]
+Figure 3: Mixture of denoisers for training UL2. Greyed out rectangles are masked tokens that are shifted to
+‘targets’for prediction.
+3.1.1 Uniﬁed Perspective for Pre-training Tasks
+Manypre-trainingtaskscanbesimplyformulatedasan‘input-to-target’task,whereintheinputrefersto
+any form of memory or context that the model conditions on, and the target is the model’s expected output.
+Language modelsuseall previoustime-steps asinputs tothe modelto predictthe nexttoken, whichis the
+target. In span corruption, the model leverages all uncorrupted tokens from the past andfuture as inputs for
+predicting the corrupted span (targets). Preﬁx-LMs are LMs that use past tokens as inputs, but consume the
+inputs bidirectionally: this oﬀer more modelling power than unidirectional encoding of inputs in vanilla LM.
+8
+Given this perspective, we can approximately reduce one pre-training objective to another. For instance,
+inthespancorruptionobjective, whenthecorruptedspan,i.e., target, isequaltotheentiresequence, the
+problembecomeseﬀectively1alanguagemodelingproblem. Withthisinmind,usingspancorruption,by
+setting the span length to be large, we can eﬀectively mimic the LM objective in local regions.
+We deﬁne a notation that covers all of the diﬀerent denoising tasks that we use in this paper. The inputs and
+targets of the denoising tasks are generated by a S/p.sc/a.sc/n.scC/o.sc/r.sc/r.sc/u.sc/p.sc/t.sc function that is parameterized by three values
+(;r;n ),whereisthemeanspanlength, risthecorruptionrate,and nwhichisnumberofcorruptedspans.
+Notethatnmaybeafunctionoftheinputlength, L,andthespanlength ,e.g.L=,butinsomecases,we
+use a ﬁxed value of n. Given an input text, S/p.sc/a.sc/n.scC/o.sc/r.sc/r.sc/u.sc/p.sc/t.sc introduces corruptions to the spans of lengths that
+are drawn from a (normal or uniform) distribution with mean of . After corruption, the input text is then
+fed to the denoising task and the corrupted spans are used as targets to be recovered.
+As an example, to construct an objective analogous to causal language modeling using this formulation, one
+would simply set ( =L,r= 1:0,n= 1), i.e. a single span with its span length equal to the length of the
+sequence. ToexpressonesimilartoPreﬁxLMobjective,onewouldset( =L P,r= 1:0 P=L,n= 1)
+wherePis the length of the preﬁx, with the additional constraint that the single corrupted span always
+reaches the end of the sequence.
+Wenotethatthisinputs-to-targetsformulationcanbeappliedtobothencoder-decodermodelsandsingle-
+stack transformer models (e.g., decoder models). We opt to select models that predict the next target token
+instead of those that do so in-place (e.g., predict the current masked token in BERT) because the next-
+target formulation is more general and can subsume more tasks instead of using a special “ CLS” tokens and
+task-speciﬁc projection heads.
+3.1.2 Mixture of Denoisers
+We conjecture that a strong universal model has to be exposed to solving diverse set of problems during
+pre-training. Given that pre-training is done using self-supervision, we argue that such diversity should
+beinjectedtotheobjectiveofthemodel,otherwisethemodelmightsuﬀerfromlackacertainability,like
+long-coherent text generation.
+Motivatedbythis,aswellascurrentclassofobjectivefunctions,wedeﬁnethreemainparadigmsthatare
+used during pre-training:
+•R-Denoiser -TheregulardenoisingisthestandardspancorruptionintroducedinRaﬀeletal.(2019)
+thatusesarangeof 2to5tokensasthespanlength,whichmasksabout 15%ofinputtokens. These
+spans are short and potentially useful to acquire knowledge instead of learning to generate ﬂuent text.
+•S-Denoiser - A speciﬁc case of denoising where we observe a strict sequential order when framing the
+inputs-to-targets task, i.e., preﬁx language modeling. To do so, we simply partition the input sequence
+into two sub-sequences of tokens as context and target such that the targets do not rely on future
+information. Thisisunlikestandardspancorruptionwheretherecouldbeatargettokenwithearlier
+positionthanacontexttoken. NotethatsimilartothePreﬁx-LMsetup,thecontext(preﬁx)retainsa
+bidirectional receptive ﬁeld. We note that S-Denoising with very short memory or no memory is in
+similar spirit to standard causal language modeling.
+•X-Denoiser - An extreme version of denoising where the model must recover a large part of the input,
+givenasmalltomoderatepartofit. Thissimulatesasituationwhereamodelneedstogeneratelong
+target froma memory withrelativelylimited information. To doso, we opt toinclude examples with
+aggressive denoising where approximately 50%of the input sequence is masked. This is by increasing
+thespanlengthand/orcorruptionrate. Weconsiderapre-trainingtasktobeextremeifithasalong
+span (e.g.,12tokens)orhave a large corruption rate (e.g., 30%). X-denoising is motivated by
+being an interpolation between regular span corruption and language model like objectives.
+1This is roughly approximate since the model still conditions on a sentinel token.
+9
+Thisset ofdenoisershas strongconnectionswithpreviouslyused objectivefunctions: R-Denoisingisthe
+T5 span corruption objective, S-Denoising is connected to causal language models that are GPT-like, and
+X-Denoising can expose the model to a combination of objectives from T5 and Causal LMs. Notably, X-
+denoisersarealso connectedtoimprovesample eﬃciencysincemoretokensarelearned tobepredictedin
+eachsample,insimilarspirittoLMs. Weproposeblendingallthesetasksinauniformfashionandhavea
+hybrid self-supervisedobjective. Theﬁnal objective is a mixture of 7denoisers thatare conﬁgured as follows:
+Denoiser Setting
+R (= 3;r= 0:15;n)[(= 8;r= 0:15;n)
+S (=L=4;r= 0:25;1)
+X (= 3;r= 0:5;n)[(= 8;r= 0:5;n)[(= 64;r=
+0:15;n)[(= 64;r= 0:5;n)
+Table 1: Conﬁguration of UL2’s mixture-of-denoisers used in the paper.
+For X- and R-Denoisers, the span length is sampled from a normal distribution with mean of . For S-
+Denoisers, we usea uniform distribution, ﬁx thenumber of corrupted spans to 1, and have an additional
+constraint that the corrupted span should end at the end of the original input text, i.e. no un-cropped token
+should appear after the corrupted part. This is roughly equivalent to seq2seq denoising or the Preﬁx LM
+pre-training objective.
+Since LM is a special case of Preﬁx-LM, we did not ﬁnd it necessary to include a casual LM task into the
+mixture. Alltaskshaveanapproximateequalparticipationinthemixture. Wealsoexploreanalternative
+where we increase number of S-denoisers up to 50%of denoisers in the Mixture and all other denoisers take
+up the remainder. We present detailed ablation studies of various design choices in the later sections.
+Finally,themixinginMixture-of-Denoisersiswhatmakesituniversallypowerful. Alone,someofthedenoiser
+types do not perform well. For instance, the original T5 paper explored an option with 50% corruption rate
+(X-denoising) and found that to not work well.
+The implementation of UL2’s mixture of denoiser is simple and easy to implement using a library like seqio2
+(Roberts et al., 2022). See appendix for more details on implementation.
+3.1.3 Mode Switching
+We introduce the notion of paradigm-shifting via mode switching. During pre-training, we feed the model
+an extra paradigm token, i.e.,f[R],[S],[X]gthat helps the model switch gears and operate on a mode that is
+moresuitableforthegiventask. Forﬁne-tuninganddownstreamfew-shotlearning,totriggerthemodel
+tolearnbettersolutions,wealsoaddaparadigmtokenwithrespecttothesetupsandrequirementsofthe
+downstreamtask. Mode switchingin factbinds downstreambehavior tooneof themodes weused during
+upstream training.
+3.2 Model Architecture
+UL2 adopts an architecture-agnostic philosophy. We argue that the choice between both architectures
+(encoder-decodervsdecoder-only)isamoreofaneﬃciencytrade-oﬀandthatarchitecturechoiceshouldnot
+beconﬂatedwiththepretrainingobjective. Hence,wehavebothaUL2decoderandUL2encoder-decoder
+insimilarspirittohowtherearemultiplesizespermodel. Wediscussthiseﬃciencytrade-oﬀindetailin
+our experiment section. UL2 adopts a pretty standard vanilla T5 Transformer that have been enhanced with
+modiﬁcations that have withstood the test of time, i.e., GLU layers (Shazeer, 2020) and T5-style relative
+2https://github.com/google/seqio
+10
+Table 2: Experimental results on a suite of language understanding and generation tasks on both supervised
+and one-shot setup. Models are pretrained on 32B tokens.
+Supervised Finetuning In-context One-shot
+Obj Arch Params SG XS SGD TOT SG XS SGD TOT LM
+CLM Dec 167M 62.24 28.18 55.44 59.40 39.22 1.16 1.40 0.20 -2.35
+PLM Dec 167M 62.44 28.21 55.55 59.52 42.54 1.08 3.70 6.40 -2.54
+SC Dec 167M 67.67 29.14 55.48 60.47 38.53 1.16 2.20 1.60 -3.62
+SCLM Dec 167M 63.36 29.02 55.71 60.00 40.78 3.03 1.27 0.10 -2.38
+UL2 Dec 167M 65.50 28.90 55.80 60.39 42.30 8.01 6.30 5.80 -2.34
+PLM ED 335M 69.30 31.9555.70 60.91 38.18 6.50 7.11 3.90 -2.42
+SC ED 335M 72.00 31.05 55.80 61.25 38.51 7.49 1.43 2.10 -7.23
+SCLM ED 335M 72.50 31.69 55.70 60.94 39.74 5.13 8.70 7.30 -2.40
+UniLM ED 335M 71.10 31.00 55.83 61.03 39.86 6.70 6.50 4.10 -2.65
+UL2 ED 335M 73.1031.8656.10 61.50 41.3011.516.63 6.50 -2.55
+attention. To not further conﬂate architectural modiﬁcations with pretraining contributions, the backbone of
+the model remains similar to a T5-like model. This is also in light of results such as (Narang et al., 2021).
+4 Ablative Experiments
+This section describes our ablative experimental setup (e.g., baselines, datasets, implementation details) and
+results. Our overall ﬁndings show that UL2 outperforms T5-like and GPT-like models on 9 out of 9 tasks.
+4.1 Baselines
+For pre-training objectives, we compare with the following pre-training baselines:
+•Causal Language Model (CLM) - This is the standard left-to-right auto-regressive language model
+pre-training,usedinmanystandardpre-trainedmodels,likeGPT(Radfordetal.,2019;Brownetal.,
+2020). We refer to this model as GPT-like in our experiments.
+•Preﬁx LM (PLM) -ThisisaslightvariationofcausalLMwhere Mhasbidirectionalreceptiveﬁelds,
+introduced in (Liu et al., 2018; Raﬀel et al., 2019). We uniformly sample the length of Mand only
+compute the loss at the auto-regressive targets.
+•Span Corruption (SC) -ThisisthestandarddenoisingobjectiveproposedinT5(Raﬀeletal.,2019).
+The idea is to blank out certain text portions and replace them with sentinel tokens. The text replaced
+with sentinel tokens are then copied tothe targets and auto-regressively generated bythe model. We
+use a mean span of 3and denoising rate of 15%following the default T5 setup.
+•Span Corruption + LM (SCLM) - We train on a mixture of CLM and Span Corruption with an equal
+mix ratio. We use the same hyper-parameters for SC for the SC component of this objective.
+•UniLM(ULM) -ThisistheobjectiveproposedinDongetal.(2019). SimilartotheoriginalUniLM,we
+mix causal language modeling, Preﬁx LM (sequence-to-sequence LM) and bidirectional i.i.d denoising.
+Instead of training UniLM in cloze-style or BERT-style, we opt to generate the masked tokens. This
+allows this objective to be applicable to both decoder-only and encoder-decoder architectures and
+remove the need for task-speciﬁc linear heads for ﬁne-tuning.
+For all objectives, we explore both single-stack and encoder-decoder architectures. All architectures are
+inputs-to-targetseitherimplementedinencoder-decoderordecoder-onlymodelstructuressinceweconsider
+11
+BERT-stylemaskedlanguagemodelingpretrainingtohavealreadybeeneﬀectivelysubsumedbythisstyleof
+pretraining, as empirically made evident in (Raﬀel et al., 2019). Task-speciﬁc classiﬁcation heads are also not
+recommended, since they clearly go against the principle of having a universal model (and are also very
+cumbersome).
+4.2 Experimental Setup
+We conduct our experiments on a diverse set of supervised and prompt-based few-shot learning tasks.
+4.2.1 Datasets and Tasks
+ThedatasetsweuseareSuperGLUE(Wangetal.,2019),comprisingof8NLUsub-tasks. Wealsoconduct
+experiments on 3 datasets from the GEM benchmark (Gehrmann et al., 2021) that focuses on language
+generation problems. We arbitrarily select XSUM (summarization), ToTTo (table-to-text generation) (Parikh
+et al., 2020) and Schema Guided Dialog (SGD) (Rastogi et al., 2019) from the GEM benchmark. For all these
+tasks, we evaluate on both supervised ﬁne-tuning and prompt-based one-shot learning. Finally we also
+compare our models on their general ability for text generation using perplexity scores on the C4 validation
+set. We believe our suite of tasks gives us good coverage across many setups in the literature including
+supervised and conditional few-shot learning.
+4.2.2 Metrics and Holistic Evaluation
+ForSuperGLUE,wereportwell-establishedmetricssuchasaccuracy,F1orExactMatch,wheneverappropriate.
+For GEM benchmark, we use the Rouge-L metric. For language modeling we report negative log perplexity.
+Theuniversality of the models, i.e., their collective performance across all range of tasks, is a main evaluation
+criteria here. To enable the comparison between models from this perspective, we need an aggregate
+performance score. However, metrics on diﬀerent tasks we include are widely diﬀerent in nature – take,
+for example, F1 and perplexity. To address this, we opt to report and use the normalized relative gain with
+respect to baselines as an overall metric. For this purpose, we use the standard language model (decoder-only)
+(GPT-like)andstandardspandenoisingencoder-decoder(T5)asprimebaselinesandreportallmethods
+against their relative performance against these well-established candidates. We believe this is the most
+suitable method for comparing these models since it is easy to reason about how much a new model is
+generally better than a popular setting (e.g., GPT or T5-like). We also highlight the fact that the overall gain
+isnormalized ,sothisbecomeshardertoexploitorbesusceptibletobenchmarklotteryeﬀects(Dehghani
+et al., 2021b).
+4.2.3 Implementation Details
+OurexperimentsareallconductedinJAX/Flax(Bradburyetal.,2018)usingtheopensourceT5X3framework
+(Robertsetal.,2022)andFlaxformer4. Wepre-trainallmodelsfor500Kstepswithabatchsizeof128and
+a sequence length of 512 inputs and 512 targets using the C4 corpus. The total approximate tokens seen
+duringpre-trainingisapproximately32billiontokens. Eachpre-trainingrunistypicallytrainedusing64
+to 128 TPUv4 chips (Jouppi et al., 2020). We optimize our model with the Adafactor (Shazeer & Stern,
+2018) optimizer with an inverse square root learning rate. To understand the trade-oﬀ of diﬀerent backbone
+architectures,werunallbaselinepre-trainingobjectiveswithboththedecoder-onlyarchitectureandencoder-
+decoder architecture. We report key experiment results using a base architecture of approximately 167M
+parametersforthedecodermodeland335Mparametersfortheencoder-decodermodel. Allmodelsusea
+standard Transformer that uses SwiGLU layers as described in (Shazeer, 2020). We utilize the default T5
+3https://github.com/google-research/t5x .
+4https://github.com/google/flaxformer
+12
+Table3: Relativeperformancecomparedtostandardencoder-decoderspancorruptionmodel(T5). Resultsin
+this table are expressed in terms of relative percentage improvements over a baseline. Model with ?denotes
+the main compared baseline. Overall score column is normalized to be weighted equally across tasks.
+Supervised One-shot
+Obj Arch SG XS SGD TOT SGL XS SGD TOT LM All Win
+CLM Dec -13.6 -9.2 -0.7 -3.0 +1.8 -91.7 -2.2 -90.5 +208 -31.7 2/9
+PLM Dec -13.3 -9.2 -0.5 -2.8 +10.5 -85.6 +158 +205 +185 -11.0 4/9
+SC Dec -5.6 -6.2 -0.6 -1.3 +0.05 -84.5 +54 -23.8 +99 -20.6 3/9
+SCLM Dec -6.0 -6.5 -0.2 -2.0 +5.9 -59.6 -11.3 -95 +204 -16.1 2/9
+UniLM Dec -10.1 -8.2 -0.2 -2.3 -5.3 -69.1 +382 +110 +200 -16.1 3/9
+UL2 Dec -9.0 -6.9 0.0 -1.4 +9.8 +6.9 +340 +176 +209 +14.1 5/9
+PLM ED -3.7 +2.9 -0.2 -0.6 -0.86 -13.3 +397 +86 +199 +16.7 5/9
+SC?ED 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 -
+SCLM ED +0.7 +2.1 -0.2 -0.5 +3.2 -31.6 +508 +248 +201 +28.3 7/9
+UniLM ED -1.2 -0.2 +0.1 -0.4 +3.5 -11.0 +355 +95 +173 +19.8 5/9
+UL2 ED +1.5 +2.6 +0.5 +0.4 +7.2 +53.6 +363 +210 +184 +43.6 9/9
+English 32K sentencepiece for all models. Within the context of decoder-only models, except for the case of
+the decoder model trained on causal LM, our experiments always use a bidirectional receptive ﬁeld onlyin
+it’sinputsegmentandautoregressivedecodingatthe targetssegment. ThisisessentiallytheaPreﬁxLM-type
+architecture5(Raﬀel et al., 2019) which we ﬁnd to be consistently better than a full causal decoder model.
+Table 4: Relative performance compared to standard decoder causal language model (GPT-like). Results in
+this table are expressed in terms of relative percentage improvements over a baseline. Model with ?denotes
+the main compared baseline. Overall score column is normalized to be weighted equally across tasks.
+Supervised One-shot
+Obj Arch SG XS SGD TOT SG XS SGD TOT LM All Win
+CLM?Dec 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 -
+PLM Dec +0.3 +0.1 +0.2 +0.2 +8.5 +74.3 +164 +3100 -8.0 +21.4 8/9
+UniLM Dec +4.0 +1.1 +0.5 +0.7 -7.0 +274 +393 +2100 -2.5 +21.0 7/9
+SC Dec +8.7 +3.4 +0.1 +1.8 -1.8 +87.0 +57.1 +700 -54.2 +13.9 7/9
+SCLM Dec +1.8 +3.0 +0.5 +1.0 +4.0 +387 -9.3 -50 -1.3 +15.8 6/9
+UL2 Dec +5.2 +2.6 +0.6 +1.7 +7.9 +1190 +350 +2800 +0.3 +45.7 9/9
+PLM ED +11.3 +13.4 +0.5 +2.5 -2.6 +946 +408 +1850 -2.9 +48.6 7/9
+SC ED +16.5 +10.2 +0.6 +3.1 -1.8 +1107 +2.3 +950 -208 +31.7 7/9
+SCLM ED +15.7 +12.5 +0.5 +2.6 +1.3 +726 +522 +3550 -2.2 +60.3 8/9
+UniLM ED +14.2 +10.0 +0.7 +2.7 +1.6 +974 +365 +1950 -12.9 +52.6 8/9
+UL2 ED +17.4 +13.1 +1.2 +3.5 +5.3 +1754 +373 +3150 -8.3 + 76.18/9
+4.3 Overview of Ablative Experimental Results
+Table2reportstherawresultsonallthebenchmarktasksanddatasets. Tofacilitateeasiercomparisonacross
+setups,wealsoreportrelativecomparisonsagainstwell-establishedbaselinessuchasT5andGPTmodels.
+This is reported in Tables 3 and 4 respectively.
+5Not to be confused with the PreﬁxLM pretraining objective.
+13
+4.3.1 Decoder Vs Encoder-Decoder
+Beforewediveintotheresultsofthissegment,wewouldliketoremindreadersthatthereisnoeasyway
+to comparedecoder-onlymodels withencoder-decoder models. In short, we caneither comparethem in a
+compute-matched setup or a parameter-matched way. Therefore, the encoder-decoder models in these set of
+results have approximately twice the number of parameters as the decoder models but have similar speeds.
+We notethatthis mayslightly favor encoder-decoderssince thiscanbe interpreted formof modelsparsity.
+Moving back to the results, when using T5 as the reference baseline, we note that, with the exception of
+UL2Decoder,noneofthepre-traineddecodersmodelsoutperformT5. Additionally,thereisa 10%to30%
+degradation in overall relative performance. The best decoder baseline model here is the Preﬁx-LM decoder
+model,whichisabout 10%worsethantheT5baseline. Itisclearfromtheseresultsthatencoder-decoder
+modelsshouldbepreferredoverdecoder-onlymodelsifandonlyifthereisnoconcernaboutstorage,i.e.,
+parameter counts are generally less important than actual throughput (see (Dehghani et al., 2021a) for a
+detailed discussion).
+When there is a parameter constraint, the Preﬁx-LM decoder makes for a suitable alternative. Finally, an
+interesting data point is how we were able to push the UL2 decoder to outperform the T5 encoder-decoder
+setup by +14:6%. That said, this UL2 decoder does not outperform our UL2 encoder-decoder. However,
+this reinforces our point that the self-supervision objective may be intrinsically more important than the
+backbone architecture and negotiating architectural choices is mainly about eﬃciency trade-oﬀs that can be
+studied independently.
+4.3.2 Is GPT and/or T5 the optimal setup?
+Based on the relative comparisons against a GPT-like (causal LM + decoder) and T5-like (span corruption +
+encoderdecoder)setup,weareabletoeasilyidentifyifthewell-establishedsetupsareindeedoptimalor
+already close to optimal. Firstly, the causal LM (GPT-like) setup appears to be the worse conﬁguration as it
+is outperformed by all our baselines. We thus make the straightforward recommendation of always at least
+training with Preﬁx-LM or UniLM whenever possible. The best decoder-only model (with the exception
+of UL2) is the Preﬁx-LM pre-training that keeps a memory preﬁx for a language model to condition on.
+Regarding Preﬁx-LM pre-training, it is interesting that Preﬁx-LM actually outperforms the T5 span corrupt
+setup by +16:7%. The Preﬁx-LM encoder-decoder model is indeed less eﬀective than the default T5 model
+on SuperGLUE but is on a whole, stronger especially when it comes to one-shot or open text-generation.
+Overall, between the Preﬁx-LM and the span corruption encoder-decoder model (T5), it is unclear to which
+is the universally superior model as there are gives and takes across the diﬀerent sub-tasks although it is
+worthynotingthePreﬁx-LMEncDecmodelonlysacriﬁcesaminordegradationincertaintasksforahuge
+multifold increase in other tasks.
+4.3.3 On the Performance of UniLM and SCLM
+On the encoder-decoder setup, both the UniLM and SCLM objective performs better than the standard span
+corruption objective in terms of aggregated and normalized overall gain. This shows that, in general, mixing
+pre-trainingobjectivesishelpful. Onthedecodersetup,thereisanoverallgainof +9:4%gainforUniLM
+and +16:1%for SCLM compared to the baseline causal LM. In terms of individual tasks, UniLM and SCLM
+both outperforms T5 on 6 out of 9 tasks. It is also noteworthy that SCLM performs the best out of all models
+on 1shot generation (SGD and TOTTO).
+4.3.4 On the Performance of the Proposed UL2
+Finally, we note that UL2 performs the best when compared against both the GPT-like model and the T5-like
+model. Overall, UL2 outperforms by T5 +43:4%and +76:2%when compared to the GPT-like CLM decoder
+14
+Table5: Eﬀectofdiﬀerentparadigmpromptson1-shotevaluation,usingaEncoder-Decoderarchitecture
+pre-trained using UL2 on 7B tokens.
+Model/Prompt 1Shot XSum 1Shot SuperGLUE
+Baseline T5 6.9/0.6/6.1 33.9
+UL2 / None 13.2/1.4/10.8 38.3
+UL2 / [R] 13.5/1.5/11.1 38.5
+UL2 / [S] 11.6/1.2/10.0 38.5
+UL2 / [X] 8.9/0.9/7.6 38.7
+Table 6: Ablation study for Mixture-of-Denoisers. Span, Rate and SD are in percentages ( %). We report
+SuperGLUE score (SG) and XSUM Rouge-L (XS).
+Ablation Method Supervised One-shot
+Name Span ( ) Rate (r)SD% SG XS SG XS
+A - - 100 69.3 31.1 38.2 6.5
+B 3 50 0 72.0 32.0 38.5 7.5
+C 3,8,12 15,50 14 71.9 32.1 38.6 4.1
+D 3,8,12,32 15,50 11 71.0 32.2 42.7 10.6
+E 3,8,32,64 15,50 11 73.1 32.240.7 10.4
+F 3,8,64 15,50 17 70.6 31.6 41.3 11.5
+G 3,8,32,64 15 25 69.2 31.6 42.4 10.1
+H 8, 64 15 25 72.5 31.2 39.2 10.9
+I 3,8,12, 32 15,50 50 71.2 32.0 38.1 11.7
+J 3,8,64 15,50 50 71.3 31.6 38.1 11.8
+K 3,8,12 15,50 0 73.732.0 39.3 2.6
+L 3,8,64 15,50 0 70.1 32.1 38.0 7.3
+model. This is the highest relative (overall) gain compared to all other alternatives. We also note that on all
+individual tasks,UL2 outperformsT5 on all 9 outof 9 consideredtasks. Hence, UL2is auniversally better
+option compared to the span corruption T5 model. While UL2 doesn’t always outperform all baselines on all
+individual tasks, UL2 is very consistent. Even when it loses to another method on a task, the loss is relatively
+marginal(e.g.,6.5vs7.3onone-shotTOTTO).Conversely,whenUL2outperformsabaselinelikeT5,thegain
+canbeaslargeas +363%. UL2remainsthemostconsistentlystrongmethod. Theconsistentimprovement
+also suggests that it can be used as a more consistent replacement to T5 and GPT-like models.
+4.4 Mode Switching Ablations
+In order to ascertain that our mode switching capabilities have an eﬀective on performance, we conduct
+ablation experiments. We conduct experiments on one-shot XSum and one-shot SuperGLUE. Table 5 reports
+the result of varying the paradigm prompt to the model. Firstly, we observe that the prompt has quite
+substantial eﬀect on model performance – i.e., using the right or wrong prompt can lead to a 48% gap
+in performance (on XSum, Rouge-1). SuperGLUE, on the other hand, is less sensitive to prompting. On
+SuperGLUE, using prompts are almost always better than not using prompts during one-shot eval. However,
+for XSum, getting the prompt right seems to be crucial for good performance.
+4.5 Mixture-of-Denoisers Ablations
+WeconductextensiveexperimentstoverifytheeﬀectivenessofindividualobjectiveswithintheMoDobjective.
+Table 6 reports results for these ablations. We report results for varying the mean span, and corruption rate,
+15
+along with the percentage of S-denoising used (denoted by % SD)). Note that the total number of denoisers
+in a mixture iskSpankkCorrupt_Ratek+ 1. We label these conﬁgurations from Var-A through Var-J to
+refer to them easily.
+X-DenoisingisComplementarilyEﬀectivebutDoesNotSuﬃceasaStandalone Weobservethatmixing
+ExtremeDenoisingiseﬀective. Mostofthebestresultsacrosstheboardcomefrommixtureswithlongspans
+(e.g., 32 or 64). When compared with variants without long spans (Var-D vs. Var-C), we see that Var-D
+is strictly better. We also draw the readers attention to Var-H, which is a variant that only employs long
+spans. In general, Var-H performs poorly, suggesting that extreme denoising complements regular denoising
+but doesnot suﬃce in isolation. This also corroboratesthe result from Raﬀelet al. (2019) thatshows that a
+50%corruption rate does not perform well. This slightly conﬂicts with the ﬁnding of (Wettig et al., 2022)
+althoughourarchitecturesuseainputs-to-targetsformofpretraininginsteadofBERT-stylemaskedlanguage
+modeling.
+Small Amounts of S-Denoisers is Preferred We explore a setting where we scale S-denoisers to 50%of
+the entireMoD mixture. We ﬁndthat this generally hurtsperformance. Hence, we make aconclusion that
+S-denoisersarenecessarybutonlysmallamountsofS-denoisers( 20%)arepreferred. Var-KandVar-L
+also explore the case where there is no S-denoising at all. While performance on one task substantially
+improves(SuperGLUE),anothersubstantiallydegrades(one-shotXSUM).MeanwhileforVar-Lwhichis
+identical tovar-F(but without S-denoising),performs on awhole, substantially worse. Hence, we showed
+that S-denoising is crucial.
+4.6 Modestly Scaling Model Size and Pretraining Data
+We conduct additional experiments by scaling up both 1) the model size and 2) pre-training dataset size.
+Concretely, we scale the UL2 Encoder-Decoder model up to approximately 1B parameters and increase
+the number of pre-training tokens to 0.5 trillion tokens. Our motivation is to conduct a sanity check that
+theproposedformulationalsoworksatdiﬀerentmodelscalesandtoobserveiftherearediﬀerencesand
+implications at operating at a larger scale. Moreover, it has also become a staple for language model research
+to derive scaling laws (Kaplan et al., 2020; Tay et al., 2021b). Table 7 reports results in this scaled setting. At
+largescale,weﬁndthattheproposedoftheUL2encoder-decodermodelisstillcompetitive. Akeydiﬀerence
+now is that UL2 drops the SuperGLUE suite against T5 (1B). However, this is compensated by not only
+out-performing on 7 out of 8 tasks but also improving performance by 2-4 times on one-shot evaluation. The
+gains on supervised ﬁne-tuning is smaller, but still noticeable across the board on XSUM, SGD and TOT.
+Table 7: Experiments with moderately scaled up models in terms of model compute (e.g., 1B for EncDec and
+0.5B for decoder-only) and dataset size (0.5T tokens).
+Finetuning In-context Learning
+Model SG XS SGD TOT SG XS SGD TOT
+GPT-like 62.3 37.1/15.7/30.2 56.0 60.3 36.4 1.2/0.1/1.1 3.5 0.0
+T5 84.743.0/20.8/35.6 56.0 62.1 29.4 8.9/0.8/7.8 2.1 1.4
+UL2 83.3 43.3/21.0/35.9 56.5 62.6 45.4 15.4/2.5/11.1 9.6 7.8
+5 Scaling to 20B Parameters
+WearealsointerestedtoevaluateUL2inascaledupsetting. Followingtheinsightsweobtainedfromablative
+experiments,weuseanencoder-decoderarchitectureforthisrun. WhileUL2isarchitectureagnostic,our
+softadvice here is to probably default to an encoder-decoder architecture due to intrinsic sparsity.
+16
+WetrainUL2atascaleofapproximately20Btotalparameters. Comparedtotrulylargelanguagemodels(Du
+etal.,2021;Chowdheryetal.,2022),20Brepresentsamediumscalemodelthatwetrainasaproof-of-concept
+resembling a hint of what UL2 can do at a relatively larger scale than our ablation experiments. Admittedly,
+notmuchthoughtwasputintotheexactparametercountofthismodel,i.e.,weweretraininga20Bmodel
+alreadyforsometimeanddecidedtoseeittoconvergence. Additionally,wenotethatspikingandinstabilities
+arecommonwhenscalingupmodelsduetoapotentialbarrageofreasons(datacorruption,intermittent
+hardware issues like pre-emption). In this run we did not speciﬁcally control or put in place any mitigation
+strategiessuchasoccasionalrestartsaswewerenotattentivelymonitoringthejob. Hence,weﬁndoccasional
+loss spikes in the training of this 20B model. However, since many ﬁnetuning experiments using these
+checkpoints still often result in sotaperformance, we let it be for now and leave a properly monitored run for
+future work. Despite obtaining sotaperformance on 50+ NLP benchmarks, we expect the current presented
+results to be still an underestimate of the true potential of the model. We leave properly scaling UL2 to truly
+large scale to future work.
+5.1 Pretraining and Model Conﬁguration
+WefollowthesametrainingprotocolinearlierexperimentsbypretrainingontheC4corpusbutbyalsoscaling
+thenumberoftokensthemodelseesduringpretraining. Weuseabatchsizeof1024and512TPUv4chips
+forpretrainingthismodel. Themodelistrainedonatotalof1trilliontokensonC4(2millionsteps). The
+sequence length is set to 512=512for inputs and targets. Dropout is set to 0during pretraining. Pre-training
+took approximately slight more than one month for about 1 trillion tokens. We use the same mixture of
+denoisers as earlier sections. The model has 32encoder layers and 32decoder layers, dmodelof 4096 and dff
+of16384. The dimension of each head is 256for a total of 16heads. Our model uses a model parallelism of 8.
+WeretainthesamesentencepiecetokenizerasT5of32kvocabsize. Hence,UL20Bcanbeinterpretedasa
+modelthatisquitesimilartoT5buttrainedwithadiﬀerentobjectiveandslightlydiﬀerentscalingknobs.
+Similar to earlier experiments, UL20B is trained with Jax and T5X infrastructure. We release and open source
+T5X-based model checkpoints of this 20B model.
+5.2 Experiments at 20B scale
+This section describes our experimental setup for UL20B experiments.
+5.2.1 Setup and Implementation Details
+We conduct experiments on both ﬁnetuning and in-context learning. For supervised ﬁnetuning, our models
+are continuously ﬁnetuned after Npretraining steps where Nis typically from 50kto100k. In other words,
+after eachNk steps of pretraining, we ﬁnetune on each downstream task and record its results. This is
+generallydoneinamanualfashion. Whilesometaskswereﬁnetunedonearlierpretrainedcheckpointsasthe
+model was still pretraining, many were ﬁnetuned on checkpoints nearer to convergence that we release. As
+we continiouslyﬁnetune, we stop ﬁnetuningon a task onceit has reached sotato savecompute. Finetuning
+isgenerallydoneinaper-taskbasisandnotco-trained. Detailsoftaskswhereco-trainingisperformedis
+found in the appendix. We leave the combination of massive multi-task training (Aribandi et al., 2021) and
+UL2 to future work.
+Forsupervisedﬁnetuning,wegenerallyadoptalearningrateintherangeof f510 5;110 5110 4g
+using the Adafactor optimizer. The general recipe is that we reset Adafactor optimizer states and/or adopt a
+lossnormalizationbasedonthenumberofrealtargettokens. ThisisreminiscentofthePaLMﬁnetuning
+setup(Chowdheryetal.,2022). Batchsizeisgenerallyarangeof 32to128althoughwedidnotﬁndmuch
+impactofbatch sizeonﬁnetuningperformance. Manyoftheevaluated taskswerenottunedmuchand we
+only ran once or twice before performing leaderboard submissions.
+17
+5.2.2 Datasets for Supervised Finetuning
+Todemonstratetheuniversalityoftheapproach,weconsideratotalofnearly50+NLPtasks. Welistour
+categorization of tasks below. Note that the categorization of tasks are generally soft in nature and some
+tasks may cross into diﬀerent categorization boundaries.
+•Language Generation - We consider summarization and data-to-text generation tasks. We use CN-
+N/Dailymail (Hermann et al., 2015), XSUM (Narayan et al., 2018), MultiNews (Fabbri et al., 2019),
+SAMSum(Gliwaetal.,2019),WebNLG(CastroFerreiraetal.,2020)(English),E2E(Dušeketal.,2019)
+andCommonGen(Linetal.,2020)toevaluateourmodels. ForWebNLG,E2EandCommonGen,we
+use the versions from the GEM benchmark (Gehrmann et al., 2021).
+•Language Generation with Human Evaluation - We evaluate on a variety of text generation tasks
+usinghumanevaluation,viatheGENIEleaderboard(Khashabietal.,2021). ThesetasksincludeaNLG
+(Bhagavatulaet al.,2019), ARC-DA(Clark et al.,2018), WMT19(Foundation),and XSUM(Narayan
+et al., 2018).
+•LanguageUnderstanding,ClassiﬁcationandQuestionAnswering -WeuseReadingComprehension,
+Question Answering, Text Classiﬁcationand natural languageinferencedatasets. Concretely, weuse
+RACE (Reading comprehension) (Lai et al., 2017), QASC (Khot et al., 2020), OpenBookQA (Mihaylov
+et al., 2018), TweetQA (Xiong et al., 2019), QuAIL (Rogers et al., 2020), IMDB (Maas et al., 2011),
+Agnews(Zhangetal.,2015),DocNLI(Yinetal.,2021),AdversarialNLI(Nieetal.,2019),VitaminC
+(Schuster et al., 2021), Civil Comments and Wikipedia Toxicity detection datasets (Borkan et al., 2019).
+We also use standard SuperGLUE (Wang et al., 2019) and GLUE (Wang et al., 2018) datasets.
+•CommonsenseReasoning -WeuseHellaSwag(Zellersetal.,2019),SocialIQA/SIQA(Sapetal.,2019),
+PhysicalIQA/PIQA(Bisketal.,2020),CosmosQA(Huangetal.,2019),AbductiveNLI(Bhagavatula
+et al., 2019), CommonsenseQA (Talmor et al., 2018), CommonsenseQA2 (Talmor et al., 2021).
+•Long Range Reasoning - We use the Scrolls benchmark (Shaham et al., 2022) which comprises of
+sevencomponenttasksincludingGovReport(Huangetal.,2021),SumScr(Chenetal.,2021),QMSUm
+(Zhong et al., 2021), QASPER (Dasigi et al., 2021), NarrativeQA (Kočiský et al., 2018), QuaLITY (Pang
+et al., 2021), and ContractNLI (Koreeda & Manning, 2021).
+•Structured Knowledge Grounding - We use several component tasks from UniﬁedSKG (Xie et al.,
+2022), namely WikiTQ (Pasupat & Liang, 2015), CompWQ (Talmor & Berant, 2018), FetaQA (Nan
+etal.,2021),HybridQA(Chenetal.,2020),WikiSQL(Zhongetal.,2017),TabFat(Chenetal.,2019),
+Feverous(Alyetal.,2021),SQA(Iyyeretal.,2017),MTOP(Lietal.,2020)andDART(Nanetal.,2020).
+Weselectdatasetsthatarerelativelyconvenienttoperformevaluationandusesmainstreammetrics
+suchasaccuracyorexactmatchinsteadofobscureonesorthosethatrequiresigniﬁcantdomainspeciﬁc
+post-processing.
+•InformationRetrieval -IRisthetaskofretrievingrelevantdocumentsgivenqueries. Weusethesetup
+of the latest next generation IR paradigm, i.e., diﬀerentiable search index (Tay et al., 2022) for our
+experiments. We use the same NQ (Kwiatkowski et al., 2019) splits in the DSI paper.
+For each dataset, we report the best previous sota result. For generation tasks, we generally report ROUGE-2
+following the advice of (Gehrmann et al., 2022). For the rest of the datasets, we report the dominant metric
+that is reported in prior work. For BLEU scores, we use sacrebleu. For commonsense reasoning tasks, we do
+not compare against approaches that use external knowledge bases as they are orthogonal and out of scope
+for this paper. For most part, GLUE is generally considered to be saturated and there are many unpublished
+results on the GLUE leaderboard. For this reason, we make a very reasonable decision of considering (Raﬀel
+et al., 2019) to be the state-of-the-art since we believe that there has not been any real advance on the GLUE
+benchmark since the T5 model (Raﬀel et al., 2019). GLUE results, given how saturated it already is, are
+provided as a reference and should be taken with a pinch of salt.
+18
+Generally, we make a best eﬀort to submit scores to any leaderboard (unpublished test set) but refrain from
+doingsointhecaseswherethelaborcoststomakesuchasubmissionisprohibitive-especiallywhenthe
+existingstate-of-the-artapproachhasmadetheirdevscoresavailableorwhenreportingonthisparticular
+datasetisonlyfor completeness(e.g.,GLUE).Wewouldadvise readerstonotoverthinkthediﬀerences in
+dev/test since (1) in most academic leaderboards, dev/test aligns not only from our own experience but
+alsocanbeempiricallyobservedandbecause(2)therealtestisproductionanyways. Wheneverreporting
+on leaderboard,we considerthe top performingpublished workas SOTA andindicate in ourresults using
+the#symbol that there might be some anonymous submission that has scored higher. For this purpose
+we consider arxiv preprints of above reasonable quality to count as published work. These results and
+comparisons are accurate as of 15th April 2022 where we stopped experiments to focus on polishing this
+paper. We later realized, while preparing to put this paper up on arxiv that there have been new results
+on Scrolls benchmark using a model (Guo et al., 2021) using 16k sequence lengths as opposed to ours (2k)
+where we kept it at 2k once we had obtained sota. It is expected that increasing the length to UL2 would
+signiﬁcantlyimproveourscoreslikelyabovecurrentsota,butintheinterestoflogisticsandtimelineweleave
+that to future work.
+5.2.3 Summary of Supervised Finetuning Results
+This section describes the overview results of our experiments.
+Table 8: Summary of UL20B results compared to state-of-the-art. (l)denotes leaderboard submission. (])
+denotesthebestpublishedwecouldﬁndontheleaderboard. (e)denotesSOTAusedanensembledapproach.
+Because we evaluate ﬁnetuning and in-context trade-oﬀs for SuperGLUE, SuperGLUE scores have their own
+dedicated section below.
+Dataset Metric Eval Sota Reference SOTA Ours
+CNN/DM Rouge-2 Test Zoph et al. 21.7 21.9
+XSUM Rouge-2 Test Zoph et al. 27.1 26.6
+MultiNews Rouge-2 Test Xiao et al. 21.1 21.7
+SAMSum Rouge-2 Test Narayan et al. 28.3 29.6
+Gigaword Rouge 2 Test Aghajanyan et al. 20.7 20.7
+WebNLG (en) Rouge-2 Test Bakshi et al. 53.5 55.4
+E2E-NLG Rouge-2 Test Xue et al. 45.8 46.5
+CommonGen Rouge-2 Dev Gehrmann et al. 32.5 37.4
+Schema-Guided Dialog Rouge-2 Test Gehrmann et al. 36.8 44.1
+GENIE - aNLG Human (H) Test Khashabi et al. 76.0 77.0(l)
+GENIE - ARC-DA (w/o IR) Human Test Khashabi et al. 72.0 72.0(l)
+GENIE - WMT19 Human Test Khashabi et al. 71.0 67.0(l)6
+GENIE - XSUM H-Overall Test Clive et al. 51.0 50.0(l)
+GENIE - XSUM H-Concise Test Clive et al. 53.0 53.0(l)
+GENIE - XSUM H-Fluency Test Clive et al. 51.0 52.0(l)
+GENIE - XSUM H-No-Hallucination Test Clive et al. 53.0 54.0(l)
+GENIE - XSUM H-Informativeness Test Clive et al. 49.0 49.0(l)
+SIQA Accuracy Test Lourie et al. 83.2 83.3(l)
+PIQA Accuracy Test Lourie et al. 90.1 90.7(l)
+CSQA Accuracy Dev Lourie et al. 79.1 84.9
+CSQA2 Accuracy Test Lourie et al. 69.6(])70.1(l)
+Continued on next page
+6This taskisGerman-to-English translation. Our submissionis pretrainedon onlyEnglish C4then ﬁnetunedon only theprovided
+WMT19 data (no German pretraining, parallel data or backtranslation.)
+19
+Table 8 – continued from previous page
+QASC (w/o IR) Accuracy Dev Khashabi et al. 81.8 83.8
+QASC (w IR) Accuracy Test Khashabi et al. 89.6 90.7(l)
+TweetQA BLEU-1 Dev Khashabi et al. 77.5 78.4
+QuAIL Accuracy Test Khashabi et al. 74.2 87.2
+AdversarialQA (Bert) F1 Dev Khashabi et al. 53.6 70.1
+AdversarialQA (Roberta) F1 Dev Khashabi et al. 45.5 57.5
+AdversarialQA (Bidaf) F1 Dev Khashabi et al. 71.5 77.5
+MCScript Accuracy Test Khashabi et al. 95.1 97.3
+MCScript 2.0 Accuracy Test Khashabi et al. 94.6 97.9
+RACE Accuracy Test Shoeybi et al. 90.9(e)90.9
+DREAM Accuracy Test Wan 91.8 91.8
+OBQA Accuracy Test Khashabi et al. 87.2 87.2(l)
+CosmosQA Accuracy Test Lourie et al. 91.8 91.6(l)
+Winogrande XL Accuracy Test Lourie et al. 91.3 90.1(l)
+DocNLI Accuracy Test Qin et al. 76.9 88.2
+AdversarialNLI (r3) Accuracy Test Wang et al. 47.7 53.5
+VitaminC Accuracy Test Schuster et al. 90.8 91.1
+Hellaswag Accuracy Test Lourie et al. 93.9 94.1(l)
+QQP F1 Dev Raﬀel et al. 90.1 90.6
+QNLI Accuracy Dev Raﬀel et al. 96.1 96.5
+CoLA Matthews Dev Raﬀel et al. 68.6 71.5
+STSB Spearman Dev Raﬀel et al. 92.1 92.3
+AbductiveNLI Accuracy Test He et al. 89.8(])87.5(l)
+MultiNLI Accuracy Dev Raﬀel et al. 92.1 91.9
+IMDB Accuracy Test Yang et al. 96.2 97.3
+AgNews Error Test Yang et al. 4.45 4.42
+Civil Comments F1 Dev Tay et al. 87.8 87.9
+Wikipedia Toxicity F1 Dev Tay et al. 96.5 97.0
+SST-2 Acc Dev Raﬀel et al. 97.3 97.0
+Scrolls Challenge Aggregate Test Shaham et al. 29.2 37.9(l)
+SumScr Rouge (Avg) Test Shaham et al. 16.3 20.0(l)
+QMSum Rouge (Avg) Test Shaham et al. 19.9 20.0(l)
+QASPER F1 Test Shaham et al. 26.6 37.6(l)
+NarrativeQA F1 Test Shaham et al. 18.5 24.2(l)
+QUALITY EM Test Shaham et al. 26.0 45.8(l)
+ContractNLI EM Test Shaham et al. 77.4 88.7(l)
+GovRep Rouge (Avg) Test Shaham et al. 37.2 36.2(l)
+WikiTQ Accuracy Test Xie et al. 49.3 54.6
+CompWebQ Accuracy Test Xie et al. 73.3 75.9
+FetaQA BLEU-4 Test Xie et al. 33.4 35.8
+HybridQA Accuracy Dev Eisenschlos et al. 60.8 61.0
+WikiSQL Accuracy Test Xie et al. 86.0 87.3
+TabFat Accuracy Test Xie et al. 83.4 87.1
+Feverous Accuracy Dev Xie et al. 82.4 85.6
+SQA Sent.Acc Test Xie et al. 62.4 70.5
+MTOP Match Test Xie et al. 86.8 87.5
+DART BLEU-4 Test Aghajanyan et al. 47.2 50.4
+DSI-NQ HITS@10 Dev Tay et al. 70.3 73.8
+20
+5.2.4 Results on Supervised Finetuning
+OurexperimentalresultsshowthatUL2achievesstate-of-the-artperformanceonaround50+NLPtasksand
+setups. For many, the margins are quite wide and for those that UL2 doesn’t achieve SOTA, the performance
+of UL2 is generally quite competitive. It is worth to note that the extent of diﬃculty of obtaining sota on
+eachbenchmarkhasvastlydiﬀerent diﬃculties. For some,the sotamodel isa32B denseequivalent(Zoph
+et al., 2022). For some others, it’s a base model. It is worth also noting that many benchmarks have a strong
+relatively large model,e.g., 3B or 11B T5, UniﬁedQA(Khashabi et al., 2020) or Unicorn(Lourie et al., 2021)
+astheexistingSOTAmodelsooutperformingthesemodelsisalsonotexactlytheeasiestthingtodo. Overall,
+weurgethereaderstojudgethevalueofthesesotaresultsforthemselves. Finally,wenotethatUL220Bdoes
+prettywellonhumanevaluationonGENIEtasks,outperformingsotaonseveralmetrics. Thisascertainsthat
+the generation quality of UL2 is reasonably solid.
+5.2.5 Tradeoﬀs between Finetuning and Prompt-based Zero-shot Learning (SuperGLUE)
+In this section, we explore ﬁnetuning and in-context learning trade-oﬀs on the SuperGLUE benchmark. We
+conduct experiments on SuperGLUE with UL20B. While UL20B does not achieve SOTA on this benchmark,
+wenotethatUL20BatleastremainscompetitiveandoutperformsT5-11B.ThissectionreassuresthatUL2
+indeed scales and matches/slightly outperforms T5-11B on SuperGLUE (while strongly outperforming
+T5-XXLonmanyotherin-contexttasks). UL20BstilllacksbehindtheSOTAmodelST-MoE-32Bgiventwo
+main reasons. Firstly, ST-MoE-32B has 200B+ parameters and is costs equivalent to a 32B dense model.
+Secondly,ST-MoE-32Bistrainedsolelyonspancorruptionusinganencoder-decoderarchitecturewhichis
+known to be very advantageous on NLU ﬁnetuning.
+Table9: ResultsonSuperGLUEdevset. WecomparewithT5-11B(Raﬀeletal.,2019),ST-MoE-32B(Zoph
+etal.,2022)andPaLM-8B,PaLM-62BandPaLM-540B(Chowdheryetal.,2022). Scoresreportedarethepeak
+validation scores per task.
+Model BoolQ CB CoPA MultiRC Record RTE WiC WSC Avg
+PaLM 62B 90.6 96.4/95.7 98.0 87.7/61.9 93.0/92.4 89.5 75.9 96.2 89.2
+PaLM 540B 92.2 100/100 100 90.1/69.2 94.0/94.6 95.7 78.8 100 92.6
+ST-MoE 32B 269B93.1 100 /100 100 90.4 /69.9 95.0 /95.6 95.7 81.0 100 93.2
+PaLM 8B 87.6 96.4/92.1 86.0 81.6/64.0 89.7/89.3 84.5 73.4 88.5 83.4
+T5 11B 90.8 94.9/96.4 98.0 87.4/66.1 93.8/93.2 93.9 77.3 96.2 89.9
+UL2 20B 90.8 98.7/98.2 99.0 88.4/64.8 93.7/93.2 92.1 77.3 98.1 90.7
+5.2.6 Generative Few-shot: XSUM Summarization
+Finally,weconductadditionalfew-shotin-contextone-shotlearningusingtheXSumdatasetWecompareour
+model with the baseline T5-XXL, T5-XXL with LM Adaptation (Lester et al., 2021), LaMDA 137B (Thoppilan
+et al., 2022), and PaLM (8B, 62B, 540B) (Chowdhery et al., 2022). We run T5-XXL ourselves in the same
+experimental setup but report results from (Chowdhery et al., 2022) for the other models.
+21
+Table 10: Resultson zero-shotlearning onSuperGLUE dataset. Wecompare withGPT-3, GLaMand PaLM
+(Chowdhery et al., 2022). We also include models that are relatively compute-matched with UL20B such as
+T5-XXLwithLMadaptation(Lesteretal.,2021),GPT-313BandGLaM-8Bdense. Notably,UL20Boutperforms
+GPT-3 175B and all other models in a similar compute class on average score.
+Model BoolQ CB RTE ReCORD WSC WiC COPA MultiRC Avg
+ST-MoE-32B (269B) 40.8 41.1 52.7 50.0 57.5 50.0 56.0 30.3 47.6
+GPT-3 175B 60.5 46.4 63.5 90.2 65.4 0.0 91.0 72.9 61.2
+GLaM-MoE 1.2T 83.0 33.9 68.8 90.3 84.9 50.5 90.0 45.1 68.3
+PaLM 540B 88.0 51.8 72.9 92.9 89.1 59.1 93.0 83.5 78.8
+T5-XXL 44.3 37.5 48.8 85.8 59.3 50.9 70.0 23.0 52.5
+GPT-3 13B 66.2 19.6 62.8 89.0 64.4 0.0 84.0 71.4 57.2
+GLaM-Dense 8B 73.6 33.9 44.0 89.2 80.7 44.0 86.0 39.0 61.3
+GLaM-MoE 64E 72.2 40.7 60.3 88.9 81.8 49.5 86.0 52.4 66.5
+PaLM-Dense 8B 68.3 41.1 54.2 87.8 78.9 47.0 86.0 47.5 63.9
+UL2 20B ( single ckpt ) 63.1 41.1 60.7 88.1 79.9 49.8 85.0 36.2 63.0
+UL2 20B ( best) 63.1 50.0 60.7 88.1 80.6 55.2 88.0 36.2 65.2
+Table 11: Results on One-Shot Summarization on XSUM.
+Model Rouge-1 Rouge-2 Rouge-L
+LaMDA 137B - 5.4 -
+PaLM 62B - 11.2 -
+PaLM 540B - 12.2 -
+PaLM 8B - 7.9 -
+T5 XXL 11B 0.6 0.1 0.6
+T5 XXL 11B + LM 13.3 2.3 10.7
+UL2 20B 25.5 8.6 19.8
+Table11reportsresultson1-shotsummarization. OurresultsshowthattheperformanceofUL220Bisabout
+3xtheperformanceofLMadaptedT5XXLmodel. Moreover,UL220BoutperformLaMDA137Bandhas
+betterperformancecomparedtoPaLM8Bwhichisapproximatelycompute-matchedwithUL2. Thebest
+result, however, is still the larger 540B and 62B PaLM models.
+5.2.7 UL2 for chain-of-thought prompting
+It has recently been shown that language models at scale can perform multi-step reasoning tasks such as
+math word problems or commonsense reasoning via chain-of-thought prompting , which prompts the model to
+generatea step-by-stepreasoningpathbefore givingtheﬁnalanswer (Weietal., 2022b). Notably, chain-of-
+thought (CoT) prompting does not require any additional ﬁne-tuning of the model.
+A crucial consideration of CoT prompting is that it is an emergent ability of scale (Wei et al., 2022a)—it
+requiresasuﬃcientlylargelanguagemodeltoimproveperformance,andactuallyhurtsperformancefor
+smalllanguagemodels. Hence,thesuccessfulusecasesofchain-of-thoughtpromptinguseeitherLaMDA
+137B(Thoppilanetal.,2022),PaLM540B(Chowdheryetal.,2022), orOpenAImodels(Brownetal.,2020;
+Ouyang et al., 2022). These models, however, are compute intensive and not available as public checkpoints.
+Here we demonstrate that UL2 20B is the ﬁrst publicly availablepre-trained model (without any ﬁne-tuning)
+tosuccessfullyleverageCoTprompting tosolvemulti-steparithmeticand commonsensetasks. Weusethe
+same benchmark tasks and prompts from Wei et al. (2022b). In Table 12 below, we see that on ﬁve arithmetic
+reasoningdatasets,CoTpromptingoutperformsstandardprompting(directlyoutputtingtheanswerwithout
+22
+a chain of thought) for UL2 20B. Similar to Wei et al. (2022b), we also show that CoT prompting can be
+augmentedbyusinganexternalcalculator(“calc.”) toperformarithmeticcomputationalonly( +; ;;=)
+to further improve performance by a large margin. In addition, we add self-consistency (Wang et al., 2022b)
+(denotedas“SC”)ontopofCoTpromptingandobservedsigniﬁcantgainsconsistentlyacrossallbenchmarks,
+with an average improvement of 22.5% compared to standard prompting.
+Table 12: Chain-of-thought prompting and self-consistency (SC) results on ﬁve arithmetic reasoning bench-
+marks. GSM8K:(Cobbeetal.,2021). SVAMP:(Pateletal.,2021). ASDiv: (Miaoetal.,2020). AQuA:(Ling
+et al., 2017). MAWPS: (Koncel-Kedziorski et al., 2016).
+Model GSM8K SVAMP ASDiv AQuA MAWPS Average
+UL2 20B: standard prompting 4.1 10.1 16.0 20.5 16.6 13.5
+UL2 20B: CoT prompting 4.4 12.5 16.9 23.6 19.1 15.3
+UL2 20B: CoT prompting + calc. 6.9 28.3 34.3 23.6 42.7 27.2
+UL2 20B: CoT prompting + calc. + SC 10.2 41.4 43.5 26.9 57.9 36.0
+In addition to arithmetic reasoning, Table 13 shows the performance of CoT prompting using UL2 20B
+comparedtostandardpromptingonﬁvecommonsensereasoningbenchmarks. CoTpromptingplusself-
+consistency outperforms standard prompting in four of the ﬁve benchmarks, with an average improvement
+of 14.4%.
+Table 13: Chain-of-thought prompting and self-consistency (SC) results on ﬁve commonsense reasoning
+benchmarks. CSQA: (Talmor et al., 2019). StrategyQA: (Geva et al., 2021). Date Understanding and Sports
+Understanding: (Srivastava et al., 2022). ARC-easy/challenge: (Clark et al., 2018).
+Model CSQA StrategyQA Date Sports ARC-e ARC-c Average
+UL2 20B: standard prompting 34.2 59.0 13.5 57.9 32.2 29.8 37.8
+UL2 20B: CoT prompting 51.4 53.3 14.0 65.3 61.6 42.9 48.1
+UL2 20B: CoT prompting + SC 55.7 54.9 16.3 66.8 69.8 49.5 52.2
+Overall, we have shown that whereas prior CoT work have required large pre-trained models such as PaLM
+540B, UL2 20B is a relatively smaller model that can also perform multi-step reasoning. We hypothesize that
+the mixture ofdenoisers may contribute to theability of UL2 to leverage CoT promptingat 20B parameters,
+althoughweleavefurtherinvestigationofwhatunlocksemergentchain-of-thoughtreasoningtofuturework.
+5.2.8 Massively Multitask Language Understanding
+Massive Multitask Language Understanding (MMLU) (Hendrycks et al., 2021) is a collection of 57 tasks
+covering a wide range of topics (humanities, social sciences, hard sciences, etc.). Strong performance on
+MMLU requires extensive world knowledge as well as problem solving skills.
+For MMLU, we compare with T5 model variants including the language model adapted variant Lester et al.
+(2021)andT0(Sanhetal.,2019). Forthelatter,weuse“T0Strawberry”and“T0Vanilla"asthesearethe
+models recommended for research purposes. We report 0-shot performance. T0 models are speciﬁcally
+ﬁnetunedfor0-shotandhencewebelievethisisaconservativesettingtotesttheeﬃcacyofUL2. Table14
+showsthattheLM-adaptedT5-XXLmodelbarelygivesabove-randomperformance(25%). UL2outperforms
+both T0 and T5 models.
+23
+Table 14: MMLU 0-shot performance (accuracy).
+MMLU
+T5-XXL + LM 27.5
+T0 Strawberry 36.9
+T0 Vanilla 34.5
+UL2 20B 39.2
+5.3 Instruction Tuned UL2 20B with FLAN
+Inspired7byChungetal.(2022),weapplyFlaninstructiontuningontheUL220Bcheckpoint. Wepretty
+much use the same settings and Flan mixture as the Flan2 paper (Chung et al., 2022). Because the ﬂan
+mixturesdonothavemodeswitchingprompts,weopttotrainUL2foranother100Kstepswithoutmode
+tokenstoadaptit. Weincreasedthelengthto 1024=1024thistimetoaccommodatealargercontextlength.
+Flantrainingwas doneat 2048=512length. Weﬁnd the ‘modeswitchingpuriﬁcation’oftheoriginalUL2
+checkpoint to be useful, although the more optimal way would to be to add mode tokens to the FLAN tasks.
+Since we were lazy to do that, we simply opt to continue training UL2 again for more steps. We release this
+Flan-UL2 20B checkpoint at the same url as the original UL2 checkpoints.
+5.3.1 Few-shot MMLU and Big-Bench Results after Flan training of UL2
+BBH MMLU
+OPT 30B 28.0 23.5/25.9
+OPT 175B 30.2 27.3/34.2
+T5 11B 29.5 -/25.9
+OpenAI davinci 33.6 -/32.3
+OPT IML-Max 30B 30.0 46.3/43.2
+OPT IML-Max 175B 35.7 49.1/47.1
+T0pp 11B 13.0 46.7/33.7
+FLAN T5 XXL 45.3 54.5/53.7
+FLAN-PaLM 62B 47.5 -/59.6
+FLAN-PaLM 540B 57.9 -/73.5
+FLAN-UL2 20B (Best ckpt for both tasksy)45.3 55.6/56.2
+FLAN-UL2 20B (Individual task best) 46.0 55.1/58.1
+Table 15: Results on MMLU and BBH using FLAN-UL2. ydenotes checkpoint that we release.
+Table 15 reports the results on MMLU and BBH (Suzgun et al., 2022). Generally, the performance of FLAN-
+UL2 20B is pretty competitive and outperforms Flan-T5 XXL by +1:8%on the test set and +4:7%on MMLU
+dev. The Big-Bench hard score remains competitive with the best checkpoint marginally outperforming
+Flan-T5XXL.Notably,thebestdevscoresofFLAN-UL2isalmostreachingtheperformanceofFlan-PaLM
+62B on both MMLU and BBH, suggesting that the results are pretty solid.
+7Inspiration is really a stretch, this was an obvious thing to do.
+24
+5.3.2 Comparisons on using Chain-of-thought vs Direct Prompting
+We compare Flan models on direct and chain-of-thought setup. We ﬁne-tune Flan-UL2 using the exact
+identicalprotocolasT5-XXLandpickthebestscorebasedonthestrongestaverage8acrossallfoursetups
+(MMLU/BBH with direct and CoT). We ﬁnd that Flan-UL2 outperforms Flan-T5-XXL on all four tasks.
+Notably,therearelargergainsonCoTtasks,e.g.,especiallyMMLU-CoTwherethegainisarelative+7.4%. In
+general, CoT variants for these tasks still perform worse than direct which can also be observed in the PaLM
+62B model. This also seems to be true for Flan-PaLM 62B. Overall, Flan-UL2 comes close to FLAN-PaLM 62B
+(49.1 vs 49.9) on average across all setups. However, it is still strongly outperformed by Flan-PaLM 540B.
+MMLU BBH MMLU-CoT BBH-CoT Avg
+FLAN-PaLM 62B 59.6 47.5 56.9 44.9 49.9
+FLAN-PaLM 540B 73.5 57.9 70.9 66.3 67.2
+FLAN-T5-XXL 11B 55.1 45.3 48.6 41.4 47.6
+FLAN-UL2 20B 55.7 (+1.1%) 45.9 (+1.3%) 52.2 (+7.4%) 42.7 (+3.1%) 49.1 (+3.2%)
+Table 16: Comparisons (dev scores) of Flan models on CoT vs Direct.
+Wealsotriedsomeself-consistency(Wangetal.,2022b)experimentsincombinationwithCoT.Frombrief
+experiments,thisraisedCoTscorefrom53.9to57.1(whenthecorrespondingdirectscorewas55.4). This
+showsthatat20Bscale,CoT+selfconsistencycanoutperformdirectprompting. Wedidnotexperiment
+furthersincethisincreasesthesearchspacetoapointwhereitwasmoretimeconsumingthanwewould
+have liked (or enjoyed). We leave any future experiments as an exercise for the reader.
+6 Conclusion
+We proposed a new paradigm for training universally eﬀective models. UL2 is characterized by two key
+ideas. Firstly,weproposeanewMixtureofDenoisers(MoD)pretrainingthatframesmultiplepretraining
+tasks as span corruption, diversiﬁes and then mixes them. Secondly, we introduce mode switching, a way of
+associating downstream task behaviour to upstream pretraining. Extensive ablative experiments show that
+UL2consistentlyoutperformsGPT-likeandT5modelsonawiderangeofsupervisedandfew-shottasks,
+outperforming T5 on 9 out of 9 tasks and by a normalized overall gain of +76.1%. Finally, we scale UL2
+up to 20B parameters and conduct experiments on a diverse suite of 50 to 60 NLP tasks and setups. UL2
+achieves sota performance on 50of them. Pretrainedcheckpointsof UL2 and Flan-UL2 20Bare released at
+https://github.com/google-research/google-research/tree/master/ul2 .
+8This results slightly diﬀer from the earlier setup because we release the best checkpoints only on direct prompting. CoT did worse,
+so we prioritized direct prompting.
+25
+7 Acknowledgements
+Theauthorswould liketospeciallythank(inalphabetical order): Alexey Gritsenko,AndrewM.Dai, Jacob
+Devlin,JaiGupta,LiamFedus,OrhanFiratfordiscussionsandfeedbackthathavehelpedtoimprovethe
+paper. WealsothankSebastianGerhmannfordiscussionsandclariﬁcationsonGEMmetrics,NanDufor
+clariﬁcations about GLaM’s in-context learning setup and Dave Uthus for his work on getting the scrolls
+tasksinseqioformat. WethankSlavPetrovandQuocLeforgeneraladviceaboutUL2. WealsothanktheT5,
+JaxandFlaxteamsforbuildingsuchwonderfulinfrastructureandenablingthisresearch. Finally,wealso
+thank Tianbao Xie from University of Hong Kong for helping us with UniﬁedSKG’s code and dataset.
+8 Author Contributions
+This section lists the author contributions of each author.
+•YiTayproposedtheidea,conceivedtheproject,leadthiseﬀortanddrovetheimplementation,core
+ablation experiments. Yi ran initial ablations, proof-of-concepts and pretrained the 20B model. Yi was
+responsible for running most of the ﬁnetuning and in-context learning experiments for the 20B model.
+•MostafaDehghaniservedasaco-leadofthiseﬀortandranagoodportionofinitialexperimentsand
+ablations,especiallyonSuperGLUE.Mostafawasquiteinvolvedinearlybrainstormingofthiseﬀort
+and project. Mostafa helped out on the open sourcing process and procedures of UL2.
+•Vinh Q. Tran participated substantially in early project discussions and brainstorming and contributed
+to the the inception of UL2. Vinh implemented and trained UL2 on several tasks/baselines (e.g.,
+SamSum, GENIE human evaluations, CommonsenseQA) for the UL2 20B runs.
+•Xavier Garcia helped optimize our the UL2 pipeline in seqio and provided many great suggestions
+about optimizing UL2. Xavier also ran experiments on UL2 in machine translation.
+•Jason Wei ran Chain-of-thought experiments on reasoning benchmarks using the UL2 model.
+•Xuezhi Wang ran self-consistency experiments on reasoning benchmarks using the UL2 model.
+•Hyung Won ran experiments for the MMLU dataset and wrote the section for it.
+•Siamak extensively helped with UL2 experiments, infrastructure and continiously improving the UL2
+algorithm.
+•Dara Bahri helped port UniﬁedSKG for UL20B sota experiments.
+•Tal Schuster helped out with UL20B evaluations on the Scrolls leaderboard. Tal also helped with
+evaluating UL20B on VitaminC and Programming Puzzles datasets.
+•Huaixiu Steven Zheng brainstormed and discussed the idea with Yi and helped to write the paper and
+provide feedback.
+•Denny Zhou suggested running chain of thought and reasoning experiments with UL2, helped advise
+the chain-of-thought section.
+•Neil and Donald served as technical advisors and sponsors to the project and helped brainstorm,
+provide feedback and writing of the paper.
+26
+References
+ArmenAghajanyan,AkshatShrivastava,AnchitGupta,NamanGoyal,LukeZettlemoyer,andSonalGupta.
+Better ﬁne-tuning by reducing representational collapse. arXiv preprint arXiv:2008.03156 , 2020.
+ArmenAghajanyan,DmytroOkhonko,MikeLewis,MandarJoshi,HuXu,GargiGhosh,andLukeZettlemoyer.
+Htlm: Hyper-text pre-training and prompting of language models. arXiv preprint arXiv:2107.06955 , 2021.
+Rami Aly, Zhijiang Guo, Michael Sejr Schlichtkrull, James Thorne, Andreas Vlachos, Christos
+Christodoulopoulos, Oana Cocarascu, and Arpit Mittal. The fact extraction and VERiﬁcation over unstruc-
+turedandstructuredinformation(FEVEROUS)sharedtask. In ProceedingsoftheFourthWorkshoponFactEx-
+traction and VERiﬁcation (FEVER) , pp. 1–13, Dominican Republic, November 2021. Association for Compu-
+tational Linguistics. doi: 10.18653/v1/2021.fever-1.1. URL https://aclanthology.org/2021.fever-1.1 .
+VamsiAribandi,YiTay,TalSchuster,JinfengRao,HuaixiuStevenZheng,SanketVaibhavMehta,Honglei
+Zhuang, Vinh Q Tran, Dara Bahri, Jianmo Ni, et al. Ext5: Towards extreme multi-task scaling for transfer
+learning. arXiv preprint arXiv:2111.10952 , 2021.
+Shreyan Bakshi, Soumya Batra, Peyman Heidari, Ankit Arun, Shashank Jain, and Michael White. Structure-
+to-text generation with self-training, acceptability classiﬁers and context-conditioning for the gem shared
+task. InProceedings of the 1st Workshop on Natural Language Generation, Evaluation, and Metrics (GEM 2021) ,
+pp. 136–147, 2021.
+Chandra Bhagavatula, Ronan Le Bras, Chaitanya Malaviya, Keisuke Sakaguchi, Ari Holtzman, Hannah
+Rashkin,DougDowney,ScottWen-tauYih,andYejinChoi. Abductivecommonsensereasoning. arXiv
+preprint arXiv:1908.05739 , 2019.
+Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al. Piqa: Reasoning about physical commonsense
+in natural language. In Proceedings of the AAAI conference on artiﬁcial intelligence , volume 34, pp. 7432–7439,
+2020.
+Daniel Borkan, Lucas Dixon, Jeﬀrey Sorensen, Nithum Thain, and Lucy Vasserman. Nuanced metrics
+for measuring unintended bias with real data for text classiﬁcation. CoRR, abs/1903.04561, 2019. URL
+http://arxiv.org/abs/1903.04561 .
+JamesBradbury,RoyFrostig,PeterHawkins,MatthewJamesJohnson,ChrisLeary,DougalMaclaurin,George
+Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, and Qiao Zhang. JAX: composable
+transformations of Python+NumPy programs, 2018. URL http://github.com/google/jax .
+Tom B Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners.
+arXiv preprint arXiv:2005.14165 , 2020.
+Thiago Castro Ferreira, Claire Gardent, Nikolai Ilinykh, Chris van der Lee, Simon Mille, Diego Moussallem,
+andAnastasiaShimorina. The2020bilingual,bi-directionalwebnlg+sharedtaskoverviewandevaluation
+results (webnlg+ 2020). In Proceedings of the 3rd WebNLG Workshop on Natural Language Generation from the
+Semantic Web (WebNLG+ 2020) , pp. 55–76, Dublin, Ireland (Virtual), 2020. Association for Computational
+Linguistics.
+Mingda Chen, Zewei Chu, Sam Wiseman, and Kevin Gimpel. Summscreen: A dataset for abstractive
+screenplay summarization. arXiv preprint arXiv:2104.07091 , 2021.
+Wenhu Chen, Hongmin Wang, Jianshu Chen, Yunkai Zhang, Hong Wang, Shiyang Li, Xiyou Zhou, and
+William Yang Wang. Tabfact: A large-scale dataset for table-based fact veriﬁcation. arXiv preprint
+arXiv:1909.02164 , 2019.
+Wenhu Chen, Hanwen Zha, Zhiyu Chen, Wenhan Xiong, Hong Wang, and William Wang. Hybridqa: A
+datasetofmulti-hopquestionansweringovertabularandtextualdata. arXivpreprintarXiv:2004.07347 ,
+2020.
+27
+Aakanksha Chowdhery, Sharan Narang, and Jacob Devlin. Palm: Scaling language modeling with pathways.
+arXiv preprint , 2022.
+Hyung Won Chung, Le Hou, Shayne Longpre, Barret Zoph, Yi Tay, William Fedus, Eric Li, Xuezhi Wang,
+MostafaDehghani,SiddharthaBrahma,etal. Scalinginstruction-ﬁnetunedlanguagemodels. arXivpreprint
+arXiv:2210.11416 , 2022.
+PeterClark,IsaacCowhey,OrenEtzioni,TusharKhot,AshishSabharwal,CarissaSchoenick,andOyvind
+Tafjord. Think you have solved question answering? try arc, the AI2 reasoning challenge. CoRR,
+abs/1803.05457, 2018. URL http://arxiv.org/abs/1803.05457 .
+Jordan Clive, Kris Cao, and Marek Rei. Control preﬁxes for text generation. CoRR, abs/2110.08329, 2021.
+URL https://arxiv.org/abs/2110.08329 .
+Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and
+John Schulman. Training veriﬁers to solve math word problems. arXiv preprint arXiv:2110.14168 , 2021.
+URL https://arxiv.org/abs/2110.14168 .
+Andrew M Dai and Quoc V Le. Semi-supervised sequence learning. Advances in neural information processing
+systems, 28:3079–3087, 2015.
+PradeepDasigi,KyleLo,IzBeltagy,ArmanCohan,NoahASmith,andMattGardner.Adatasetofinformation-
+seeking questions and answers anchored in research papers. arXiv preprint arXiv:2105.03011 , 2021.
+Mostafa Dehghani, Anurag Arnab, Lucas Beyer, Ashish Vaswani, and Yi Tay. The eﬃciency misnomer. arXiv
+preprint arXiv:2110.12894 , 2021a.
+MostafaDehghani,YiTay,AlexeyAGritsenko,ZheZhao,NeilHoulsby,FernandoDiaz,DonaldMetzler,
+and Oriol Vinyals. The benchmark lottery. 2021b.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert: Pre-training of deep bidirectional
+transformers for language understanding. arXiv preprint arXiv:1810.04805 , 2018.
+Li Dong, Nan Yang, Wenhui Wang, Furu Wei, Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming Zhou, and Hsiao-
+Wuen Hon. Uniﬁed language model pre-training for natural language understanding and generation.
+arXiv preprint arXiv:1905.03197 , 2019.
+NanDu,YanpingHuang,AndrewMDai,SimonTong,DmitryLepikhin,YuanzhongXu,MaximKrikun,
+YanqiZhou,AdamsWeiYu,OrhanFirat,etal. Glam: Eﬃcientscalingoflanguagemodelswithmixture-of-
+experts. arXiv preprint arXiv:2112.06905 , 2021.
+Ondřej Dušek, David M Howcroft, and Verena Rieser. Semantic Noise Matters for Neural Natural Language
+Generation. In Proceedings of the12thInternational Conference on Natural Language Generation(INLG 2019) ,
+pp. 421–426, Tokyo, Japan, 2019. URL https://www.aclweb.org/anthology/W19-8652/ .
+JulianMartinEisenschlos,MaharshiGor,ThomasMüller,andWilliamWCohen. Mate: Multi-viewattention
+for table transformer eﬃciency. arXiv preprint arXiv:2109.04312 , 2021.
+Alexander R Fabbri, Irene Li, Tianwei She, Suyi Li, and Dragomir R Radev. Multi-news: A large-scale
+multi-documentsummarizationdatasetandabstractivehierarchicalmodel. arXivpreprintarXiv:1906.01749 ,
+2019.
+William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models
+with simple and eﬃcient sparsity. arXiv preprint arXiv:2101.03961 , 2021.
+Wikimedia Foundation. Acl 2019 fourth conference on machine translation (wmt19), shared task: Machine
+translation of news. URL http://www.statmt.org/wmt19/translation-task.html .
+28
+Sebastian Gehrmann, Tosin Adewumi, Karmanya Aggarwal, Pawan Sasanka Ammanamanchi, Aremu
+Anuoluwapo,AntoineBosselut,KhyathiRaghaviChandu,MirunaClinciu,DipanjanDas,KaustubhD
+Dhole, et al. The gem benchmark: Natural language generation, its evaluation and metrics. arXiv preprint
+arXiv:2102.01672 , 2021.
+Sebastian Gehrmann,Elizabeth Clark, andThibault Sellam. Repairingthe cracked foundation: Asurvey of
+obstacles in evaluation practices for generated text. arXiv preprint arXiv:2202.06935 , 2022.
+MorGeva, DanielKhashabi,EladSegal, TusharKhot, DanRoth, andJonathanBerant. Didaristotleusea
+laptop? Aquestionansweringbenchmarkwithimplicitreasoningstrategies. TACL,2021. doi: 10.1162/
+tacl_a_00370. URL https://aclanthology.org/2021.tacl-1.21 .
+Bogdan Gliwa, Iwona Mochol, Maciej Biesek, and Aleksander Wawer. Samsum corpus: A human-annotated
+dialogue dataset for abstractive summarization. arXiv preprint arXiv:1911.12237 , 2019.
+Mandy Guo, Joshua Ainslie, David Uthus, Santiago Ontanon, Jianmo Ni, Yun-Hsuan Sung, and Yinfei Yang.
+Longt5: Eﬃcient text-to-text transformer for long sequences. arXiv preprint arXiv:2112.07916 , 2021.
+Pengcheng He, Xiaodong Liu, Jianfeng Gao, and Weizhu Chen. Deberta: Decoding-enhanced bert with
+disentangled attention. arXiv preprint arXiv:2006.03654 , 2020.
+Yun He, Huaixiu Steven Zheng, Yi Tay, Jai Gupta, Yu Du, Vamsi Aribandi, Zhe Zhao, YaGuang Li, Zhao
+Chen,DonaldMetzler,etal. Hyperprompt: Prompt-basedtask-conditioningoftransformers. arXivpreprint
+arXiv:2203.00759 , 2022.
+Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt.
+Measuringmassivemultitasklanguageunderstanding.In InternationalConferenceonLearningRepresentations ,
+2021. URL https://openreview.net/forum?id=d7KBjmI3GmQ .
+KarlMoritzHermann,TomasKocisky,EdwardGrefenstette,LasseEspeholt,WillKay,MustafaSuleyman,
+andPhilBlunsom. Teachingmachinestoreadandcomprehend. In Advancesinneuralinformationprocessing
+systems, pp. 1693–1701, 2015.
+Jeremy Howard and Sebastian Ruder. Universal language model ﬁne-tuning for text classiﬁcation. arXiv
+preprint arXiv:1801.06146 , 2018.
+LifuHuang, RonanLeBras,ChandraBhagavatula,andYejinChoi. Cosmosqa: Machinereadingcomprehen-
+sion with contextual commonsense reasoning. arXiv preprint arXiv:1909.00277 , 2019.
+Luyang Huang, Shuyang Cao, Nikolaus Parulian, Heng Ji, and Lu Wang. Eﬃcient attentions for long
+document summarization. arXiv preprint arXiv:2104.02112 , 2021.
+Mohit Iyyer, Wen-tau Yih, and Ming-Wei Chang. Search-based neural structured learning for sequential
+question answering. In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics
+(Volume 1: Long Papers) , pp. 1821–1831, 2017.
+Mandar Joshi, Danqi Chen, Yinhan Liu, Daniel S Weld, Luke Zettlemoyer, and Omer Levy. Spanbert:
+Improvingpre-trainingbyrepresentingandpredictingspans. TransactionsoftheAssociationforComputational
+Linguistics , 8:64–77, 2020.
+Norman P Jouppi, Doe Hyun Yoon, George Kurian, Sheng Li, Nishant Patil, James Laudon, Cliﬀ Young, and
+David Patterson. A domain-speciﬁc supercomputer for training deep neural networks. Communications of
+the ACM, 63(7):67–78, 2020.
+JaredKaplan,SamMcCandlish,TomHenighan,TomBBrown,BenjaminChess,RewonChild,ScottGray,
+Alec Radford, Jeﬀrey Wu, and Dario Amodei. Scaling laws for neural language models. arXiv preprint
+arXiv:2001.08361 , 2020.
+29
+DanielKhashabi,SewonMin, TusharKhot,AshishSabharwal,OyvindTafjord,PeterClark, andHannaneh
+Hajishirzi. Uniﬁedqa: Crossingformatboundarieswithasingleqasystem. arXivpreprintarXiv:2005.00700 ,
+2020.
+Daniel Khashabi, Gabriel Stanovsky, Jonathan Bragg, Nicholas Lourie, Jungo Kasai, Yejin Choi, Noah A.
+Smith,andDanielS.Weld. GENIE:Aleaderboardforhuman-in-the-loopevaluationoftextgeneration.
+CoRR, abs/2101.06561, 2021. URL https://arxiv.org/abs/2101.06561 .
+DanielKhashabi,YeganehKordi,andHannanehHajishirzi. Uniﬁedqa-v2: Strongergeneralizationviabroader
+cross-format training. arXiv preprint arXiv:2202.12359 , 2022.
+TusharKhot,PeterClark,MichalGuerquin,PeterJansen,andAshishSabharwal. Qasc: Adatasetforquestion
+answeringviasentencecomposition. In ProceedingsoftheAAAIConferenceonArtiﬁcialIntelligence ,volume34,
+pp. 8082–8090, 2020.
+Tomáš Kočiský, Jonathan Schwarz, Phil Blunsom, Chris Dyer, Karl Moritz Hermann, Gábor Melis, and
+Edward Grefenstette. The NarrativeQA Reading Comprehension Challenge. Transactions of the Association
+for Computational Linguistics , 2018.
+RikKoncel-Kedziorski,SubhroRoy,AidaAmini,NateKushman,andHannanehHajishirzi. MAWPS:Amath
+word problem repository. NAACL, 2016. doi: 10.18653/v1/N16-1136. URL https://aclanthology.org/
+N16-1136 .
+Yuta Koreeda and Christopher D Manning. Contractnli: A dataset for document-level natural language
+inference for contracts. arXiv preprint arXiv:2110.01799 , 2021.
+Tom Kwiatkowski, Jennimaria Palomaki, Olivia Redﬁeld, Michael Collins, Ankur Parikh, Chris Alberti,
+Danielle Epstein, Illia Polosukhin, Jacob Devlin Kenton Lee, Kristina Toutanova, Llion Jones Matthew
+Kelcey, Ming-WeiChang,AndrewMDai, JakobUszkoreit, QuocLe,andSlavPetrov. NaturalQuestions: a
+Benchmark for Question Answering Research. In Transactions of the ACL , 2019.
+Guokun Lai, Qizhe Xie, Hanxiao Liu, Yiming Yang, and Eduard Hovy. RACE: Large-scale ReAding compre-
+hensiondatasetfromexaminations. In Proceedingsofthe2017ConferenceonEmpiricalMethodsinNatural
+Language Processing , pp. 785–794, Copenhagen, Denmark, September 2017. Association for Computational
+Linguistics. doi: 10.18653/v1/D17-1082. URL https://aclanthology.org/D17-1082 .
+Alyssa Lees, Vinh Q Tran, Yi Tay, Jeﬀrey Sorensen, Jai Gupta, Donald Metzler, and Lucy Vasserman. A
+new generation of perspective api: Eﬃcient multilingual character-level transformers. arXiv preprint
+arXiv:2202.11176 , 2022.
+Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, Dehao Chen, Orhan Firat, Yanping Huang, Maxim
+Krikun,NoamShazeer,andZhifengChen. Gshard: Scalinggiantmodelswithconditionalcomputation
+and automatic sharding. arXiv preprint arXiv:2006.16668 , 2020.
+Brian Lester, RamiAl-Rfou, and NoahConstant. The power ofscale for parameter-eﬃcientprompttuning.
+arXiv preprint arXiv:2104.08691 , 2021.
+Haoran Li, Abhinav Arora, Shuohui Chen, Anchit Gupta, Sonal Gupta, and Yashar Mehdad. Mtop: A
+comprehensivemultilingual task-oriented semanticparsing benchmark. arXiv preprintarXiv:2008.09335 ,
+2020.
+BillYuchenLin,WangchunshuZhou,MingShen,PeiZhou,ChandraBhagavatula,YejinChoi,andXiangRen.
+CommonGen: A constrained text generation challenge for generative commonsense reasoning. In Findings
+oftheAssociationforComputationalLinguistics: EMNLP2020 ,pp.1823–1840,Online,November2020.Associ-
+ation for Computational Linguistics. URL https://www.aclweb.org/anthology/2020.findings-emnlp.
+165.
+Wang Ling, Dani Yogatama, Chris Dyer, and Phil Blunsom. Program induction by rationale generation:
+Learning to solve and explain algebraic word problems. ACL, 2017. doi: 10.18653/v1/P17-1015. URL
+https://aclanthology.org/P17-1015 .
+30
+Peter JLiu, Mohammad Saleh, EtiennePot, Ben Goodrich, RyanSepassi, Lukasz Kaiser, andNoam Shazeer.
+Generating wikipedia by summarizing long sequences. arXiv preprint arXiv:1801.10198 , 2018.
+Yinhan Liu,Myle Ott, NamanGoyal, Jingfei Du,Mandar Joshi, DanqiChen, Omer Levy,Mike Lewis, Luke
+Zettlemoyer,andVeselinStoyanov. Roberta: Arobustlyoptimizedbertpretrainingapproach. arXivpreprint
+arXiv:1907.11692 , 2019.
+NicholasLourie,RonanLeBras,ChandraBhagavatula,andYejinChoi. Unicornonrainbow: Auniversal
+commonsense reasoning model on a new multitask benchmark. arXiv preprint arXiv:2103.13009 , 2021.
+Andrew L. Maas, Raymond E. Daly, Peter T. Pham, Dan Huang, Andrew Y. Ng, and Christopher Potts.
+Learning word vectors for sentiment analysis. In Proceedings of the 49th Annual Meeting of the Association for
+ComputationalLinguistics: HumanLanguageTechnologies ,pp.142–150,Portland,Oregon,USA,June2011.
+Association for Computational Linguistics. URL http://www.aclweb.org/anthology/P11-1015 .
+Shen Yun Miao, Chao Chun Liang, and Keh Yih Su. A diverse corpus for evaluating and developing English
+math word problem solvers. ACL, 2020. doi: 10.18653/v1/2020.acl-main.92. URL https://aclanthology.
+org/2020.acl-main.92 .
+Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. Can a suit of armor conduct electricity? a
+new dataset for open book question answering. arXiv preprint arXiv:1809.02789 , 2018.
+Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S Corrado, and Jeﬀ Dean. Distributed representations of
+words and phrases and their compositionality. In Advances in neural information processing systems , pp.
+3111–3119, 2013.
+Linyong Nan, Dragomir Radev, Rui Zhang, Amrit Rau, Abhinand Sivaprasad, Chiachun Hsieh, Xiangru
+Tang, Aadit Vyas, Neha Verma, Pranav Krishna, etal. Dart: Open-domainstructured data recordto text
+generation. arXiv preprint arXiv:2007.02871 , 2020.
+LinyongNan, Chiachun Hsieh,Ziming Mao,Xi VictoriaLin, Neha Verma,Rui Zhang,Wojciech Kryściński,
+Nick Schoelkopf, Riley Kong, Xiangru Tang, et al. Fetaqa: Free-form table question answering. arXiv
+preprint arXiv:2104.00369 , 2021.
+Sharan Narang, Hyung Won Chung, Yi Tay, William Fedus, Thibault Fevry, Michael Matena, Karishma
+Malkan, Noah Fiedel, Noam Shazeer, Zhenzhong Lan, et al. Do transformer modiﬁcations transfer across
+implementations and applications? arXiv preprint arXiv:2102.11972 , 2021.
+ShashiNarayan,ShayB.Cohen,andMirellaLapata. Don’tgivemethedetails,justthesummary! topic-aware
+convolutional neural networks for extreme summarization. ArXiv, abs/1808.08745, 2018.
+Shashi Narayan, Yao Zhao, Joshua Maynez, Gonçalo Simões, Vitaly Nikolaev, and Ryan McDonald. Planning
+with learned entity prompts for abstractive summarization. Transactions of the Association for Computational
+Linguistics ,9:1475–1492,2021. doi: 10.1162/tacl_a_00438. URL https://aclanthology.org/2021.tacl-1.
+88.
+ME Peters M Neumann, M Iyyer, M Gardner, C Clark, K Lee, and L Zettlemoyer. Deep contextualized word
+representations. arXiv preprint arXiv:1802.05365 , 2018.
+Yixin Nie, Adina Williams, Emily Dinan, Mohit Bansal, Jason Weston, and Douwe Kiela. Adversarial nli: A
+new benchmark for natural language understanding. arXiv preprint arXiv:1910.14599 , 2019.
+Long Ouyang, Jeﬀ Wu, Xu Jiang, Diogo Almeida, Carroll L Wainwright, Pamela Mishkin, Chong Zhang,
+Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to follow instructions with
+human feedback. arXiv preprint arXiv:2203.02155 , 2022. URL http://go/arxiv/2203.02155 .
+Richard Yuanzhe Pang, Alicia Parrish, Nitish Joshi, Nikita Nangia, Jason Phang, Angelica Chen, Vishakh
+Padmakumar, Johnny Ma, Jana Thompson, He He, et al. Quality: Question answering with long input
+texts, yes! arXiv preprint arXiv:2112.08608 , 2021.
+31
+Ankur P Parikh, Xuezhi Wang, Sebastian Gehrmann, Manaal Faruqui, Bhuwan Dhingra, Diyi Yang, and
+Dipanjan Das. Totto: A controlled table-to-text generation dataset. arXiv preprint arXiv:2004.14373 , 2020.
+Panupong Pasupat and Percy Liang. Compositional semantic parsing on semi-structured tables. arXiv
+preprint arXiv:1508.00305 , 2015.
+Arkil Patel, Satwik Bhattamishra, and Navin Goyal. Are NLP models really able to solve simple math word
+problems? NAACL, 2021. URL https://aclanthology.org/2021.naacl-main.168.pdf .
+Jeﬀrey Pennington, Richard Socher, and Christopher D Manning. Glove: Global vectors for word representa-
+tion. InProceedingsofthe2014conferenceonempiricalmethodsinnaturallanguageprocessing(EMNLP) ,pp.
+1532–1543, 2014.
+GuanghuiQin,YukunFeng,andBenjaminVanDurme. Thenlptaskeﬀectivenessoflong-rangetransformers.
+arXiv preprint arXiv:2202.07856 , 2022.
+Alec Radford, Jeﬀrey Wu, RewonChild,David Luan, Dario Amodei, and Ilya Sutskever. Language Models
+are Unsupervised Multitask Learners. 2019.
+ColinRaﬀel,NoamShazeer,AdamRoberts,KatherineLee,SharanNarang,MichaelMatena,YanqiZhou,
+Wei Li, and Peter J Liu. Exploring the limits of transfer learning with a uniﬁed text-to-text transformer.
+arXiv preprint arXiv:1910.10683 , 2019.
+AbhinavRastogi,XiaoxueZang,SrinivasSunkara,RaghavGupta,andPranavKhaitan. Towardsscalable
+multi-domain conversational agents: The schema-guided dialogue dataset. arXiv preprint arXiv:1909.05855 ,
+2019.
+AdamRoberts,HyungWonChung,AnselmLevskaya,GauravMishra,JamesBradbury,DanielAndor,Sharan
+Narang,BrianLester,ColinGaﬀney,AfrozMohiuddin,CurtisHawthorne,AitorLewkowycz,AlexSalcianu,
+Marc van Zee, Jacob Austin, Sebastian Goodman, Livio Baldini Soares, Haitang Hu, Sasha Tsvyashchenko,
+AakankshaChowdhery,JasmijnBastings,JannisBulian,XavierGarcia,JianmoNi,AndrewChen,Kathleen
+Kenealy, Jonathan H. Clark, Stephan Lee, Dan Garrette, James Lee-Thorp, Colin Raﬀel, Noam Shazeer,
+MarvinRitter,MaartenBosma,AlexandrePassos,JeremyMaitin-Shepard,NoahFiedel,MarkOmernick,
+Brennan Saeta, RyanSepassi, Alexander Spiridonov, Joshua Newlan, and Andrea Gesmundo. Scaling up
+models and data with t5xandseqio, 2022. URL https://arxiv.org/abs/2203.17189 .
+AnnaRogers,OlgaKovaleva,MatthewDowney,andAnnaRumshisky. Gettingclosertoaicompletequestion
+answering: A set of prerequisite real tasks. In Proceedings of the AAAI conference on artiﬁcial intelligence ,
+volume 34, pp. 8722–8731, 2020.
+Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. Distilbert, a distilled version of bert:
+smaller, faster, cheaper and lighter. arXiv preprint arXiv:1910.01108 , 2019.
+Victor Sanh, Albert Webson, ColinRaﬀel, Stephen HBach, LintangSutawika, ZaidAlyafeai, Antoine Chaﬃn,
+Arnaud Stiegler, Teven Le Scao, Arun Raja, et al. Multitask prompted training enables zero-shot task
+generalization. arXiv preprint arXiv:2110.08207 , 2021.
+Maarten Sap, Hannah Rashkin, Derek Chen, Ronan LeBras, and Yejin Choi. Socialiqa: Commonsense
+reasoning about social interactions. arXiv preprint arXiv:1904.09728 , 2019.
+Tal Schuster, Adam Fisch, and Regina Barzilay. Get your vitamin c! robust fact veriﬁcation with contrastive
+evidence. arXiv preprint arXiv:2103.08541 , 2021.
+UriShaham,EladSegal,MaorIvgi,AviaEfrat,OriYoran,AdiHaviv,AnkitGupta,WenhanXiong,MorGeva,
+Jonathan Berant, and Omer Levy. Scrolls: Standardized comparison over long language sequences, 2022.
+Noam Shazeer. Glu variants improve transformer. arXiv preprint arXiv:2002.05202 , 2020.
+Noam Shazeer and Mitchell Stern. Adafactor: Adaptive learning rates with sublinear memory cost. In
+International Conference on Machine Learning , pp. 4596–4604. PMLR, 2018.
+32
+MohammadShoeybi, MostofaPatwary, RaulPuri, PatrickLeGresley, JaredCasper, andBryanCatanzaro.
+Megatron-lm: Trainingmulti-billionparameterlanguagemodelsusingmodelparallelism. arXivpreprint
+arXiv:1909.08053 , 2019.
+Aarohi Srivastava, Abhinav Rastogi, Abhishek Rao, Abu Awal Md Shoeb, Abubakar Abid, Adam Fisch,
+AdamRBrown,AdamSantoro,AdityaGupta,AdriàGarriga-Alonso,etal. Beyondtheimitationgame:
+Quantifying and extrapolating the capabilities of language models. arXiv preprint arXiv:2206.04615 , 2022.
+MiracSuzgun,NathanScales,NathanaelSchärli,SebastianGehrmann,YiTay,HyungWonChung,Aakanksha
+Chowdhery, Quoc V Le, Ed H Chi, Denny Zhou, et al. Challenging big-bench tasks and whether chain-of-
+thought can solve them. arXiv preprint arXiv:2210.09261 , 2022.
+AlonTalmorandJonathanBerant. Thewebasaknowledge-baseforansweringcomplexquestions. arXiv
+preprint arXiv:1803.06643 , 2018.
+AlonTalmor,JonathanHerzig,NicholasLourie,andJonathanBerant.Commonsenseqa: Aquestionanswering
+challenge targeting commonsense knowledge. arXiv preprint arXiv:1811.00937 , 2018.
+Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan Berant. CommonsenseQA: A question
+answering challenge targeting commonsense knowledge. NAACL, 2019. doi: 10.18653/v1/N19-1421. URL
+https://aclanthology.org/N19-1421 .
+Alon Talmor, Ori Yoran, Ronan Le Bras, Chandra Bhagavatula, Yoav Goldberg, Yejin Choi, and Jonathan
+Berant. CommonsenseQA2.0: ExposingthelimitsofAIthroughgamiﬁcation. In Thirty-ﬁfthConference
+on Neural Information Processing Systems Datasets and Benchmarks Track (Round 1) , 2021. URL https://
+openreview.net/forum?id=qF7FlUT5dxa .
+YiTay,ZheZhao,DaraBahri,DonaldMetzler,andDa-ChengJuan. Hypergrid: Eﬃcientmulti-tasktrans-
+formers with grid-wise decomposable hyper projections. arXiv preprint arXiv:2007.05891 , 2020.
+Yi Tay, Mostafa Dehghani, Jai Gupta, Dara Bahri, Vamsi Aribandi, Zhen Qin, and Donald Metzler. Are
+pre-trained convolutions better than pre-trained transformers? arXiv preprint arXiv:2105.03322 , 2021a.
+YiTay,MostafaDehghani,JinfengRao,WilliamFedus,SamiraAbnar,HyungWonChung,SharanNarang,
+DaniYogatama,AshishVaswani, andDonaldMetzler. Scaleeﬃciently: Insightsfrompre-trainingand
+ﬁne-tuning transformers. arXiv preprint arXiv:2109.10686 , 2021b.
+YiTay,VinhQTran,SebastianRuder,JaiGupta,HyungWonChung,DaraBahri,ZhenQin,SimonBaumgart-
+ner,CongYu,andDonaldMetzler. Charformer: Fastcharactertransformersviagradient-basedsubword
+tokenization. arXiv preprint arXiv:2106.12672 , 2021c.
+Yi Tay, Vinh Q Tran, Mostafa Dehghani, Jianmo Ni, Dara Bahri, Harsh Mehta, Zhen Qin, Kai Hui, Zhe Zhao,
+JaiGupta,etal. Transformermemoryasadiﬀerentiablesearchindex. arXivpreprintarXiv:2202.06991 ,2022.
+Romal Thoppilan, Daniel De Freitas, Jamie Hall, Noam Shazeer, Apoorv Kulshreshtha, Heng-Tze Cheng,
+AliciaJin,TaylorBos,LeslieBaker,YuDu,YaGuangLi,HongraeLee,HuaixiuStevenZheng,AminGhafouri,
+MarceloMenegali,YanpingHuang,MaximKrikun,DmitryLepikhin,JamesQin,DehaoChen,Yuanzhong
+Xu, Zhifeng Chen, Adam Roberts, Maarten Bosma, Yanqi Zhou, Chung-Ching Chang, Igor Krivokon, Will
+Rusch,MarcPickett,KathleenMeier-Hellstern,MeredithRingelMorris,TulseeDoshi,RenelitoDelosSantos,
+Toju Duke, Johnny Soraker, Ben Zevenbergen, Vinodkumar Prabhakaran, Mark Diaz, Ben Hutchinson,
+KristenOlson,AlejandraMolina,ErinHoﬀman-John,JoshLee,LoraAroyo,RaviRajakumar,AlenaButryna,
+Matthew Lamm, Viktoriya Kuzmina, JoeFenton, Aaron Cohen, Rachel Bernstein, Ray Kurzweil, Blaise
+Aguera-Arcas, Claire Cui, Marian Croak, Ed Chi, and Quoc Le. Lamda: Language models for dialog
+applications, 2022.
+Hui Wan. Multi-task learning with multi-head attention for multi-choice reading comprehension. arXiv
+preprint arXiv:2003.04992 , 2020.
+33
+Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R Bowman. Glue: A multi-
+taskbenchmarkandanalysisplatformfornaturallanguageunderstanding. arXivpreprintarXiv:1804.07461 ,
+2018.
+AlexWang,YadaPruksachatkun,NikitaNangia,AmanpreetSingh,JulianMichael,FelixHill,OmerLevy,
+andSamuelRBowman. Superglue: Astickierbenchmarkforgeneral-purposelanguageunderstanding
+systems. arXiv preprint arXiv:1905.00537 , 2019.
+BoxinWang,ShuohangWang,YuCheng,ZheGan,RuoxiJia,BoLi,andJingjingLiu. Infobert: Improving
+robustness of language models from an information theoretic perspective. arXiv preprint arXiv:2010.02329 ,
+2020.
+Thomas Wang, Adam Roberts, Daniel Hesslow, Teven Le Scao, Hyung Won Chung, Iz Beltagy, Julien Launay,
+and Colin Raﬀel. What language model architecture and pretraining objective work best for zero-shot
+generalization? arXiv preprint arXiv:2204.05832 , 2022a.
+XuezhiWang,JasonWei,DaleSchuurmans,QuocLe,EdChi,SharanNarang,AakankshaChowdhery,and
+DennyZhou. Self-consistencyimproveschainofthoughtreasoninginlanguagemodels. arXivpreprint
+arXiv:2203.11171 , 2022b. URL https://arxiv.org/abs/2203.11171 .
+Jason Wei, Yi Tay, Rishi Bommasani, Colin Raﬀel, Barret Zoph, Sebastian Borgeaud, Dani Yogatama, Maarten
+Bosma,DennyZhou,DonaldMetzler,etal. Emergentabilitiesoflargelanguagemodels. arXivpreprint
+arXiv:2206.07682 , 2022a. URL http://go/arxiv/2206.07682 .
+JasonWei,XuezhiWang,DaleSchuurmans,Maarten Bosma,EdChi,QuocLe, andDennyZhou. Chainof
+thoughtpromptingelicitsreasoninginlargelanguagemodels. arXivpreprintarXiv:2201.11903 ,2022b. URL
+http://go/arxiv/2201.11903 .
+Alexander Wettig, Tianyu Gao, Zexuan Zhong, and Danqi Chen. Should you mask 15% in masked language
+modeling? arXiv preprint arXiv:2202.08005 , 2022.
+Wen Xiao, Iz Beltagy, Giuseppe Carenini, and Arman Cohan. Primer: Pyramid-based masked sentence
+pre-training for multi-document summarization. arXiv preprint arXiv:2110.08499 , 2021.
+TianbaoXie,ChenHenryWu,PengShi,RuiqiZhong,TorstenScholak,MichihiroYasunaga,Chien-Sheng
+Wu, MingZhong, Pengcheng Yin,Sida IWang,et al. Uniﬁedskg: Unifyingandmulti-tasking structured
+knowledge grounding with text-to-text language models. arXiv preprint arXiv:2201.05966 , 2022.
+Wenhan Xiong, Jiawei Wu, Hong Wang, Vivek Kulkarni, Mo Yu, Shiyu Chang, Xiaoxiao Guo, and
+William Yang Wang. Tweetqa: A social media focused question answering dataset. arXiv preprint
+arXiv:1907.06292 , 2019.
+Linting Xue, Noah Constant, Adam Roberts, Mihir Kale, Rami Al-Rfou, Aditya Siddhant, Aditya Barua,
+and Colin Raﬀel. mt5: A massively multilingual pre-trained text-to-text transformer. arXiv preprint
+arXiv:2010.11934 , 2020.
+LintingXue,AdityaBarua,NoahConstant,RamiAl-Rfou,SharanNarang,MihirKale,AdamRoberts,and
+Colin Raﬀel. Byt5: Towards a token-free future with pre-trained byte-to-byte models. arXiv preprint
+arXiv:2105.13626 , 2021.
+Zhilin Yang, Zihang Dai, Yiming Yang, Jaime Carbonell, Russ R Salakhutdinov, and Quoc V Le. Xlnet:
+Generalizedautoregressivepretrainingforlanguageunderstanding. Advancesinneuralinformationprocessing
+systems, 32, 2019.
+WenpengYin,DragomirRadev,andCaimingXiong. Docnli: Alarge-scaledatasetfordocument-levelnatural
+language inference. arXiv preprint arXiv:2106.09449 , 2021.
+RowanZellers,AriHoltzman,YonatanBisk,AliFarhadi,andYejinChoi. Hellaswag: Canamachinereally
+ﬁnish your sentence? arXiv preprint arXiv:1905.07830 , 2019.
+34
+XiangZhang,JunboZhao,andYannLeCun. Character-levelconvolutionalnetworksfortextclassiﬁcation.
+Advances in neural information processing systems , 28, 2015.
+Ming Zhong, Da Yin, Tao Yu, Ahmad Zaidi, Mutethia Mutuma, Rahul Jha, Ahmed Hassan Awadallah, Asli
+Celikyilmaz, Yang Liu, Xipeng Qiu, et al. Qmsum: A new benchmark for query-based multi-domain
+meeting summarization. arXiv preprint arXiv:2104.05938 , 2021.
+Victor Zhong, Caiming Xiong, and Richard Socher. Seq2sql: Generating structured queries from natural
+language using reinforcement learning. CoRR, abs/1709.00103, 2017.
+BarretZoph,IrwanBello,SameerKumar,NanDu,YanpingHuang,JeﬀDean,NoamShazeer,andWilliam
+Fedus. Designing eﬀective sparse expert models, 2022.
+35
+9 Appendix
+9.1 Model Release
+As part of this work, we release the weights of the 20B checkpoint. The weights of the model can be found in
+inthisGCPbucket( gs://scenic-bucket/ul2 ). ThesecheckpointsweretrainedwithT5X(Robertsetal.,
+2022)foundat https://github.com/google-research/t5x andareimplementedinJAX/Flax. Becausethe
+ﬁne-tuningresultsaregenerallynotfromasinglecheckpointduetoourcontinuousﬁnetuningsetup,we
+release three diﬀerent checkpoints (1.87M, 2.05M, 2.65M) which we found to be consistently pretty good.
+A slightdisclaimer is that we ﬁnetuned and trained this model on TPUv4 chips on our internal systems. Even
+so,ﬁnetuningwouldalsosometimesresultin nanswhichmayrequiresomecareandmanualtuningtoget
+resolved. Therefore,ifcheckpointsweretobeportedto anothersystem,wecould notguaranteethatthese
+checkpoints would work as well. We are overall optimistic but we do not guarantee its stability with external
+hardware and accelerators such as GPUs.
+Forthisparticularcheckpoint,notethatthemodetagsweusedare[NLG](X-denoiser),[NLU](R-denoiser)
+and [S2S] (S-denoiser). So add that at the start of the inputs of your examples.
+9.2 Implementation Details and UL2 code
+This section aims to give more insight to how UL2 pretraining is implemented. Our implementation is
+actually pretty simple. It is simply a mixture of diﬀerent pretraining objectives that is implemented in seqio9.
+Mostofourexperimentswererunwithsimplymixingdiﬀerentseqiotaskswithseqio’sMixtureRegistry.
+However, one could also implement a generalized UL2 objective with the following function which could be
+cleaner.
+def ul2_objective(dataset: tf.data.Dataset,
+sequence_length: seqio.preprocessors.SequenceLengthType,
+output_features: seqio.preprocessors.OutputFeaturesType,
+use_prefix_lm_task: bool = False,
+rates: Optional[Sequence[float]] = None,
+mean_noise_span_lengths: Sequence[float] = (3.0,),
+noise_densities: Sequence[float] = (0.15,),
+shard_ds: bool = True,
+optional_task_prefixes: Optional[Sequence[str]] = None,
+input_feature_key: str = "inputs",
+merge_examples_to_reduce_padding: bool = True,
+reserved_for_packing: bool = None,
+seed: int = 7) -> tf.data.Dataset:
+"""UL2-like pre-training objectives.
+This preprocessor amounts to calling the ‘span_corruption‘ function several
+times with different values of ‘noise_density‘ and ‘mean_noise_span_length‘.
+We either shard or copy the dataset, then apply each function to each shard.
+Add S-denoising (prefixLM) using use_prefix_lm_task.
+Args:
+dataset: A tf.data.Dataset with dictionaries containing the key
+‘input_feature_key‘.
+sequence_length: dict mapping of feature key to int length for that feature.
+output_features: mapping of keys to features.
+use_prefix_lm_task: <bool> If True, include PrefixLM in the task mix.
+rates: <Optional<List<float>> List of rates per task. If None, tasks are
+9https://github.com/google/seqio
+36
+sampled uniformly.
+mean_noise_span_lengths: List of mean number of tokens per masked span per
+example.
+noise_densities: List of what fraction of the tokens to mask.
+shard_ds: <bool> If True, shard dataset per objective.
+optional_task_prefixes: <Optional<list<str>> Strings to prepend for each
+corruption scheme. NOTE: If including prefixLM task,
+it must be the last prefix.
+input_feature_key: which feature to use from the dataset as the input text
+tokens.
+merge_examples_to_reduce_padding: if True, combines multiple input examples
+to reduce padding.
+reserved_for_packing: if specified, reduces the desired inputs length by the
+specified amount to enable multiple examples to be packed together
+downstream.
+seed: tf.int64 for controlling the random choice of spans.
+Returns:
+a dataset
+"""
+if optional_task_prefixes: # Ensure each task has a prefix.
+num_tasks = len(noise_densities) + int(use_prefix_lm_task)
+valid_number_of_prefixes = num_tasks == len(optional_task_prefixes)
+if not valid_number_of_prefixes:
+raise ValueError("Number of task prefixes must match number of tasks.")
+inputs_length = sequence_length[input_feature_key]
+input_lengths, targets_lengths = [], []
+sequence_lengths = {x: y for x, y in sequence_length.items()}
+if reserved_for_packing:
+inputs_length -= reserved_for_packing
+for x, y in sequence_length.items():
+sequence_lengths[x] = y - reserved_for_packing
+hyperparams = list(zip(mean_noise_span_lengths, noise_densities))
+for mean_noise_span_length, noise_density in hyperparams:
+input_length, targets_length = t5.data.preprocessors.random_spans_helper(
+extra_tokens_per_span_inputs=1,
+extra_tokens_per_span_targets=1,
+inputs_length=inputs_length,
+mean_noise_span_length=mean_noise_span_length,
+noise_density=noise_density)
+input_lengths.append(input_length)
+targets_lengths.append(targets_length)
+if sequence_length["targets"] < targets_length:
+upper_bound = max(targets_lengths)
+raise ValueError(
+f’Expected max targets length for span corruption ({upper_bound}) is ’
+f’greater than configured targets length ’
+f"({sequence_length[’targets’]})")
+ds = dataset
+ds = t5.data.preprocessors.select_random_chunk(
+ds,
+output_features=output_features,
+feature_key="targets",
+max_length=65536)
+if merge_examples_to_reduce_padding:
+ds = t5.data.preprocessors.reduce_concat_tokens(
+37
+ds, feature_key="targets", batch_size=128)
+num_shards = len(input_lengths) + int(use_prefix_lm_task)
+if shard_ds:
+ds_shards = [ds.shard(num_shards, i) for i in range(num_shards)]
+else:
+ds_shards = [ds for _ in range(num_shards)]
+processed_ds = []
+hyperparams = zip(input_lengths, hyperparams, range(num_shards))
+for input_length, (noise_span_length, noise_density), i in hyperparams:
+ds = ds_shards[i]
+ds = t5.data.preprocessors.split_tokens(
+ds,
+feature_key="targets",
+min_tokens_per_segment=None,
+max_tokens_per_segment=input_length)
+ds = t5.data.preprocessors.denoise(
+ds,
+output_features,
+inputs_fn=t5.data.preprocessors.noise_span_to_unique_sentinel,
+targets_fn=t5.data.preprocessors.nonnoise_span_to_unique_sentinel,
+noise_density=noise_density,
+noise_mask_fn=functools.partial(
+t5.data.preprocessors.random_spans_noise_mask,
+mean_noise_span_length=noise_span_length),
+input_feature_key=input_feature_key)
+if optional_task_prefixes:
+ds = prepend_prompt(
+ds,
+output_features,
+prompt_mode=optional_task_prefixes[i],
+mode=optional_task_prefixes[i])
+processed_ds.append(ds)
+if use_prefix_lm_task:
+ds = ds_shards[-1]
+ds = t5.data.preprocessors.prefix_lm(ds, sequence_lengths, output_features)
+if optional_task_prefixes:
+ds = prepend_prompt(
+ds,
+output_features,
+prompt_mode=optional_task_prefixes[-1],
+mode=optional_task_prefixes[-1])
+processed_ds.append(ds)
+ds = tf.data.experimental.sample_from_datasets(processed_ds, rates, seed)
+return ds
+9.3 Details of Supervised Finetuning SOTA runs
+Most of our supervised ﬁnetuning runs were ﬁnetuned as single tasks. The only exception was that:
+•WeﬁnetunedGLUEasasinglemixturewithproportionatesampling. Thishasbecomestandardand
+defacto setup (Raﬀel et al., 2019; He et al., 2022; Tay et al., 2020, 2021b).
+•WeﬁnetunedSuperGLUEasasinglemixturewhichisalso astandardsetupthesedays(Fedusetal.,
+2021; Raﬀel et al., 2019; Chowdhery et al., 2022).
+38
+•SIQA,PIQA,AbductiveNLI,WinograndeXLandCosmosQAwereco-trainedinaproportionatemixture
+similar to (Lourie et al., 2021) under the Rainbow benchmark.
+•For CSQA, CSQA2. OBQA, and ARC-DA we co-trained with the rainbow mixture to obtain results on
+these three datasets.
+•All other tasks were single-task ﬁnetuned.
+9.4 Details of Prompts for few-shot and zero-shot
+We report the optimal prompt for the zero-shot SuperGLUE experiments.
+Task Prompt
+BoolQ S2S
+CB NLU
+RTE S2S
+Record S2S
+WiC S2S
+WSC S2S
+COPA NLU
+MultiRC S2S
+Table 17: Caption
+39

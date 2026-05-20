@@ -1,0 +1,925 @@
+Title: Transforming Question Answering Datasets Into Natural Language Inference Datasets
+
+Transforming Question Answering Datasets
+Into Natural Language Inference Datasets
+Dorottya Demszky
+Department of Linguistics
+Stanford University
+ddemszky@stanford.eduKelvin Guu
+Department of Statistics
+Stanford University
+kguu@stanford.eduPercy Liang
+Department of Computer Science
+Stanford University
+pliang@cs.stanford.edu
+Abstract
+Existing datasets for natural language in-
+ference (NLI) have propelled research on
+language understanding. We propose a
+new method for automatically deriving NLI
+datasets from the growing abundance of large-
+scale question answering datasets.
+Our approach hinges on learning a sen-
+tence transformation model which converts
+question-answer pairs into their declarative
+forms. Despite being primarily trained on a
+single QA dataset, we show that it can be suc-
+cessfully applied to a variety of other QA re-
+sources. Using this system, we automatically
+derive a new freely available dataset of over
+500k NLI examples (QA-NLI), and show that
+it exhibits a wide range of inference phenom-
+ena rarely seen in previous NLI datasets.
+1 Introduction
+Natural language inference (NLI) is a task that in-
+corporates much of what is necessary to under-
+stand language, such as the ability to leverage
+world knowledge or perform lexico-syntactic rea-
+soning. Given two sentences, a premise and a hy-
+pothesis, an NLI system must determine whether
+the hypothesis is implied by the premise.
+Numerous datasets have emerged to evaluate
+NLI systems (Marelli et al., 2014; Pavlick and
+Callison-Burch, 2016; Lai et al., 2017a). Two of
+the largest ones, SNLI (Bowman et al., 2015) and
+MultiNLI (Williams et al., 2017) are rich in var-
+ious linguistic phenomena relevant to inference
+(e.g. quantiﬁcation and negation), but they lack
+certain other phenomena, such as multi-sentence
+reasoning, which can be important for various
+downstream applications.
+In this paper, we propose to augment and diver-
+sify NLI datasets by automatically deriving large-
+Equal contribution.
+P: Taylor is a journalist […]. She was playing golf with Ron when her phone rang. It was Liz, her mother’s friend. […]Q: Who called Taylor?
+D: A doctor called Taylor.D: Ron called Taylor.D: Liz called Taylor.A: LizA: RonA: a doctorentailmentcontradictionunknownQA2DFigure 1: We learn a mapping from a question-answer
+pair into a declarative sentence (QA2D), which allows
+us to convert question answering datasets into natural
+language inference datasets.
+scale NLI datasets from existing question answer-
+ing(QA) datasets, which have recently become
+abundant and capture a wide range of reasoning
+phenomena.1
+Inspired by the connection between QA and
+NLI noted by Dagan et al. (2006), we take the fol-
+lowing approach: given a passage of text, a ques-
+tion about it ( Q:Who called Taylor? ) and an an-
+swer ( A:Liz), we perform sentence transforma-
+tions to combine the question and answer into a
+declarative answer sentence ( D:Liz called Tay-
+lor). We then observe that the passage and the
+declarative sentence form a (premise, hypothesis)
+NLI pair. This is illustrated in Figure 1, and elab-
+orated on in Section 2, where we also discuss how
+to generate negative (non-entailed) examples. This
+approach is similar to the way SciTail (Khot et al.,
+2018) was constructed, except that our method is
+fully automated.
+Deriving NLI from QA has two key advantages.
+1Data and code are available here:
+https://bit.ly/2OMm4vKarXiv:1809.02922v2  [cs.CL]  11 Sep 2018
+Properties MovieQA NewsQA QAMR RACE SQuAD
+# wh questions 11k 100k 100k 20k 100k
+Domain Movie plots CNN Wikinews + Wikipedia English exams Wikipedia
+Multiple choice yes no no yes no
+Answer type free-form span span free-form span
+Passage type 1-3 sentences mult. par. sentence paragraph paragraph
+Avg question length 10.7 7.6 6.7 11 11.5
+Avg word overlap 46% 73% 50% 62% 75%
+Table 1: Properties of the different QA datasets that we evaluated on. Together they cover a wide range of domains
+and evidence (passage) types, from sentences to multiple paragraphs and they add up to about 500k NLI examples
+including the multiple choice QA options. The average question length is counted by tokens and the average word
+overlap is measured by the percentage of tokens from the question that appear in the evidence.
+First, large-scale QA datasets are abundant. Sec-
+ond, existing QA datasets cover a wide range of
+reasoning strategies, which we can now import
+into the study of NLI. Both advantages likely stem
+from the fact that question answering and question
+formulation are organic tasks that people perform
+in daily life — making QA data easy to crowd-
+source (He et al., 2015), and easy to ﬁnd in well-
+designed pre-existing resources such as reading
+comprehension exams (Lai et al., 2017b). In Sec-
+tion 3, we describe the QA datasets we work with.
+Deriving a declarative sentence from a
+question-answer pair is the key step of our ap-
+proach, a subtask that we call QA2D. We explore
+three different ways to perform QA2D: (i) a
+rule-based system (Section 4), (ii) crowdsourcing
+(Section 5) and (iii) a neural sequence model
+(Section 6).
+These three approaches build on each other: we
+demonstrate that a good rule-based system can ac-
+celerate and improve the quality of crowdsourcing
+(by providing workers with an initial draft) while
+not introducing any systematic bias. This enables
+us to collect a dataset of 100,000 (Q; A; D )triples,
+which we then use to train a neural QA2D model.
+Although this model is primarily trained on triples
+from SQuAD (Rajpurkar et al., 2016), we show
+that our model generalizes very well to other QA
+datasets spanning a variety of domains, such as
+Wikipedia, newswire and movie plots. Our au-
+tomatically generated declaratives exactly match
+the human gold answer 45–57% of the time, with
+BLEU scores ranging between 73–83, depending
+on the dataset (Section 7).
+With our automated QA2D system in place, we
+apply it to ﬁve different QA datasets, creating over
+500,000 NLI examples, which we make freely
+available. Given the diverse nature of the QA
+datasets we use, the resulting NLI dataset (QA-NLI) also exhibits a wide range of different in-
+ference phenomena, such as multi-sentence and
+meta-level reasoning and presupposition-based in-
+ference. We perform a thorough analysis of the re-
+sulting phenomena, quantifying this diversity both
+in terms of the type of reasoning and the contex-
+tual scope required to perform that reasoning. We
+also conduct other analyses that suggest that our
+approach can eliminate some of the annotation ar-
+tifacts (Gururangan et al., 2018) present in SNLI
+and MultiNLI.
+2 Approach
+We now formally deﬁne our framework for con-
+verting a QA example into an NLI example, in-
+cluding how to generate negative (non-entailed)
+NLI examples.
+A QA example contains a passage of text P, a
+question Qregarding the text and an answer span
+A, as illustrated in Figure 1. We perform sentence
+transformations (QA2D) to combine QandAinto
+a declarative answer sentence D. We then simply
+recognize that if Ais a correct answer, then (P; D )
+is an entailed NLI pair.
+Alternatively, if Ais an incorrect answer or Q
+cannot be answered using the information in P,
+thenDisnotimplied by P, yielding a negative
+NLI pair. Incorrect answers are available in QA
+datasets featuring multiple choice answers, such
+as MovieQA (Tapaswi et al., 2016), RACE (Lai
+et al., 2017b) and MCTest (Richardson et al.,
+2013). Unanswerable questions are available in
+SQuADRUn (Rajpurkar et al., 2018) and we ex-
+pect the number of such datasets to grow with the
+advancement of QA research.
+Inference labels. In existing NLI datasets, ex-
+amples are labeled with one of three relations: en-
+tailment, neutral/unknown or contradiction. When
+Q: Where does Jim go to buy groceries?A: Trader Joe’sIII. Jim goes where to buy groceries?I. Where does Jim goes to buy groceries?II. Where Jim goes to buy groceries?remove  do-supportreverse wh-movementdelete question words & markplug in AIV. Jim goes Trader Joe’s to buy groceries.V. Jim goes to Trader Joe’s to buy groceries.insert prepositionFigure 2: An illustration of the syntactic transforma-
+tions needed to perform QA2D. In this example, to per-
+form step II one needs to know that where is comple-
+ment of goand not that of buy, and to perform step V ,
+one needs to chose the appropriate preposition to insert.
+performing automated QA2D, we can only make a
+two-way distinction between entailment and non-
+entailment.2
+Weakly supervised QA datasets. In many QA
+datasets, the passage Pis a short paragraph (e.g.
+SQuAD (Rajpurkar et al., 2016)) or even a sin-
+gle sentence (e.g. QAMR (Michael et al., 2018)).
+This yields a short, simple premise in the resulting
+NLI example. However, some weakly supervised
+QA datasets such as NewsQA (Trischler et al.,
+2017), RACE and TriviaQA (Joshi et al., 2017)
+choose Pbe an entire document or even corpus of
+documents. In this case, the resulting NLI pair’s
+premise could be large, but is still valid. In Ta-
+ble 1, we describe the “passage type” for each QA
+dataset we work with.
+3 Datasets
+Table 1 summarizes the properties of the ﬁve
+QA datasets we transform into NLI: MovieQA,
+NewsQA, QAMR and RACE and SQuAD. When
+choosing the datasets, we sought to maximize the
+structural and topical diversity of our data.
+The domains of these datasets include movie
+plots, newswire text, Wikipedia and English ex-
+ams that cover a wide range of genres and topics.
+Thepassage types range from a sentence to mul-
+2It is tempting to think that incorrect answers yield con-
+tradiction labels, while unanswerable questions yield neutral
+labels. Unfortunately, this is false. Figure 1 illustrates an
+example where an incorrect multiple choice answer does not
+yield a contradiction. As for unanswerable questions, one ex-
+ample would be: P: “The score was negative.”, Q: “What
+was the exact score?” (unanswerable), A: “10” (yields con-
+tradiction, not neutral).tiple paragraphs3and the answer type may be ei-
+ther a substring (span) within the passage or free-
+response text. The questions vary greatly in terms
+of their type and difﬁculty: questions in QAMR
+hinge on selecting the right arguments within a
+single sentence, while questions in RACE, writ-
+ten for middle- and high-schoolers, require holis-
+tic reasoning about the text (e.g. What is the main
+message of the passage? ).
+4 QA2D: Rule-based
+At ﬁrst glance, QA2D appears to be a highly
+structured task guided by clear rules — indeed,
+the reverse problem of converting declarative sen-
+tences into questions is often taught in gram-
+mar textbooks. However, this belies the many
+nuanced semantic decisions that are effortlessly
+made by native English speakers, yet challenging
+to codify. For example, non-native speakers ﬁnd
+it notoriously hard to prepend the right preposi-
+tions/articles before phrases, as there are no simple
+rules.
+To demonstrate these challenges, we develop a
+strong rule-based system (see Section 7 for results)
+to test how far we can go towards solving QA2D.
+The main steps of this system are illustrated in Fig-
+ure 2.
+The success of the rule-based model hinges
+on part-of-speech tagging and parsing accuracy,
+given that we need to correctly identify the wh-
+word, the root word, any auxiliary or copula, as
+well as prepositions and particles that are depen-
+dents of the wh-word or the root. We used the
+state-of-the-art Stanford Graph-Based Neural De-
+pendency Parser (Dozat et al., 2017) to POS tag
+and parse QandA. We found that about 10% of
+the mistakes made by our rule-based system are
+due to tagging/parsing errors.4
+We encountered several semantic idiosyncrasies
+that proved difﬁcult to account for by rules. For
+example, if the answer span is a bare named entity
+(i.e. without an article) referring to an organiza-
+tion/institution, generally it is okay to leave it bare
+3For MovieQA, we only used the plot summaries as the
+evidence, but one could easily use the full movie scripts or
+audiovisual data as well.
+4The main errors made by the tagger/parser include tag-
+ging a verb as a noun, which is prevalent because in the pres-
+ence of do-support, the inﬂections are removed from the main
+verb (e.g. When did the war end?). Another class of parsing
+errors is identiﬁcation of the parent of a dangling preposi-
+tion/particle (e.g. Which friend did Olga send a letter tolast
+week? ).
+Split Source # Ex. # Ann. Setup
+trainSQuAD 68986 1E (74%)
+S (26%)
+Other 41000 1 S
+devSQuAD7350 1 S
+1000 3 S
+Other 4500 1 S
+testSQuAD7377 1 S
+1000 3 S
+Other 41000 3 S
+Table 2: The composition of our collected data. # Ex.
+and # Ann. refer to the number of unique examples
+and to the number of annotations (gold answers) per
+example, respectively. The last column lists the setup
+that was used for collecting the examples: post-editing
+(E) or from scratch (S). “Other” denotes the four other
+QA datasets besides SQuAD. The gray indicates the
+examples that we used for our evaluations in Section 7.
+(e.g. Sam works at WHO. ), but sometimes a deﬁ-
+nite article needs to be inserted (e.g. Sam works at
+the UN ).
+5 QA2D: crowdsourced
+Even though our rule-based model is reasonably
+strong, it is far from perfect. We decided to build a
+supervised neural model, which required the col-
+lection of human-authored gold declarative sen-
+tences. We describe our data collection method
+(Section 5.1) and the distribution of our collected
+data across the ﬁve QA datasets (Section 5.2).
+5.1 Data Collection
+We crowdsourced the QA2D task on Amazon Me-
+chanical Turk using two different setups. In Setup
+S, Turkers were presented with QandA, then
+asked to write a full sentence answer Dfrom
+Scratch. In Setup E, instead of writing Dfrom
+scratch, Turkers were asked to Edit the output of
+our rule-based system (see Section 4) until it is a
+well-formed sentence. Turkers were not provided
+with the supporting passage Pin either setup be-
+cause we wanted to prevent them from including
+information in Dthat is not supported by Q.
+Writing from scratch vs post-editing. There is
+a trade-off between the two setups: while Setup
+S minimizes bias towards the rule-based output,
+writing from scratch takes more time and leaves
+room for more typos than post-editing. Indeed,
+when comparing 100 random examples generated
+from each setup, we found that 91% of Setup
+S outputs were valid (grammatical and completewhile 97% of Setup E outputs were valid. How-
+ever, since Setup E could potentially bias our data,
+we exclusively used Setup S for collecting all eval-
+uation data.
+5.2 Distribution of Source QA Datasets
+We decided to select one QA dataset among the
+ﬁve QA datasets to collect the majority of our
+data, so that we could test the ability of our neural
+model (Section 6) to generalize to other datasets.
+We chose SQuAD to be the main source of QA
+pairs because of its large size, high quality and
+syntactic diversity. We limited ourselves to its
+training set for the data collection, ﬁltering out
+non-wh-questions, which left us with a total of
+85,713 QA pairs.5In addition, we randomly sam-
+pled a smaller set of QA pairs from the four other
+datasets, most of which were used for evaluation.
+Table 2 summarizes the composition of our
+newly collected dataset of gold declarative answer
+sentences. For each of the dev and test sets, we
+collected three annotations for 1000 examples to
+account for the fact that there can be multiple pos-
+sible correct QA2D transformations. The distri-
+bution of datasets within the three data splits are:
+train (95% SQuAD, 5% other four), dev (81%
+SQuAD, 19% other four) and test (20% for each
+ﬁve datasets).
+6 QA2D: Neural Sequence Model
+In Section 4, we discussed some of the issues
+(mostly involving semantics) that our rule-based
+system cannot handle. To improve over this base-
+line, we develop a neural sequence generation
+model to perform QA2D.
+From the crowdsourcing described in the previ-
+ous section, we have a dataset of ( Q,A,D) tuple.
+We use this to learn a model of p(DjQ; A ), im-
+plemented with an encoder-decoder architecture.
+The inputs QandAare each encoded using a
+bidirectional three-layer LSTM (Hochreiter and
+Schmidhuber, 1997) (the same encoder weights
+are used for both inputs). Dis then generated
+using a three-layer LSTM decoder equipped with
+one attention head (Bahdanau et al., 2015) for each
+input, and a copy mechanism based on Gu et al.
+(2016).6Word embeddings are initialized with
+5The random split between train (80%), dev (10%) and
+test (10%) sets was made based on Wikipedia article titles
+corresponding to the QA pairs.
+6The copy mechanism is similar to Gu et al. (2016), ex-
+cept that out-of-vocabulary copyable words are represented
+Figure 3: Figure (a) shows the results based on question type (brackets indicate their proportion in the data) and
+Figure (b) shows the results based on the length of Q+A. The error bars denote the 99% conﬁdence interval
+for the true expected performance of each model (randomness comes from noise in Turker annotations and the
+random sampling of the evaluation set). Note: human and model scores should not be directly compared. Human
+agreement is maximum BLEU score when comparing each of 3 human annotations against the two others, while
+the models’ outputs are compared against the 3 human annotations. We include human results to quantify variation
+across human annotators.
+GloVe (Pennington et al., 2014). The model is
+then trained using a standard cross entropy loss
+minimized with Adam (Kingma and Ba, 2014).
+7 QA2D: Results
+In this section, we assess the performance of our
+rule-based (R ULE-BASED ) and neural (N EURAL )
+QA2D systems, using both automated metrics and
+human evaluation. The evaluations are conducted
+on the test set formed from all ﬁve QA datasets
+(gray cells in Table 2) where each example in-
+cludes three human annotations.
+7.1 Quantitative Results
+For our quantitative evaluation, we employed two
+metrics: BLEU and string match (ignoring case
+and punctuation). We evaluated N EURAL both on
+the top 1 output and on the top 5 outputs (max over
+the beam).
+Rule-based vs neural. Overall, the perfor-
+mance of N EURAL is consistently stronger than
+RULE-BASED . From Table 4, we see that across
+datasets, N EURAL leads R ULE-BASED by an av-
+erage of 2.6 BLEU points, and by 6.2% on exact
+match accuracy. N EURAL is also capable of pro-
+ducing a top-5 beam of outputs, and when we eval-
+uate only the best of these 5 outputs, we observe
+an almost 30% improvement in scores.
+We ﬁnd that predictions of N EURAL and
+RULE-BASED exactly match 40% of the time.
+using absolute positional embeddings, rather than the en-
+coder’s hidden state at the position of the copyable word.Table 3 includes examples when the two mod-
+els’ outputs do not match. As we hypothe-
+sized, the N EURAL learned semantic patterns,
+such as preposition/article choice and the removal
+of redundant words from the answer span, that
+RULE-BASED was not able to handle.
+Results by dataset. Table 4 breaks down the
+models’ performance by dataset. The ﬁrst thing to
+note is the domain-generality of the models — al-
+though BLEU scores are highest on SQuAD, they
+are only 1-3 points lower on other datasets. As for
+the exact match, we actually ﬁnd that both models
+perform better on QAMR than on SQuAD. This
+discrepancy is likely due to the length penalty in
+BLEU, which is affected by shorter answer lengths
+in QAMR.
+RULE-BASED performs worst on RACE,
+MovieQA and SQuAD (6-9 points lower on
+exact match) in comparison to N EURAL due to
+the fact that the answers in these datasets often
+require semantically motivated modiﬁcations that
+RULE-BASED cannot handle.
+Results by question length. Figure 3 (b) shows
+the correlation between the combined length of
+the question-plus-answer and each model’s per-
+formance. R ULE-BASED ’s performance is more
+robust to length increase beyond 30 tokens than
+NEURAL , even if we consider N EURAL ’s top-5
+performance. In contrast, N EURAL does better
+on inputs shorter than 20 tokens — which con-
+stitute the majority of the examples — than on
+longer ones, which is possibly due to the general
+Question Answer RULE-BASED NEURAL
+When was Madonna born? August 16, 1958 Madonna was born in August 16, 1958. Madonna was born on August 16, 1958.
+Who asks who to hit them
+outside of the bar?Tyler asks the
+Narrator to hit himTyler asks the Narrator to hit him asks
+who to hit them outside of the bar.Tyler asks the narrator to hit them outside
+of the bar.
+What surprising fact do the guys
+learn about Jones?That he has never
+killed anyoneThe guys learn that he has never
+killed anyone about Jones.The guys learned about Jones that he has
+never killed anyone.
+Where is someone overlooked? American societySomeone is overlooked in American
+society.Someone overlooked is in American
+society.
+When did Johnson crash
+into the wall?halfway through
+the raceJohnson crashed into the wall
+halfway through the race.Johnson shot into the wall halfway
+through the race.
+What is an example of a corporate
+sponsor of a basketball team?Marathon OilAn example of a corporate sponsor of
+a basketball team is Marathon Oil.Marathon Oil is an example of a corporate
+sponsor of a basketball team.
+Where was the baby found?onboard a Carnival
+cruise ship,The baby was found in onboard a
+Carnival cruise ship.The baby was found at onboard a Carnival
+cruise ship.
+Table 3: A randomly picked sample of those outputs where N EURAL6=RULE-BASED . Green indicates good
+output(s) and red indicates bad ones.
+Dataset MovieQA NewsQA QAMR RACE SQuAD
+Model RM NM RM NM RM NM RM NM RM NM
+Top 1BLEU 81 84 82 83 82 85 80 83 82 86
+Match 38 44 49 49 54 57 30 44 45 53
+Top 5BLEUN/A89N/A88N/A90N/A89N/A91
+Match 52 58 67 55 62
+Table 4: BLEU and exact match scores (out of a 100) when compar-
+ing the outputs of R ULE-BASED (RM) and N EURAL (NM) against the
+human gold.
+Figure 4: Human evaluation of the
+the human, R ULE-BASED and N EURAL
+outputs.
+tendency of N EURAL to output shorter sequences.
+Results by question type. In Figure 3 (a) we
+present the results broken down by question cat-
+egory, which we determined based on the type
+of wh word in the question. We can see that
+our models perform best on who questions, which
+is not surprising because there is usually no wh-
+movement involved when transforming such ques-
+tions into declaratives (i.e. the wh word simply
+needs to be replaced). In contrast, the overall
+performance of the models is the worst on which
+questions, which is most likely due to the fact that
+the majority of such questions require a decision
+about which words from the wh phrase to include
+inDand in what position.
+The only question type for which we see
+a signiﬁcant difference between performance of
+RULE-BASED and that of the neural one is how
+questions (note that how many , for example, is
+considered to be a how question). This is because
+RULE-BASED — in contrast to N EURAL — does
+not copy words from the wh phrase into D, which
+mainly affects howquestions negatively, given that
+how many tends to be followed by at least one
+noun (e.g. how many people ).7.2 Human Evaluation
+We crowdsourced the evaluation of R ULE-BASED
+and N EURAL on a sample of 100 QA examples
+for each of the ﬁve datasets. For reference, we also
+treated human outputs as a third system (H UMAN ).
+In each Turk task, a Turker is presented with three
+outputs (one from each system, in a randomly
+shufﬂed order) and is asked to rate them (given a
+question and an answer span) with respect to three
+criteria: grammaticality, naturalness, and com-
+pleteness.7The results are shown in Figure 4.
+For grammar, the models’ outputs are lower
+than H UMAN (4.6), at 3.8 for R ULE-BASED and
+7Description of ratings:
+grammaticality: 1 – Extremely poor, 2 – Poor, 3 – OK but has
+some issue(s), 4 – Good but slightly unnatural, 5 – Good
+naturalness: 1 – Extremely unnatural, 2 – Unnatural, 3 – OK
+in some contexts, 4 – Natural, but could be more so, 5 – Very
+natural
+completeness: 1 – Lacks many important words from the
+question or the answer, 2 – Lacks a few important words from
+the question or the answer, 3 – The sentence is missing one or
+two words that would add more information, but they aren’t
+necessary, 4 – The sentence is missing one or two words but
+it still conveys the same meaning without them, 5 – The sen-
+tence is maximally complete in terms of words (regardless of
+grammaticality)
+Reasoning Description Example Source
+ArgumentAffects only a single
+argument of a predicate in T.T:Caitlin de Wit : I ran a little bit, and I rode horses.
+H: Caitlin is de Wit’s ﬁrst name.QAMR
+SentenceAffects one or more
+predicates within a single
+sentence in T.T: Michael Jackson will perform 10 concerts in London
+in July in what he described Thursday as a ”ﬁnal curtain call. ” [...]
+H: Michael Jackson has announced 10 concerts.NewsQA
+Multi-
+sentenceAffects multiple sentences
+inT.T: [...] invented by the British scientist William Sturgeon [...]
+Following Sturgeon’s work, [...] motor [...] built by [...] Thomas Davenport [...]
+The motors ran at up to 600 revolutions per minute [...]
+H: Sturgeon and Davenport s motors ran at 600 revolutions per minute .SQuAD
+QuantitiesCounting or performing other
+numerical operations;
+understanding relations
+between quantities.T: It provided more than $20 billion in direct ﬁnancial.
+H: It only yielded $100,000 in direct ﬁnancial.MultiNLI
+Naive
+physicsSpatiotemporal/physical
+reasoning that requires
+a mental simulation of the
+event beyond understanding
+the meaning of the words.T: David J. Lavau, 67, of Lake Hughes, California, was found in
+a ravine a week after losing control of his car on a rural road and
+plunging 500 feet down an embankment into heavy brush [...]
+H: Lavau’s car came to a rest 500 feet down an embankment.NewsQA
+AttributesReasoning about attributes
+and affordances of entities.T: The situation in Switzerland [...]. The Swiss German dialects
+arethe default everyday language in virtually every situation [...]
+H: Swiss German is the dialect spoken in Switzerland.SQuAD
+PsychologyMaking inferences involving
+people’s mental states and
+attitudes and the way they
+express them.T: Dear Jorge, [...] My family are now in Sacramento, California. [...]
+Before I knew it , there was hot water shooting up about 60 feet into
+the air. [...] I’d love to learn more about this geyser and other geysers [...]
+Your friend,Bennetto
+H: Bennetto’s letter expressed excitement .RACE
+MetaReasoning about the genre,
+text structure and author.T: A man and his young son struggle to survive after an
+unspeciﬁed cataclysm has killed most plant and animal life. [...]
+H: We meet a man and his young son at the beginning of the ﬁlm .MovieQA
+OtherIncorporating any other
+world knowledge.T: When asked a life lesson he had to learn the hard way, the billionaire said
+staying up too late is a habit he is still trying to break. “Don’t stay up too
+late[...]
+H: Bill Gates gave the advice to avoid staying up too late.RACE
+Table 5: Examples illustrating the different types of reasoning required to determine whether the text Tentails the
+hypothesis H.
+3.9 for N EURAL . A score of 4 represents the rat-
+ingGood but slightly unnatural . The same per-
+tains to the naturalness scores as well. In terms
+of completeness, the rule-based and N EURAL both
+do relatively well (.2-.3 points lower than the hu-
+man score of 4.8), which is well above the thresh-
+old for retaining the correct meaning, given that a
+rating of 4 requires there to be no semantic conse-
+quences of incompleteness.
+8 Analysis of NLI Datasets
+In this section, we analyze the various phenomena
+of the NLI datasets we generated (Section 8.1),
+validate our assumptions about how an answer’s
+correct/incorrect status determines the resulting
+inference label (Section 8.2) and compare our
+datasets to others in terms of annotation artifacts
+(Section 8.3).
+8.1 Inference Phenomena
+We manually annotated 100 examples for the
+scope andtype of reasoning required to make acorrect inference classiﬁcation. The categories
+and their descriptions, paired with examples are
+illustrated in Table 5. Looking at the counts in
+Table 6, we can notice that MovieQA, NewsQA
+and SQuAD are similar. The majority of examples
+in these datasets require sentence-level reasoning,
+and the rest are split between multi-sentence and
+argument-level reasoning at a roughly 5:3 ratio.
+While the counts for the types of reasoning are
+also very close among these datasets, the slight
+differences can be explained based on genre. For
+example, plot summaries often focus on human
+motivations/emotions ( psych ). MultiNLI is clos-
+est to these datasets in terms of phenomena counts
+as well, except that it involves hardly any multi-
+sentence reasoning and less world knowledge than
+the other three.
+QAMR is unique in that, by construction, two
+thirds of the examples only involve argument-
+level reasoning and none of them involve multi-
+sentence reasoning. Given that inference pairs in
+QAMR often involve turning a noun phrase into
+MovieQA NewsQA QAMR RACE SQuAD MultiNLIscopeargument 19 13 62 1 15 26
+sentence 56 53 38 14 58 72
+multi-sentence 25 34 0 85 27 2type of reasoningquantities 1 1 1 1 2 4
+naive physics 4 7 0 5 4 3
+psych 9 0 1 48 1 5
+meta 2 5 0 12 0 1
+attributes 41 41 12 58 40 29
+other world kn. 34 15 8 68 14 5
+Table 6: Counts for different scope and reasoning types in the ﬁve con-
+verted QA datasets in comparison to MultiNLI. We manually annotated
+100 examples per dataset. While the scope categories are mutually ex-
+clusive, the reasoning types are not.
+Figure 5: The distribution of inference
+ratings for NLI examples based on in-
+correct multiple choice option or correct
+multiple choice option.
+a predicate, this dataset provides us with a lot of
+inference pairs that stem from presuppositions —
+i.e. entailments that still hold even if the premise
+is negated (e.g. Taylor Brown was playing golf
+outside. andTaylor Brown was notplaying golf
+outside. both presuppose Taylor’s last name is
+Brown. ).
+RACE, in sharp contrast to QAMR, mostly in-
+cludes entailments that require multi-sentence rea-
+soning. In addition, inference pairs in RACE
+make extensive use of world knowledge, meta-
+level reasoning (e.g., about the genre, author’s in-
+tentions, etc.), and reasoning about human psy-
+chology (e.g., a character’s reaction to an event).
+8.2 Inference Labels
+In Section 2, we made the assumption that infer-
+ence pairs generated from incorrect answers will
+be non-entailments. To verify this hypothesis, we
+crowdsource the inference labeling of 2000 in-
+ference pairs based on MovieQA, half of which
+are generated from correct answer options and
+half from incorrect ones.8In the task, each
+Turker was provided with ﬁve randomly selected
+premise-hypothesis pairs (T; H )and was asked to
+rate how likely His true given T.
+Figure 5 shows the distribution of inference rat-
+ings with the examples separated based on incor-
+rect/correct answer options as their source. The
+human ratings show a strong correlation between
+answer type and inference score — as for correct
+ones, more than 90% of the examples are more
+likely to be true than false and as for incorrect
+8For the 1000 examples based on correct answers, we
+used the test set we already collected. We collected the 1000
+examples for incorrect answers using the same QA pairs as
+for the correct answers. The incorrect answer, in the case
+of each example, was randomly chosen among the incorrect
+options.
+Figure 6: The distribution of the length of NLI exam-
+ples, generated from MovieQA. Unlike in SNLI and
+MultiNLI, we found little correlation between the in-
+ference label and sentence lengths.
+ones, about 80% are not likely to be true. These
+ﬁndings also support a non-binary notion of en-
+tailment, as we can see that about half of the ex-
+amples in both categories do not ﬁt into the strict
+entailment/contradiction dichotomy.
+8.3 Annotation Artifacts
+We replicate some of the statistical analyses that
+Gururangan et al. (2018) performed on SNLI and
+MultiNLI to see whether our datasets contain ar-
+tifacts similar to SNLI and MultiNLI. We per-
+form the analyses on the same dataset we used in
+Section 8.2, based on MovieQA. We ranked the
+words with the highest PMI( word, class ) values
+and found that in our case the non-entailments in
+our dataset no longer have negation words and the
+entailments no longer have positive or non-speciﬁc
+words such as those found in SNLI and MultiNLI
+(Table 7). We also looked at the distribution of
+hypotheses lengths, separated by label (Figure 6)
+and found little/no correlation between the length
+of an example and its label.
+entailment neutral contradiction
+MQAﬁnd all
+take police
+years york
+son car
+shoot can
+SNLIoutdoors tall nobody
+least ﬁrst sleeping
+instrument competition no
+outside sad tv
+animal favorite cat
+MNLIsome also never
+yes because no
+something popular nothing
+sometimes many any
+various most none
+Table 7: Top 5 words ordered based on their PMI
+(word, class ) with the percentage of examples they oc-
+cur in in a given class , based on the entailments gener-
+ated from MovieQA (MQA). The statistics for SNLI
+and MultiNLI (MNLI) are copied from Gururangan
+et al. (2018).
+9 Related Work & Discussion
+NLI datasets. NLI has long served as a testbed
+for natural language understanding (Dagan et al.,
+2006). More recently, the emergence of larger-
+scale datasets (Bowman et al., 2015; Williams
+et al., 2017) have also enabled researchers to lever-
+age NLI resources as a rich source of training data
+to achieve transfer learning gains on other tasks
+(Conneau et al., 2017). Our datasets are comple-
+mentary to previous resources, inheriting a rich set
+of phenomena found in many QA datasets (e.g.
+high-level reasoning about texts).
+QA to NLI. Although White et al. (2017)
+and Poliak et al. (2018) have explored recasting
+datasets created for various semantic classiﬁcation
+tasks (e.g. semantic role labeling and named en-
+tity recognition) into NLI datasets, we are the ﬁrst
+to perform such an automated conversion on QA
+datasets. However, we are not the ﬁrst to observe
+the connection between QA and NLI. In fact, the
+seminal work of Dagan et al. (2006) employed this
+connection to construct a portion of their dataset
+and so have the creators of SciTail (Khot et al.,
+2018), but performed the QA2D step with human
+experts, rather than an automated system.
+Text transformation tasks. By “reformatting”
+QA to NLI, we obtain a more generic representa-
+tion of inferences: declarative sentences are trans-
+formed into other declarative sentences. This is
+the same type signature as for sentence simpliﬁca-tion (Chandrasekar et al., 1996), paraphrase (Lin
+and Pantel, 2001; Bannard and Callison-Burch,
+2005) and summarization (Jones, 1993), high-
+lighting the close connection between these tasks.
+Importantly, declarative sentences are closed un-
+der this set of operations, allowing them to be
+chained together to perform more complex infer-
+ences (Kolesnyk et al., 2016).
+Another related task is question generation (Rus
+and Arthur, 2009), which could be considered the
+reverse of QA2D, although the focus is on select-
+ing interesting questions, rather than robust sen-
+tence transformation.
+Neural sequence generation. Our QA2D sys-
+tem could be implemented by any general-purpose
+sequence generation model. With rapid progress
+on better generation architectures (Gehring et al.,
+2017; Vaswani et al., 2017), we believe it should
+be possible to further increase the data efﬁciency
+and performance, especially by leveraging mod-
+els that incorporate syntactic structure (Chen et al.,
+2017; Eriguchi et al., 2017) or a more transducer-
+like structure (Graves, 2012; Yu et al., 2016).
+Future systems. Finally, we hope that by in-
+creasing the scale of NLI training resources, we
+can enable the development of a large variety of
+new systems such as generative NLI models which
+can take a premise and generate relevant hypothe-
+ses (Kolesnyk et al., 2016), sentence decomposi-
+tion models which can break a sentence into mul-
+tiple entailed parts, and sentence synthesis models
+which can stitch multiple pieces back into an en-
+tailed whole.
+Acknowledgments
+We would like to thank Chris Potts and members
+of the Stanford NLP group for their valuable feed-
+back.
+References
+D. Bahdanau, K. Cho, and Y . Bengio. 2015. Neural
+machine translation by jointly learning to align and
+translate. In International Conference on Learning
+Representations (ICLR) .
+C. Bannard and C. Callison-Burch. 2005. Paraphrasing
+with bilingual parallel corpora. In Association for
+Computational Linguistics (ACL) , pages 597–604.
+S. Bowman, G. Angeli, C. Potts, and C. D. Manning.
+2015. A large annotated corpus for learning natural
+language inference. In Empirical Methods in Natu-
+ral Language Processing (EMNLP) .
+R. Chandrasekar, C. Doran, and B. Srinivas. 1996. Mo-
+tivations and methods for text simpliﬁcation. In Pro-
+ceedings of the 16th conference on Computational
+linguistics-Volume 2 , pages 1041–1044.
+H. Chen, S. Huang, D. Chiang, and J. Chen.
+2017. Improved neural machine translation with a
+syntax-aware encoder and decoder. arXiv preprint
+arXiv:1707.05436 .
+A. Conneau, D. Kiela, H. Schwenk, L. Barrault, and
+A. Bordes. 2017. Supervised learning of universal
+sentence representations from natural language in-
+ference data. arXiv preprint arXiv:1705.02364 .
+I. Dagan, O. Glickman, and B. Magnini. 2006. The
+PASCAL recognising textual entailment challenge .
+Machine learning challenges. evaluating predictive
+uncertainty, visual object classiﬁcation, and recog-
+nising tectual entailment.
+T. Dozat, P. Qi, and C. D. Manning. 2017. Stanford’s
+graph-based neural dependency parser at the conll
+2017 shared task. In Computational Natural Lan-
+guage Learning (CoNLL) , pages 20–30.
+A. Eriguchi, Y . Tsuruoka, and K. Cho. 2017. Learn-
+ing to parse and translate improves neural machine
+translation. arXiv preprint arXiv:1702.03525 .
+J. Gehring, M. Auli, D. Grangier, D. Yarats, and
+Y . N. Dauphin. 2017. Convolutional sequence to se-
+quence learning. arXiv preprint arXiv:1705.03122 .
+A. Graves. 2012. Sequence transduction with recurrent
+neural networks. arXiv preprint arXiv:1211.3711 .
+J. Gu, Z. Lu, H. Li, and V . O. Li. 2016. Incorporating
+copying mechanism in sequence-to-sequence learn-
+ing. In Association for Computational Linguistics
+(ACL) .
+S. Gururangan, S. Swayamdipta, O. Levy, R. Schwartz,
+S. R. Bowman, and N. A. Smith. 2018. Annotation
+artifacts in natural language inference data. arXiv
+preprint arXiv:1803.02324 .
+L. He, M. Lewis, and L. Zettlemoyer. 2015. Question-
+answer driven semantic role labeling: Using natu-
+ral language to annotate natural language. In Em-
+pirical Methods in Natural Language Processing
+(EMNLP) .
+S. Hochreiter and J. Schmidhuber. 1997. Long short-
+term memory. Neural Computation , 9(8):1735–
+1780.
+K. S. Jones. 1993. What might be in a summary? In-
+formation retrieval , 93:9–26.
+M. Joshi, E. Choi, D. Weld, and L. Zettlemoyer. 2017.
+TriviaQA: A large scale distantly supervised chal-
+lenge dataset for reading comprehension. In Associ-
+ation for Computational Linguistics (ACL) .Tushar Khot, Ashish Sabharwal, and Peter Clark. 2018.
+Scitail: A textual entailment dataset from science
+question answering. In Proceedings of AAAI .
+D. Kingma and J. Ba. 2014. Adam: A method
+for stochastic optimization. arXiv preprint
+arXiv:1412.6980 .
+V . Kolesnyk, T. Rockt ¨aschel, and S. Riedel. 2016. Gen-
+erating natural language inference chains. arXiv
+preprint arXiv:1606.01404 .
+A. Lai, Y . Bisk, and J. Hockenmaier. 2017a. Natural
+language inference from multiple premises. arXiv
+preprint arXiv:1710.02925 .
+G. Lai, Q. Xie, H. Liu, Y . Yang, and E. Hovy.
+2017b. Race: Large-scale reading comprehen-
+sion dataset from examinations. arXiv preprint
+arXiv:1704.04683 .
+D. Lin and P. Pantel. 2001. Discovery of inference
+rules for question-answering. Natural Language
+Engineering , 7:343–360.
+M. Marelli, S. Menini, M. Baroni, L. Bentivogli,
+R. bernardi, and R. Zamparelli. 2014. A SICK cure
+for the evaluation of compositional distributional se-
+mantic models. In Language Resources and Evalu-
+ation Conference (LREC) .
+J. Michael, G. Stanovsky, L. He, I. Dagan, and
+L. Zettlemoyer. 2018. Crowdsourcing question–
+answer meaning representations. In North Amer-
+ican Association for Computational Linguistics
+(NAACL) .
+E. Pavlick and C. Callison-Burch. 2016. Most” ba-
+bies” are” little” and most” problems” are” huge”:
+Compositional entailment in adjective-nouns. In As-
+sociation for Computational Linguistics (ACL) , vol-
+ume 1, pages 2164–2173.
+J. Pennington, R. Socher, and C. D. Manning. 2014.
+Glove: Global vectors for word representation. In
+Empirical Methods in Natural Language Processing
+(EMNLP) .
+Adam Poliak, Aparajita Haldar, Rachel Rudinger,
+J Edward Hu, Ellie Pavlick, Aaron Steven White,
+and Benjamin Van Durme. 2018. Towards a
+uniﬁed natural language inference framework to
+evaluate sentence representations. arXiv preprint
+arXiv:1804.08207 .
+P. Rajpurkar, R. Jia, and P. Liang. 2018. Know
+what you don’t know: Unanswerable questions for
+SQuAD. In Association for Computational Linguis-
+tics (ACL) .
+P. Rajpurkar, J. Zhang, K. Lopyrev, and P. Liang. 2016.
+SQuAD: 100,000+ questions for machine compre-
+hension of text. In Empirical Methods in Natural
+Language Processing (EMNLP) .
+M. Richardson, C. J. Burges, and E. Renshaw. 2013.
+Mctest: A challenge dataset for the open-domain
+machine comprehension of text. In Empirical Meth-
+ods in Natural Language Processing (EMNLP) ,
+pages 193–203.
+V . Rus and C. G. Arthur. 2009. The question generation
+shared task and evaluation challenge. In The Univer-
+sity of Memphis. National Science Foundation .
+M. Tapaswi, Y . Zhu, R. Stiefelhagen, A. Torralba,
+R. Urtasun, and S. Fidler. 2016. Movieqa: Un-
+derstanding stories in movies through question-
+answering. In Computer Vision and Pattern Recog-
+nition (CVPR) , pages 4631–4640.
+A. Trischler, T. Wang, X. Yuan, J. Harris, A. Sordoni,
+P. Bachman, and K. Suleman. 2017. NewsQA: A
+machine comprehension dataset. In Workshop on
+Representation Learning for NLP .
+A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit,
+L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin.
+2017. Attention is all you need. arXiv preprint
+arXiv:1706.03762 .
+Aaron Steven White, Pushpendre Rastogi, Kevin Duh,
+and Benjamin Van Durme. 2017. Inference is ev-
+erything: Recasting semantic resources into a uni-
+ﬁed evaluation framework. In Proceedings of the
+Eighth International Joint Conference on Natural
+Language Processing (Volume 1: Long Papers) , vol-
+ume 1, pages 996–1005.
+A. Williams, N. Nangia, and S. R. Bowman. 2017.
+A broad-coverage challenge corpus for sentence
+understanding through inference. arXiv preprint
+arXiv:1704.05426 .
+L. Yu, J. Buys, and P. Blunsom. 2016. Online seg-
+ment to segment neural transduction. arXiv preprint
+arXiv:1609.08194 .

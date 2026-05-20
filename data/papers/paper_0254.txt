@@ -1,0 +1,967 @@
+Title: TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+
+TeraPipe: Token-Level Pipeline Parallelism for Training
+Large-Scale Language Models
+Zhuohan Li1Siyuan Zhuang1Shiyuan Guo1Danyang Zhuo2Hao Zhang1Dawn Song1Ion Stoica1
+Abstract
+Model parallelism has become a necessity for
+training modern large-scale deep language mod-
+els. In this work, we identify a new and or-
+thogonal dimension from existing model paral-
+lel approaches: it is possible to perform pipeline
+parallelism within a single training sequence for
+Transformer-based language models thanks to its
+autoregressive property. This enables a more ﬁne-
+grained pipeline compared with previous work.
+With this key idea, we design TeraPipe, a high-
+performance token-level pipeline parallel algo-
+rithm for synchronous model-parallel training
+of Transformer-based language models. We de-
+velop a novel dynamic programming-based al-
+gorithm to calculate the optimal pipelining exe-
+cution scheme given a speciﬁc model and clus-
+ter conﬁguration. We show that TeraPipe can
+speed up the training by 5.0x for the largest GPT-
+3 model with 175 billion parameters on an AWS
+cluster with 48 p3.16xlarge instances compared
+with state-of-the-art model-parallel methods. The
+code for reproduction can be found at https:
+//github.com/zhuohan123/terapipe
+1. Introduction
+Transformer-based language models (LMs) have revolu-
+tionized the area of natural language processing (NLP) by
+achieving state-of-the-art results for many NLP tasks, in-
+cluding text classiﬁcation, question answering, and text gen-
+eration (Brown et al., 2020; Radford et al.). The accuracy of
+a Transformer-based LM grows substantially with its model
+size, attributing to the fact that they can be unsupervisedly
+trained on almost unlimited text data. Today, a large LM,
+such as GPT-3 (Brown et al., 2020), can have more than
+175B parameters, which amounts to 350 GB, assuming 16-
+1UC Berkeley2Duke University. Correspondence to: Zhuohan
+Li<zhuohan@cs.berkeley.edu >.
+Proceedings of the 38thInternational Conference on Machine
+Learning , PMLR 139, 2021. Copyright 2021 by the author(s).bit ﬂoating-point numbers. This signiﬁcantly exceeds the
+memory capacity of existing hardware accelerators, such
+as GPUs and TPUs, which makes model-parallel training
+a necessity, i.e., partitioning the model on multiple devices
+during the training process.
+Because of the demands for efﬁcient LM training, many
+researchers and industry practitioners have proposed differ-
+ent ways for model parallel training. One approach is to
+partition the weight matrices and dispatch smaller matrix
+operations to parallel devices (Figure 1b; Shoeybi et al.,
+2019; Shazeer et al., 2018). Another approach is to split
+a batch of training data into many microbatches and then
+evenly pipeline the layer computations across different mi-
+crobatches and devices (Figure 1c; Huang et al., 2019).
+Unfortunately, these approaches either introduce excessive
+communication overheads between compute devices, or lead
+to reduced efﬁciency due to pipeline “bubbles” (i.e. device
+idle time, see Section 2 and 3.2 for details).
+Our key observation in this paper is that Transformer-based
+language models have a key property: the computation of a
+given input token only depends on previous tokens, but not
+on future tokens. This lack of dependency on future tokens
+provides new opportunities for pipeline parallel training.1
+In particular, it allows us to create a ﬁne-grained pipeline
+within a single training sequence for Transformer-based
+LMs, by parallelizing the computation of the current token
+on the current layer with the computation of the previous
+token on the next layer of the model. For example, in Fig-
+ure 1d, we can pipeline the execution across all 5 devices
+within a single input sequence. Similar to other synchronous
+model parallel training methods, e.g., Gpipe (Huang et al.,
+2019), Megatron-LM (Shoeybi et al., 2019), we do not
+change the underlying optimization algorithm, so the result-
+ing model has exactly the same accuracy.
+However, leveraging the token dimension for efﬁcient model
+parallel training raises several challenges. First, if the par-
+titioning along the token dimension is too ﬁne-grained, it
+leads to under-utilization on devices that require large blocks
+1In this paper, we focus on unidirectional autoregressive lan-
+guage models (e.g., GPT (Radford et al.; Brown et al., 2020))
+but not bidirectional models like masked language models (e.g.,
+BERT (Devlin et al., 2018)).arXiv:2102.07988v2  [cs.LG]  28 Sep 2021
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+«ÙŗƖ
+ΌőķƖ΋ÙŊƈ
+ÙŗƖŗƋô
+ÙŊƈèôƖƱ
+ŗƋôΌôƒő΋
+èôƖƱ7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU17UDQVIRUPHUOD\HU1
+(a) Transformer-based LM
+/D\HUSDUW/D\HUSDUW/D\HUSDUW«'HYLFH'HYLFH
+/D\HUSDUW/D\HUSDUW/D\HUSDUW (b) Operation partitioning
+(Megatron-LM)
+7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU
+'HYLFH'HYLFH'HYLFH'HYLFH'HYLFH(c) Microbatch-based pipeline
+parallelism (GPipe)
+7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU7UDQVIRUPHUOD\HU
+'HYLFH'HYLFH'HYLFH'HYLFH'HYLFH
+7UDQVIRUPHUOD\HU(d) Token-based pipeline
+parallelism (TeraPipe)
+Figure 1. Different approaches of model parallel training of Transformer-based LMs. (a) shows a standard multi-layer Transformer LM.
+In each layer, each position only takes only its previous positions as input. (b) shows operation partitioning (Shoeybi et al., 2019). An
+allreduce operation is required to synchronize the results of each layer. (c) shows microbatch-based pipeline parallelism (Huang et al.,
+2019), which allows different microbatches (red and green bars) to be executed on different layers of the DNN in parallel. (d) show
+TeraPipe (our work), which pipelines along the token dimension.
+of data for efﬁcient processing (e.g., GPU). Second, since
+each token position in the sequence depends on all previous
+tokens, different positions in a transformer layer exhibit
+uneven computation loads. This means that uniformly parti-
+tioning along the token dimension might cause uneven load
+across devices, and degenerate the training efﬁciency.
+To this end, we design and implement TeraPipe , a high-
+performance synchronous model parallel training approach
+for large-scale Transformer-based language models, which
+exploits the token dimension to pipeline the computation
+across devices. TeraPipe uses a small number of simple
+workloads to derive a performance model and then uses
+a novel dynamic programming algorithm to compute the
+optimal partitioning of the token dimension for the pipeline.
+TeraPipe is orthogonal to previous model-parallel training
+methods, so it can be used together with these methods to
+further improve the training performance. Our evaluation
+shows that for the largest GPT-3 model with 175 billion
+parameters, TeraPipe achieves a 5.0x speedup improvement
+over the state-of-the-art synchronous model-parallel training
+methods on an AWS cluster consisting of 48 p3.16xlarge
+instances.
+Our paper makes the following contributions:
+•We propose a new dimension, token dimension, for
+pipeline-parallel training of Transformer-based LMs.
+•We develop a dynamic programming algorithm to com-
+pute a partition along the token dimension to maximize
+pipeline parallelism.
+•We implement TeraPipe and show that we can increase
+the synchronous training throughput of the largest GPT-
+3 model (with 175 billion parameters) by 5.0x over the
+previous state-of-the-art model-parallel methods.2. Related Work
+Data parallelism scales ML training by partitioning train-
+ing data onto distributed devices (Zinkevich et al., 2010;
+Krizhevsky, 2014; Goyal et al., 2017; Rajbhandari et al.,
+2019). Each device holds a model replica, works on an
+independent data partition, and synchronizes the updates
+viaallreduce (Krizhevsky, 2014) or a parameter server (Li
+et al., 2014). Data parallelism alone is not enough to train
+large-scale DNNs due to two main reasons: (1) every de-
+vice has to have enough memory to store the model and the
+gradients generated during the training process; (2) com-
+munication can be a performance bottleneck to synchronize
+model parameters.
+Model parallelism allows for training models larger than
+the memory capacity of a single device, by partitioning
+the model (e.g., layers) into disjoint parts and executing
+each on a dedicated device. Existing model parallel train-
+ing approaches can be roughly categorized as: operation
+partitioning andpipeline parallelism .
+Operation partitioning. One way to split the model is to
+partition and parallelize computational operations across
+multiple devices. For example, the computation of matrix
+multiplications (matmul) XAB can be spitted across mul-
+tiple devices by partitioning AandBalong its rows and
+columns, respectively.
+XAB =XA1A2
+B1
+B2
+=XA 1B1+XA 2B2:
+This means we can have one device calculate XA 1B1and
+another device calculate XA 2B2in parallel. After that,
+cross-device communication is needed to compute the sum
+of these two parts.
+Many existing works (Jia et al., 2018; 2019; Wang et al.,
+2019; Shazeer et al., 2018) study how to optimize the
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+partitioning schemes for different operations to maximize
+throughput and minimize communication overheads, among
+which, Megatron-LM (Figure 1b; Shoeybi et al., 2019) de-
+signs partitioning schemes speciﬁcally for large-scale Trans-
+formers. However, due to the excessive communication
+required to collect partial results after each layer, it is not
+efﬁcient when the bandwidth between devices is limited
+(Shoeybi et al., 2019). Flexﬂow (Jia et al., 2018) proposes a
+framework to ﬁnd the optimal operation partitioning, but it
+cannot model the new dimension proposed in our work.
+Pipeline parallelism partitions a DNN into layers and put
+different layers onto different devices (Figure 1c; Petrowski
+et al., 1993). Each device computes the input on a given
+layer and sends the result to the next device. Pipeline par-
+allelism signiﬁcantly reduces communication between de-
+vices, because only devices holding neighboring layers need
+to communicate and they only need to communicate the
+activations on a particular layer.
+Previous pipeline parallel training methods are based on
+microbatch pipelining, e.g., GPipe (Huang et al., 2019).
+This means the computation for a given microbatch in a
+minibatch on a layer can run in parallel with the next micro-
+batch in the same minibatch on the previous layer. However,
+microbatch-based pipeline parallelism still cannot achieve
+high efﬁciency due to its pipeline bubbles. This is because
+the start of the forward propagation on a minibatch requires
+the backward propagation of the previous minibatch to
+complete (Figure 2a). This problem becomes more severe
+when model sizes increase (see Section 3.2). Harlap et al.
+(2018) propose using an asynchronous training algorithm to
+mitigate the effect of pipeline bubbles in microbach-based
+pipeline parallel training, but asynchronous training intro-
+duces uncertainty in model accuracy and is thus not widely
+adopted for training DNNs.
+Wavefront parallelism is a variant of pipeline parallelism,
+broadly applied in shared-memory multiprocessors (Sin-
+haroy & Szymanski, 1994; Manjikian & Abdelrahman,
+1996). In deep learning, it has been used to accelerate the
+computation of multi-layer RNNs on a single GPU (Apple-
+yard et al., 2016), where different input positions of differ-
+ent layers can execute in parallel in a wavefront fashion to
+maximize the utilization of the GPU. However, wavefront
+parallelism cannot accelerate the execution of Transformers
+because there is no dependency between different input po-
+sitions within a single Transformer layer to begin with. In
+addition, wavefront parallelism uses ﬁne-grained per-word
+pipelining due to the temporal data dependency in RNNs,
+while too ﬁne-grained pipelining in TeraPipe would lead to
+inferior pipeline efﬁciency (see Section 3.2 and 3.3).
+*387LPH*38*38*38)RUZDUG%DFNZDUG(a) Microbatch-based pipeline parallelism
+*387LPH*38*38*38)RUZDUG%DFNZDUG
+(b) Microbatch-based pipeline parallelism with small batch size
+*387LPH*38*38*38)RUZDUG%DFNZDUG)RUZDUG
+(c) TeraPipe
+Figure 2. Execution timeline for different pipelining methods.
+Grey blocks indicate GPUs idle time (a.k.a. pipeline bubbles).
+(a) Microbatch-based pipeline parallelism (e.g. GPipe). Each color
+corresponds to a microbatch. (b) Microbatch-based pipeline paral-
+lelism with longer sequence (hence smaller minibatch size due to
+ﬁxed GPU memory). Pipeline bubbles signiﬁcantly increase. (c)
+TeraPipe. Pipeline bubbles are substantially reduced because of
+the improved pipelining granularity.
+3. Method
+In this section, we brieﬂy introduce language modeling
+and Transformers. Based on their structures, we identify
+new opportunities for performing pipelining along the input
+sequence (which we will notate as the token dimension in the
+rest of the paper). With that, we derive the optimal slicing
+scheme over the token dimension to maximize pipeline
+efﬁciency using a dynamic programming algorithm. Finally,
+we show how to combine our new method with existing
+parallel training techniques.
+3.1. Language Modeling and Transformers
+The task of language modeling is usually framed as unsu-
+pervised distribution estimation of a text corpus X, where
+each example xX is a variable length sequence of tokens
+(x1;x2;:::;x L):Since language has a natural sequential
+ordering, it is common to factorize the joint probability over
+the tokens as the product of conditional probabilities (a.k.a.
+autoregressive decomposition; Bengio et al., 2003):
+P(x) =LY
+t=1P(xtjx1; : : : ; x t 1): (1)
+Transformer (Vaswani et al., 2017) is the state-of-the-art
+architecture for modeling these conditional probabilities. As
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+visualized in Figure 1a, a Transformer-based LM Ftakes
+the sequence (hsosi;x1;:::;x L 1)as input, wherehsosi
+represents the start of a sentence, and outputs a probability
+distributions ptat each position tthat models the conditional
+probabilityP(xtjx1;:::;x t 1)as in Eq. 1. In practice, F
+is stacked with many Transformer layers F=fNfN 1
+f1(Vaswani et al., 2017; Radford et al.): f1takes
+the embedding of the original sequence as input, while
+fi(i > 1) takes the output of fi 1as input. The main
+components of a Transformer layer fcontain a self-attention
+layer and a position-wise feed-forward network layer :
+SelfAtt (ht;h1;:::;h t 1) =tX
+s=1ts(WVhs);
+wherets=softmax(WQht)>(WKhs)p
+H
+; (2)
+FFN(ht) =W2(W1ht+b1) +b2: (3)
+h1;:::;h L2RHare hidden states correspond to each posi-
+tion of the input sequence, Wandbare learnable parameters,
+andis the nonlinear activation function. An important
+note here: for each ht, Eq. 2 takes only the hidden states
+before position tas inputs and Eq. 3 only takes htas input.
+The operation and data dependency in Transformers make it
+more amenable to parallelization on GPUs/TPUs compared
+to RNNs (Vaswani et al., 2017). Therefore, Transformers
+have been scaled to enormous datasets and achieved state-of-
+the-art performance on a wide range of NLP tasks (Vaswani
+et al., 2017; Devlin et al., 2018; Radford et al.; Yang et al.,
+2019; Brown et al., 2020; Liu et al., 2019). Recently, people
+show that the accuracy of LMs can consistently improve
+with increasing model sizes (Radford et al.; Yang et al.,
+2019). While the growing model size greatly exceeds the
+memory capacity of a single GPU (Brown et al., 2020),
+model parallelism becomes a necessity for training large-
+scale LMs (Shoeybi et al., 2019).
+3.2. Pipeline Parallelism Within a Sequence
+In this subsection, we expose the limitations of existing
+pipelining parallelism approaches, and develop the proposed
+new pipelining method for Transformer-based LMs.
+Typically, to perform pipeline parallelism, a Transformer
+modelFis partitioned into multiple cells c1;:::;c K. Each
+cellckconsists of a set of consecutive Transformer layers
+fjfi+1fiso thatF=cKc2c1. Each
+ckis placed and executed on the k-th device (e.g. GPU).
+The output of cell ckis sent to cell ck+1during forward
+propagation, and the backward states computed on cell ck+1
+is sent to cell ckduring backward propagation. Since each
+layerfexhibits the same structure, the entire LM can be
+uniformly partitioned: each cell possesses the same number
+of layers hence the same amount of computation workload,to reach optimal pipeline efﬁciency (see Figure 2).
+However, previous pipelining methods (Huang et al.,
+2019; Harlap et al., 2018) do not perform well on large
+Transformer-based LMs due to the growing model size.
+Consider a minibatch of size B. The input to a Transformer
+layerfis a 3-dimensional tensor (h(1);h(2);:::;h(B))of
+size(B;L;H );whereLis the sequence length and His
+the hidden state size. To improve accuracy, large LMs are
+often conﬁgured to have a large Lto capture longer-term
+dependency in language sequences (Tay et al., 2020; Zaheer
+et al., 2020). To ﬁt the model into a GPU, the minibatch
+sizeBhas to decrease accordingly. The pipeline bubbles
+become larger (Figure 2b) because fewer input sequences
+can be processed in parallel.
+In this work, we make a key observation: for Transformer-
+based LMs, with appropriate scheduling, the token dimen-
+sionLcan be pipelined for parallel training; and this pipelin-
+ing dimension is complementary to other model parallelism
+approaches. Precisely, for an input hidden state sequence
+(h1;h2;:::;h L), the computation of a self-attention layer
+SelfAtt (ht)only depends on the hidden states of previous
+positions (h1;:::;h t 1), and the computation of a feed-
+forward layer FFN(ht)only depends on htitself. These
+offer a new opportunity for pipelining: the computation of
+layerfiat steptcan commence once the hidden states of
+previous steps ( < t) atfi 1are ready, which, also, can
+be parallelized with the computation of latter steps at fi 1,
+illustrated in Figure 1d. This property enables us to per-
+form pipeline parallelism within a single input sequence.
+Speciﬁcally, we can split an input sequence x1;:::;x L
+intos1;:::;s M, where each subsequence siconsists of
+tokens (xl;xl+1;:::;x r):The computation of c1;:::;c K
+overs1;:::;s Mcan be pipelined, for example: when ck
+computes over si,ck+1can processsi 1andck 1can pro-
+cesssi+1in parallel.
+Considering that nowadays LMs operate on sequences with
+thousands of tokens (Radford et al.; Brown et al., 2020) (e.g.
+2048 for GPT-3), the token dimension opens substantial
+space to improve the pipelining efﬁciency. However, apply-
+ing it in practice is still challenging, especially on GPUs,
+for the following reasons.
+First, ﬁner-grained pipelining (i.e. picking a small jsij) is
+prone to underutilizing the computational power of GPUs,
+and thus lowering the training throughput. As shown on
+the top part of Figure 3, for a single layer of the GPT3-1B
+model (see Table 1 for specs), the forward propagation time
+for an input sequence with a single token is the same as an
+input sequence with 256 tokens. In this case, the GPU is not
+being fully utilized for input sequence lengths less than 256.
+This means a large subsequence length is needed to achieve
+high throughput for a single layer (see the bottom part of
+Figure 3). On the other hand, although GPUs have better
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+1.52.02.5Time (ms)
+0 200 400 600 800 1000
+# Input tokens0100200300400Throughput (tokens / ms)
+Figure 3. Forward propagation time and throughput for a single
+layer of GPT3-1B model with a single input sequence with dif-
+ferent number of input tokens on a single NVIDIA V100 GPU,
+averaged by 30 independent runs. Top: Time per forward propa-
+gation. Bottom: Throughput measured by number of tokens per
+millisecond.
+training throughput per layer for longer sequences due to
+the SIMD architecture and better locality, longer input slices
+lead to fewer pipeline stages within a sequence, which will
+increase the pipeline bubble, and thus reduce the pipeline
+efﬁciency and hurt the overall training speed.
+Second, splitting inputs into multiple same-size chunks for
+pipelining, as normally done in existing work (Huang et al.,
+2019; Harlap et al., 2018), is not the ideal way for pipelin-
+ing on the token dimension. For the self-attention layer,
+the computation of SelfAtt (h1)only requires the hidden
+stateh1from its previous layer, while the computation of
+SelfAtt (hL)takes allh1;:::;h Las inputs, as shown in Fig-
+ure 1a. Therefore, the computation load on a later token
+position in a sequence is heavier than that of previous to-
+kens. Since the total latency of a pipeline is determined
+by its slowest stage (Figure 4), an optimal slicing scheme
+should have a long slice in the beginning and a shorter slice
+in the end. We next develop methods to select the optimal
+slicing scheme over the token dimension.
+3.3. Selecting Optimal Slicing Scheme
+We propose a dynamic programming (DP) algorithm to par-
+tition the input sequence to achieve the optimal pipeline
+efﬁciency. Speciﬁcally, given a partitioned Transformer-
+based LMF=cKc1and a training input sequence
+of lengthL, the goal of the algorithm is to ﬁnd the slicing
+schemel1;:::;l Mto minimize the total forward and back-
+ward propagation latency, where li=jsijis the length each
+sub-sequence slice si(l1++lM=L).
+Let’s ﬁrst consider the latency of forward propagation. As
+shown in Section 3.2, all cells ckhave exact same amount
+of computation.
+*38*38*38*38WWWWWWWWWW)RUZDUG%DFNZDUG
+*387LPH*38*38*38WWWW)RUZDUG%DFNZDUGWWWWWWWWWWWWWWWWWWFigure 4. Execution timeline for inputs for uniform sequence split
+with non-uniform running time (top) and non-uniform sequence
+split with uniform running time (bottom). The total latency of a
+pipeline is determined by its slowest stage, and thus splits with
+non-uniform running time result in larger pipeline bubbles and
+inferior pipeline efﬁciency.
+The forward propagation time tifor the slice sion the
+cellckis determined by the length of the ith slice (li), the
+lengths of all the previous subsequences ( l1;:::;l i 1), and
+the cluster speciﬁcations (e.g., GPU, bandwidth and latency
+of the underlying computer networks). We use tfwd to
+denote the sum of the computation latency plus data trans-
+mission latency for a given liand the previous subsequences
+l1;:::;l i 1. We have:
+ti=tfwd0
+@li;i 1X
+j=1lj1
+A: (4)
+Note the second termPi 1
+j=1ljis the total length of previ-
+ous subsequences s1;:::;s i 1to compute SelfAtt (st). As
+visualized in Figure 4, The optimal overall pipeline forward
+propagation latency is:
+T= min
+l1;:::;lM(MX
+i=1ti+ (K 1)max
+1jMftjg)
+:(5)
+The overall latency consists of two terms: The ﬁrst term
+here is the total forward propagation time on a device (i.e.
+on a cellck); The second term is the overhead brought by
+the pipeline execution, which is determined by the slowest
+component in the whole pipeline multiplied by the number
+of pipeline stages Kminus 1. For example, on the top of
+Figure 4, the total execution time will be T= (t1+:::+
+t4) + 3t4:
+Our goal is to ﬁnd the optimal slicing scheme l1;:::;l M
+that achieves the optimal latency T. We choose to ﬁrst
+enumerate the second term tmax= max 1jMftjgand
+minimize the ﬁrst term for each different tmax:In other
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+Algorithm 1 Selecting optimal slicing scheme given tmax.
+Input: Forward propagation time function tfwdand max-
+imum per-slice time tmax:
+Output: Minimal total forward propagation time
+S(L;tmax)and the corresponding slicing scheme
+l1;:::;l M:
+// Dynamic programming for the total forward propaga-
+tion time.
+S(0;tmax) 0
+forifrom 1toLdo
+S(i;tmax) min 1kifS(i k;tmax) +
+tfwd(k;i k)jtfwd(k;i k)tmaxg.
+qi argmin1kifri k+tfwd(k;i k)jtfwd(k;i 
+k)tmaxg.
+end for
+// Derive the optimal slicing scheme.
+i L;l fg
+whilei>0do
+l:prepend (qi)
+i i qi
+end while
+words, we reformulate Tas:
+T= min
+tmaxfS(L;tmax) + (K 1)tmaxg; (6)
+S(L;tmax) = min
+l1++lM=L(MX
+i=1tijtitmax)
+:(7)
+Note thatS(;tmax)has the following optimal substruc-
+ture:
+S(i;tmax) = min
+1kifS(i k;tmax) +tfwd(k;i k)
+jtfwd(k;i k)tmaxg: (8)
+Therefore, we can get the slicing scheme l1;:::;l M
+that achieves the total total forward propagation time
+S(L;tmax)with Algorithm 1. By enumerating all different
+tmax;we can get the optimal slicing scheme that reaches
+the optimal overall pipeline latency T.
+Complexity. With our DP algorithm, we can compute the
+best partition in O(L2)time for a ﬁxed tmax. Note that in
+total there are at most O(L2)different choices ( tfwd(i;j)
+fori;j= 1;:::;L ) oftmax. We therefore can derive the
+optimal slicing scheme in O(L4)time.
+Optimization. To further accelerate the above DP algo-
+rithm, we enumerate different tmax from small to large;
+whenKtmaxis greater than the current best T, we stop
+the enumeration since larger tmaxcannot provide a better
+slicing scheme. In addition, during enumeration of tmax;
+we only evaluate with tmaxlarger than the last tmaxby at
+least". In this case, the gap between the solution found bythe DP algorithm and the global optima is at most K". We
+choose"= 0:1msin our evaluation and observe that the
+solution given by Algorithm 1 and the real optimal solution
+("= 0) are always the same in all our evaluated settings.
+With these two optimizations, the dynamic programming
+can ﬁnish within a minute in our evaluations.
+Estimating tfwd. To avoid the cost of evaluating tfwd(i;j)
+for allO(L2)combinations of i;jon real clusters, we use
+a simple performance model to estimate tfwd:Speciﬁcally,
+we splittfwd(i;j)into two terms:
+tfwd(i;j) =tfwd(i;0) +tctx(i;j); (9)
+wheretfwd(i;0)is the forward propagation time without
+any extra context input and tctx(i;j)is the latency overhead
+brought by the extra context input. We measure the ﬁrst
+term with all Lchoices ofiand we ﬁt a simple linear model
+tctx(i;j) =a0+a1i+a2j+a3ijfor the second term with
+a subset of all (i;j)combinations. In our experiments, the
+linear model can achieve a <2%relative prediction error
+compared to the actual overhead.
+The development above can be applied to backward propaga-
+tion timetbwd, since the backward propagation computation
+in transformers is symmetric with its forward counterpart.
+One step further, we can replace all the tfwdabove with
+tfwd+tbwdto derive the optimal slicing scheme that mini-
+mizes the total training time.
+3.4. Combining with Other Parallel Training methods
+The new dimension to perform pipeline parallelism pro-
+posed by TeraPipe is orthogonal to all previous model paral-
+lel techniques, hence can be naturally combined with them.
+We explain next how TeraPipe can be combined with other
+parallelization methods and show, when combined, it signif-
+icantly boosts parallelization performance in Section 4.
+Combine with microbatch-based pipeline parallelism.
+To combine with microbatch-based pipeline parallelism
+(Huang et al., 2019), we slice the batch dimen-
+sion and the token dimension jointly to form the
+pipeline. Speciﬁcally, consider a training input batch
+(x(1);x(2);:::;x(B));where eachx(i)is an input sequence
+(x(i)
+1;:::;x(i)
+L)of lengthL, we partition the input batch
+into (s(1);s(2);:::;s(D));such that each s(d)
+iincludes
+(x(a)
+l;x(a)
+l+1;:::;x(a)
+r);(x(a+1)
+l;x(a+1)
+l+1;:::;x(a+1)
+r ); :::;
+(x(b)
+l;x(b)
+l+1;:::;x(b)
+r);which is the subsequence from po-
+sitionltorof input data atob. During training, all
+slicess(1)
+1;:::;s(1)
+M;s(2)
+1;:::;s(2)
+M;:::;s(D)
+1;:::;s(D)
+Mcan
+execute on cells c1;:::;c Kin a pipelined fashion. To jointly
+optimize the sequence slicing and batch splitting, the DP al-
+gorithm in Section 3.3 can be extended to include the batch
+dimension: we can ﬁrst run the whole DP algorithm in Sec-
+tion 3.3 for all different batch sizes bfrom 1toB:For each
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+Table 1. Model settings and parallel training setups used in the evaluation. N: Number of Transformer layers. H: Hidden state size.
+#Params: Number of total parameters. L: Input sequence length. #GPUs: Total number of GPUs. B: Batch size. #Data: Number of data
+parallel shards. #Pipe: Number of pipeline stages. #Op: Number of GPUs used for operational partitioning by each Transformer layer.
+Model N H #Params L #GPUsB #Data #Pipe #Op
+(1)
+GPT3-1B 24 2048 1B 2048 192128 8 24 1
+(2) 72 2 12 8
+(3) 72 1 24 8
+(4)GPT3-13B 40 5120 13B 2048 32032 2 20 8
+(5) 32 1 40 8
+(6)
+GPT3-44B 96 6144 44B 2048 3848 4 96 1
+(7) 8 2 24 8
+(8) 8 1 48 8
+(9)GPT3-175B 96 12288 175B 2048 3842 1 96 4
+(10) 2 1 48 8
+(1) (2) (3)0.00.20.40.60.81.01.21.41.6Latency (s)w/o TeraPipe
+w/ TeraPipe
+(a) GPT3-1B
+(4) (5)0.00.51.01.52.02.5Latency (s)w/o TeraPipe
+w/ TeraPipe (b) GPT3-13B
+(6) (7) (8)02468101214Latency (s)w/o TeraPipe
+w/ TeraPipe (c) GPT3-44B
+(9) (10)0246810Latency (s)w/o TeraPipe
+w/ TeraPipe (d) GPT3-175B
+Figure 5. Training iteration latency for all conﬁgurations with and without TeraPipe. Details for each conﬁguration are listed in Table 1.
+b, we derive the optimal Tband the corresponding slicing
+schemesb:With allTbandsb;we only need to determine
+the size of each slice in the batch dimension b1;:::;b Dsuch
+thatb1++bD=BandTb1++TbDis minimized.
+This reduces to a 1D knapsack problem and can be solved
+using off-the-shelf solvers.
+Combine with operation partitioning. TeraPipe is orthog-
+onal from operation partitioning in the sense that: opera-
+tion partitioning is intra-operation parallelism that paral-
+lelizes the execution of a single operation, whereas TeraPipe
+pipelines the execution of different operations. To com-
+bine with operation partitioning, we distribute each pipeline
+parallel cell cKto a set of target devices and then perform
+operation partitioning across target devices.
+Combine with data parallelism. Similarly, because data
+parallelism maintains multiple identical copies of the model,
+we can perform model parallelism for each data parallel
+model replica and synchronize the gradient updates between
+the replicas after each forward and backward propagation.
+Combine with memory optimization. Same as previous
+pipeline parallel methods (Huang et al., 2019), TeraPipe
+stores the activations of a whole mini-batch in our imple-
+mentation. TeraPipe can also be combined with various
+memory optimization techniques, e.g., gradient accumula-tion (Fan et al., 2020), rematerialization (Chen et al., 2016;
+Jain et al., 2019), or memory swapping (Ren et al., 2021).
+See supplementary material for more discussions on com-
+bining TeraPipe with gradient accumulation.
+4. Evaluation
+TeraPipe is a synchronous model parallel training method
+that performs exactly the same underlying optimization al-
+gorithm as training the model on a single device. The opti-
+mization performance of TeraPipe (i.e. training loss versus
+training iterations) is hence the same compared to training
+on a single device. Therefore, in this paper, we focus on the
+per-iteration latency (i.e. wall-clock time used per training
+iteration) as our evaluation metric.
+We evaluate TeraPipe following the setup in Brown et al.
+(2020). Speciﬁcally, we test 3 settings in Brown et al. (2020):
+GPT3-1B, GPT3-13B, and GPT3-175B, which have 1 bil-
+lion, 13 billion, and 175 billion parameters in total, respec-
+tively. Note that GPT3-175B is the largest setting in Brown
+et al. (2020). In addition, we also test on a GPT3-44B model
+with half the hidden state size Hof the GPT3-175B model,
+which includes 44 billion parameters in total.
+For each model, we select multiple data parallelism, oper-
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+14816DP
+#Slices0.00.51.01.52.02.5Latency (s)
+(a) GPT3-44B (8)
+148163264128DP
+#Slices0246810Latency (s) (b) GPT3-175B (9)
+Figure 6. Training iteration latency of TeraPipe with uniform slic-
+ing scheme with different number of slices and the optimal slicing
+scheme ﬁnd by the dynamic programming algorithm.
+ation partitioning, and pipeline parallelism setup combina-
+tions. The conﬁguration details are shown in Table 1. For all
+conﬁgurations, we set the input sequence length L= 2048
+following Brown et al. (2020). We evaluate the conﬁgu-
+rations on an AWS cluster with p3.16xlarge nodes (each
+with 8 NVIDIA V100 GPUs). For each model, we select a
+cluster size based on its model size and number of layers
+so that each pipeline stage (each cell ck) has the same num-
+ber of layers. Since operation partitioning requires higher
+inter-connection speed compared to pipeline parallelism, we
+perform operation partitioning only inside a node, where all
+GPUs have high-speed inter-connection thanks to NVLink.
+For each conﬁguration, we select the maximal batch size
+that can ﬁt the memory of the GPUs.
+We compare the per-iteration latency achieved by previous
+model parallel methods without TeraPipe and the latency
+achieved by TeraPipe for each conﬁguration. Speciﬁcally,
+for the setup without TeraPipe, we measure the training
+latency with GPipe (Huang et al., 2019) as the pipeline par-
+allel training method. For TeraPipe, we perform a joint
+dynamic programming on both batch and token dimension
+as shown in Section 3.4 and measure the training latency
+with the optimal slicing scheme found by the dynamic pro-
+gramming algorithm. All the latency results in the paper are
+averaged over 10 runs. The detailed numbers of the latency
+results and the solution ﬁnd by the dynamic programming
+algorithm can be found in the supplementary material.
+4.1. Main Results
+We show the latency results for all conﬁgurations in Fig-
+ure 5. TeraPipe accelerates the training for all models: For
+GPT3-1B, TeraPipe accelerates training for setting (1) by
+1.21x. For setting (2) and (3), because of the large batch
+size, the optimal slicing scheme found by our dynamic pro-
+gramming algorithm only slices the batch dimension and
+thus TeraPipe does not provide speedup. For GPT3-13B,
+TeraPipe speeds up the training by 1.40x for both setting (4)
+and (5). For GPT3-44B, TeraPipe accelerates the training by
+1.88x, 1.56x, and 2.40x for setting (6), (7), and (8), respec-
+2048 4096 6144 8192
+Input sequence length012345Latency (s)w/o TeraPipe
+w/ TeraPipeFigure 7. Training iteration latency of TeraPipe with different input
+sequence length for the GPT3-13B model.
+tively. For GPT3-175B, TeraPipe accelerates the training by
+6.75x and 5.02x for setting (9) and (10), respectively.
+TeraPipe provides higher speedup for larger models: Larger
+models have a larger hidden state size H;and a larger por-
+tion of GPU memory is devoted to storing the model weights
+and hidden states. Therefore, the batch size Bhas to be
+decreased to ﬁt the model into the GPU memory, as shown
+in the setup in Table 1. Smaller batch size Blimits the pre-
+vious microbatch-based pipeline parallel methods’ ability
+to saturate the pipeline bubbles, while the token dimension
+used by TeraPipe still provides abundant opportunity to im-
+prove pipeline efﬁciency. In addition, larger models have
+more pipeline stages compared to smaller models, because
+larger models have more layers and each layer takes more
+memory than the smaller models. More pipeline stages
+require more input slices to saturate the pipeline.
+4.2. Dynamic Programming
+In this subsection, we provide an ablation study on the effec-
+tiveness of the dynamic programming algorithm proposed in
+Section 3.3. We compare the training latency with the slic-
+ing scheme found by the dynamic programming algorithm,
+to a simple heuristic that slices the input sequence uniformly.
+Speciﬁcally, we evaluate GPT3-44B with setting (8) and
+GPT3-175B with setting (9). For the uniform slicing base-
+line, we slice the whole input on the batch dimension and
+range the number of slices on the token dimension from 1 to
+16 and 1 to 128 for two settings, respectively, and evaluate
+the iteration latency for each uniform slicing scheme.
+The result is shown in Figure 6. As in Section 3.2, too ﬁne-
+grained pipeline (e.g. #slices=128 in Figure 6b) performs
+badly because of the underutilization of the GPUs. Also,
+too coarse-grained pipeline (e.g. #slices=4 in Figure 6b)
+has large pipeline bubbles, which leads to high iteration la-
+tency. In addition, because of the non-uniform running time
+brought by the Transformer structure, the slicing scheme de-
+rived by the dynamic programming program achieves better
+performance compared to the best uniform sliced pipeline:
+the optimal solutions found by dynamic programming are
+1.12x and 1.04x faster compared to the best uniform slicing
+scheme for GPT3-44B and GPT3-175B model, respectively.
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+4.3. Longer Sequence Length
+A growing set of works start to focus on increasing the input
+sequence length of the Transformers (Tay et al., 2020; Za-
+heer et al., 2020; Kitaev et al., 2020). Long sequence length
+enables Transformers to reason about long-term dependen-
+cies and thus extends its applicability to more complex ap-
+plications such as modeling documents. However, longer
+sequences increases the memory usage of a single input
+sequence, and decreases the maximum batch size allowed,
+which limits the pipeline efﬁciency of previous microbatch-
+based pipeline parallelism methods.
+In this subsection, we vary the sequence length from 2048 to
+8192 for the GPT3-13B model (setting (5)) and evaluate the
+training iteration latency. Because of the growth in memory
+usage, the batch sizes for sequence length 4096, 6144, 8196
+are reduced to 8, 4, 2, respectively. We show the results in
+Figure 7. TeraPipe achieves 2.76x, 4.97x, 7.83x speedup
+for sequence length 4096, 6144, and 8196, respectively.
+As the sequence length grows, the gap between the perfor-
+mance with and without TeraPipe signiﬁcantly increases,
+as expected. Meanwhile, longer sequence length provides
+more space on the token dimension and thus TeraPipe can
+perform even better – TeraPipe enables efﬁcient training of
+future-emerging LMs with growing sequence lengths.
+5. Conclusion
+We present TeraPipe, a high-performance token-level
+pipeline parallel algorithm for training large-scale
+Transformer-based language model. We develop a novel
+dynamic programming-based algorithm to calculate the op-
+timal pipelining execution scheme, given a speciﬁc LM
+and a cluster conﬁguration. TeraPipe is orthogonal to other
+model parallel training methods and can be complemented
+by them. Our evaluations show that TeraPipe accelerates
+the synchronous training of the largest GPT-3 models with
+175 billion parameters by 5.0x on an AWS cluster with 48
+p3.16xlarge instances compared to previous methods.
+Acknowledgement
+We thank our anonymous reviewers for their insightful feed-
+back. We also thank Lianmin Zheng and many others at the
+UC Berkeley RISELab for their helpful discussion and com-
+ments. In addition to NSF CISE Expeditions Award CCF-
+1730628, this research is supported by gifts from Alibaba
+Group, Amazon Web Services, Ant Group, CapitalOne,
+Ericsson, Facebook, Futurewei, Google, Intel, Microsoft,
+Nvidia, Scotiabank, Splunk, and VMware.References
+Appleyard, J., Kocisky, T., and Blunsom, P. Optimizing
+performance of recurrent neural networks on gpus. arXiv
+preprint arXiv:1604.01946 , 2016.
+Bengio, Y ., Ducharme, R., Vincent, P., and Jauvin, C. A
+neural probabilistic language model. Journal of machine
+learning research , 3(Feb):1137–1155, 2003.
+Brown, T. B., Mann, B., Ryder, N., Subbiah, M., Kaplan,
+J., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G.,
+Askell, A., et al. Language models are few-shot learners.
+arXiv preprint arXiv:2005.14165 , 2020.
+Chen, T., Xu, B., Zhang, C., and Guestrin, C. Training
+deep nets with sublinear memory cost. arXiv preprint
+arXiv:1604.06174 , 2016.
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. Bert:
+Pre-training of deep bidirectional transformers for lan-
+guage understanding. arXiv preprint arXiv:1810.04805 ,
+2018.
+Fan, S., Rong, Y ., Meng, C., Cao, Z., Wang, S., Zheng, Z.,
+Wu, C., Long, G., Yang, J., Xia, L., et al. Dapple: A
+pipelined data parallel approach for training large models.
+arXiv preprint arXiv:2007.01045 , 2020.
+Goyal, P., Doll ´ar, P., Girshick, R., Noordhuis, P.,
+Wesolowski, L., Kyrola, A., Tulloch, A., Jia, Y ., and
+He, K. Accurate, large minibatch sgd: Training imagenet
+in 1 hour. arXiv preprint arXiv:1706.02677 , 2017.
+Harlap, A., Narayanan, D., Phanishayee, A., Seshadri, V .,
+Devanur, N., Ganger, G., and Gibbons, P. Pipedream:
+Fast and efﬁcient pipeline parallel dnn training. arXiv
+preprint arXiv:1806.03377 , 2018.
+Huang, Y ., Cheng, Y ., Bapna, A., Firat, O., Chen, D., Chen,
+M., Lee, H., Ngiam, J., Le, Q. V ., Wu, Y ., et al. Gpipe:
+Efﬁcient training of giant neural networks using pipeline
+parallelism. In Advances in neural information process-
+ing systems , pp. 103–112, 2019.
+Jain, P., Jain, A., Nrusimha, A., Gholami, A., Abbeel, P.,
+Keutzer, K., Stoica, I., and Gonzalez, J. E. Checkmate:
+Breaking the memory wall with optimal tensor remateri-
+alization. arXiv preprint arXiv:1910.02653 , 2019.
+Jia, Z., Lin, S., Ruizhongtai Qi, C., and Aiken, A. Exploring
+hidden dimensions in parallelizing convolutional neural
+networks. 02 2018.
+Jia, Z., Zaharia, M., and Aiken, A. Beyond data and model
+parallelism for deep neural networks. SysML 2019 , 2019.
+Kitaev, N., Kaiser, Ł., and Levskaya, A. Reformer: The
+efﬁcient transformer. arXiv preprint arXiv:2001.04451 ,
+2020.
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+Krizhevsky, A. One weird trick for parallelizing convolu-
+tional neural networks. ArXiv , abs/1404.5997, 2014.
+Li, M., Andersen, D. G., Park, J. W., Smola, A. J., Ahmed,
+A., Josifovski, V ., Long, J., Shekita, E. J., and Su, B.-Y .
+Scaling distributed machine learning with the parameter
+server. In 11thfUSENIXgSymposium on Operating
+Systems Design and Implementation ( fOSDIg14), pp.
+583–598, 2014.
+Liu, Y ., Ott, M., Goyal, N., Du, J., Joshi, M., Chen, D.,
+Levy, O., Lewis, M., Zettlemoyer, L., and Stoyanov, V .
+Roberta: A robustly optimized bert pretraining approach.
+arXiv preprint arXiv:1907.11692 , 2019.
+Manjikian, N. and Abdelrahman, T. S. Scheduling of wave-
+front parallelism on scalable shared-memory multipro-
+cessors. In Proceedings of the 1996 ICPP Workshop on
+Challenges for Parallel Processing , volume 3, pp. 122–
+131. IEEE, 1996.
+NCCL. The nvidia collective communication library (nccl).
+https://developer.nvidia.com/nccl , 2021.
+Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J.,
+Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga,
+L., et al. Pytorch: An imperative style, high-performance
+deep learning library. arXiv preprint arXiv:1912.01703 ,
+2019.
+Petrowski, A., Dreyfus, G., and Girault, C. Performance
+analysis of a pipelined backpropagation parallel algo-
+rithm. IEEE Transactions on Neural Networks , 4(6):
+970–981, 1993. doi: 10.1109/72.286892.
+Radford, A., Wu, J., Child, R., Luan, D., Amodei, D., and
+Sutskever, I. Language models are unsupervised multitask
+learners.
+Rajbhandari, S., Rasley, J., Ruwase, O., and He, Y . Zero:
+Memory optimization towards training a trillion parame-
+ter models. arXiv preprint arXiv:1910.02054 , 2019.
+Ren, J., Rajbhandari, S., Aminabadi, R. Y ., Ruwase, O.,
+Yang, S., Zhang, M., Li, D., and He, Y . Zero-ofﬂoad: De-
+mocratizing billion-scale model training. arXiv preprint
+arXiv:2101.06840 , 2021.
+Shazeer, N., Cheng, Y ., Parmar, N., Tran, D., Vaswani, A.,
+Koanantakool, P., Hawkins, P., Lee, H., Hong, M., Young,
+C., et al. Mesh-tensorﬂow: Deep learning for supercom-
+puters. In Advances in Neural Information Processing
+Systems , pp. 10414–10423, 2018.
+Shoeybi, M., Patwary, M., Puri, R., LeGresley, P., Casper, J.,
+and Catanzaro, B. Megatron-lm: Training multi-billion
+parameter language models using gpu model parallelism.
+arXiv preprint arXiv:1909.08053 , 2019.Sinharoy, B. and Szymanski, B. Finding optimum wavefront
+of parallel computation. Parallel Algorithms and Appli-
+cations , 2, 08 1994. doi: 10.1080/10637199408915404.
+Tay, Y ., Dehghani, M., Abnar, S., Shen, Y ., Bahri, D., Pham,
+P., Rao, J., Yang, L., Ruder, S., and Metzler, D. Long
+range arena: A benchmark for efﬁcient transformers.
+arXiv preprint arXiv:2011.04006 , 2020.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Atten-
+tion is all you need. In Advances in neural information
+processing systems , pp. 5998–6008, 2017.
+Wang, M., Huang, C.-c., and Li, J. Supporting very large
+models using automatic dataﬂow graph partitioning. In
+Proceedings of the Fourteenth EuroSys Conference 2019 ,
+pp. 1–17, 2019.
+Yang, Z., Dai, Z., Yang, Y ., Carbonell, J., Salakhutdinov,
+R. R., and Le, Q. V . Xlnet: Generalized autoregressive
+pretraining for language understanding. In Advances in
+neural information processing systems , pp. 5753–5763,
+2019.
+Zaheer, M., Guruganesh, G., Dubey, A., Ainslie, J., Alberti,
+C., Ontanon, S., Pham, P., Ravula, A., Wang, Q., Yang,
+L., et al. Big bird: Transformers for longer sequences.
+arXiv preprint arXiv:2007.14062 , 2020.
+Zinkevich, M., Weimer, M., Li, L., and Smola, A. Par-
+allelized stochastic gradient descent. In Lafferty, J.,
+Williams, C., Shawe-Taylor, J., Zemel, R., and Culotta,
+A. (eds.), Advances in Neural Information Processing
+Systems , volume 23, pp. 2595–2603. Curran Associates,
+Inc., 2010.
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+Appendix
+A. Combine TeraPipe with Gradient Accumulation
+TeraPipe and gradient accumulation (GA) are orthogonal and TeraPipe can further speed up over GA. To see this, we
+visualize a 3-stage pipeline training with an input batch of 6 training sequences below, similar to Figure 2 in the main paper.
+DEDEDEDEDEEEEDDDDEDDEEDEDEDEDEDEEDEDEDEDEDEDDEDEEDEDEDDEEDEDEDDEDEEDEDED*38*38*38*38*38*38
+*38*38*387LPH)RUZDUG%DFNZDUGDEF
+In (a), we show the case where each GPU is capable of storing the intermediate activations of at most 3 input sequences.
+With scheduling algorithms like DAPPLE (Fan et al., 2020), GA indeed increases the pipeline efﬁciency. However in (b),
+when each GPU can only support 2 input sequences (due to large model size), the forward pass of input sequence 3 cannot
+start on GPU 1 until sequence 1 ﬁnishes the backward pass and release the memory of its intermediate activations. The
+memory constraint limits the pipeline efﬁciency: only two GPUs can work at a time, and GA cannot solve the issue. In
+(c), we follow the setting in (b) but enable TeraPipe to split a training sequence into two. TeraPipe improves the pipeline
+efﬁciency compared to (b) thanks to more ﬁne-grained pipelining: the three can work at the same time.
+In our experiments, we have 48 pipeline stages but a single GPU is only capable to hold 2 input sequences due to its memory
+capacity. Even with newer GPUs (e.g. 80GB A100, 5x memory compared to V100s in the paper), their memory capacity
+is still not enough to fulﬁll the pipeline with 48 input sequences. Therefore, even with GA, TeraPipe is still expected to
+signiﬁcantly improve the training efﬁciency.
+B. Implementation
+We implement TeraPipe with PyTorch (Paszke et al., 2019) and NCCL (NCCL). We use Megatron-LM (Shoeybi et al.,
+2019) as the library for operation partitioning and implement microbatch-based pipeline parallelism and data parallelism
+by ourselves. The core of TeraPipe is implemented using 1714 lines of Python. We include the code in the supplementary
+material and the code will be open-sourced.
+C. Experiment Results
+Here, we include the detailed numbers (mean and standard deviation of the latency) and the slicing schemes found by the DP
+algorithms for all experiments in the main paper. Speciﬁcally, we list the details of Figure 5, 6, and 7 in Table 2, 3, and 4.
+TeraPipe: Token-Level Pipeline Parallelism for Training Large-Scale Language Models
+Table 2. Detailed numbers and slicing schemes in main experiments (Figure 5 in the main paper).
+Model Setting Algorithm Slicing Scheme Latency (s) TFlops (per GPU)
+GPT3-1B5, (1)w/o TeraPipe [(1, [2048])] * 16 1:5170:107 0.8841
+w/ TeraPipe [(1, [776, 640 ,632])] * 16 1:2540:160 1.0695
+5, (2)w/o TeraPipe [(1, [2048])] * 36 1:0180:065 2.9643
+w/ TeraPipe [(1, [2048])] * 36 1:0180:065 2.9643
+5, (3)w/o TeraPipe [(1, [2048])] * 72 0:9130:027 6.6105
+w/ TeraPipe [(1, [2048])] * 72 0:9130:027 6.6105
+GPT3-13B5, (4)w/o TeraPipe [(1, [2048])] * 16 2:6370:055 3.0305
+w/ TeraPipe [(1, [1024, 1024])] * 16 1:8910:084 4.2261
+5, (5)w/o TeraPipe [(1, [2048])] * 32 1:8630:007 8.5792
+w/ TeraPipe [(1, [704, 688, 656])] * 32 1:3280:037 12.0354
+GPT3-44B5, (6)w/o TeraPipe [(1, [2048])] * 2 13:3190:067 0.2148
+w/ TeraPipe [(1, [64] * 26 + [56] * 6 + [48])] * 2 7:1030:243 0.4028
+5, (7)w/o TeraPipe [(1, [2048])] * 4 4:3110:032 1.3274
+w/ TeraPipe [(1, [368, 384, 384, 368, 256, 288])] * 4 2:7710:112 2.0652
+5, (8)w/o TeraPipe [(1, [2048])] * 8 2:6620:001 4.2995
+w/ TeraPipe [(1, [384, 384, 368, 320, 296, 296])] * 8 1:1110:002 10.3018
+GPT3-175B5, (9)w/o TeraPipe [(1, [2048])] * 2 9:9900:005 1.1300
+w/ TeraPipe [(1, [120] * 4 + [112] * 6 + [104] * 8 + [64])] * 2 1:4810:002 7.6225
+5, (10)w/o TeraPipe [(1, [2048])] * 2 5:8220:003 1.9390
+w/ TeraPipe [(1, [128] * 16)] * 2 1:1600:001 9.7318
+Table 3. Detailed numbers and slicing schemes in ablation studies on the effectiveness of the dynamic programming algorithm (Figure 6
+in the main paper).
+Model Setting Algorithm Slicing Scheme Latency (s) TFlops (per GPU)
+GPT3-44B 6, (a)#Slices=1 [(1, [2048])] * 8 2:6620:001 4.2995
+#Slices=4 [(1, [512] * 4)] * 8 1:2410:003 9.2226
+#Slices=8 [(1, [256] * 8)] * 8 1:2550:004 9.1197
+#Slices=16 [(1, [128] * 16)] * 8 1:2410:003 9.2226
+DP [(1, [384, 384, 368, 320, 296, 296])] * 8 1:1110:002 10.3018
+GPT3-175B 6, (b)#Slices=1 [(1, [2048])] * 2 9:9900:005 1.1300
+#Slices=4 [(1, [512] * 4)] * 2 2:9020:003 3.8900
+#Slices=8 [(1, [256] * 8)] * 2 1:8920:002 5.9667
+#Slices=16 [(1, [128] * 16)] * 2 1:5470:01 7.2973
+#Slices=32 [(1, [64] * 32)] * 2 1:5930:002 7.0866
+#Slices=64 [(1, [32] * 64)] * 2 2:2270:002 5.0691
+#Slices=128 [(1, [16] * 128)] * 2 3:2520:004 3.4714
+DP [(1, [120] * 4 + [112] * 6 + [104] * 8 + [64])] * 2 1:4810:002 7.6225
+Table 4. Detailed numbers and slicing schemes in experiments with longer sequence lengths (Figure 7 in the main paper).
+Model Input Sequence Length Algorithm Slicing Scheme Latency (s) TFlops (per GPU)
+GPT3-13B2048w/o TeraPipe [(1, [2048])] * 32 1:8630:007 8.5792
+w/ TeraPipe [(1, [704, 688, 656])] * 32 1:3280:037 12.0354
+4096w/o TeraPipe [(1, [4096])] * 8 2:5260:001 1.5819
+w/ TeraPipe [(1, [552, 536, 528, 512, 504, 496, 488, 480])] * 8 0:9130:085 4.3765
+6144w/o TeraPipe [(1, [6144])] * 4 3:7540:006 0.5322
+w/ TeraPipe [(1, [584, 568] + [512] * 6 + [496, 488, 472, 464])] * 4 0:7560:008 2.6427
+8192w/o TeraPipe [(1, [8192])] * 2 4:9780:004 0.2007
+w/ TeraPipe [(1, [512] * 6 + [480] * 2 + [416] * 10)] * 2 0:6360:001 1.5707

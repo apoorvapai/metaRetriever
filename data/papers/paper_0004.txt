@@ -1,0 +1,1377 @@
+Title: Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+
+2022-5-20
+Selection-Inference: Exploiting Large
+Language Models for Interpretable Logical
+Reasoning
+Antonia Creswell1, Murray Shanahan1and Irina Higgins1
+1DeepMind
+Large language models (LLMs) have been shown to be capable of impressive few-shot generalisation
+to new tasks. However, they still tend to perform poorly on multi-step logical reasoning problems.
+Here we carry out a comprehensive evaluation of LLMs on 50 tasks that probe diﬀerent aspects of
+logical reasoning. We show that language models tend to perform fairly well at single step inference
+or entailment tasks, but struggle to chain together multiple reasoning steps to solve more complex
+problems. In light of this, we propose a Selection-Inference (SI) framework that exploits pre-trained
+LLMs as general processing modules, and alternates between selection and inference to generate a
+seriesofinterpretable,casualreasoningstepsleadingtotheﬁnalanswer. Weshowthata7Bparameter
+LLM used within the SI framework in a 5-shot generalisation setting, with no ﬁne-tuning, yields a
+performance improvement of over 100% compared to an equivalent vanilla baseline on a suite of 10
+logical reasoning tasks. The same model in the same setting even outperforms a signiﬁcantly larger
+280B parameter baseline on the same suite of tasks. Moreover, answers produced by the SI framework
+areaccompaniedbya causalnatural-language-basedreasoningtrace,whichhasimportantimplications
+for the safety and trustworthiness of the system.
+1. Introduction
+Large language models (LLMs) are powerful few-shot learners (Bommasani et al., 2021; Brown et al.,
+2020;Luetal.,2021). However, oneareawheretheytendtoperformpoorlyislogicalreasoning(Rae
+et al., 2021). Yet the ability to perform multi-step, logically valid reasoning is fundamental for the
+discoveryofnewknowledgeandexplainability. Itunderpinsmanyadvancementsthathavebeenmade
+in science, medicine, maths and philosophy. It is also one of the most valued strengths of classical,
+symbolic AI over contemporary deep learning methods (Bengio et al., 2021; Marcus, 2020; Marcus
+andDavis,2019),promptingtherecentincreaseintheuseofneurosymbolicapproachestobridgethis
+gap (Garcez and Lamb, 2020; Garnelo and Shanahan, 2019). Here we propose a Selection-Inference
+(SI) framework that takes inspiration from the neurosymbolic literature to improve the ability of
+LLMs to do logically valid reasoning.
+There are many ﬂavours of neurosymbolic models (Garcez and Lamb, 2020). Those from which
+we draw inspiration tend to have a modular structure, where each module is specialised for one type
+of operation (Andreas et al., 2016; Mao et al., 2019). For example, such modules may be neural
+networksorhand-craftedfunctionsdesignedtoattendtoasingleobject,ortocomparethelocationor
+sizeoftwoinputs(Andreasetal.,2016;Yietal.,2018). Neurosymbolicmodelscanproduceananswer
+to a complex query by chaining these operations together, passing inputs from one module to another.
+This has the beneﬁt of producing an interpretable trace of intermediate computations, in contrast
+to the “black-box” computations common to end-to-end deep learning approaches. Importantly, the
+modularity of neurosymbolic methods allows them to generalise to signiﬁcantly harder problems
+that require long chains of reasoning (Hudson and Manning, 2019). However, the hand-crafted and
+specialised nature of the modules often makes the resulting systems brittle, hard to optimise, and
+Corresponding author(s): tonicreswell@deepmind.comarXiv:2205.09712v1  [cs.AI]  19 May 2022
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Figure 1jSelection-Inference (SI) framework (c) in comparison with the vanilla baseline (a) and
+Chain-of-Thought, COT, (b) approach (Wei et al., 2022). (a): The vanilla large language model
+baselinetakesinconcatenated[ context,question,answer]𝑘fork-shotprompting,followedby[ context,
+question] and is asked to generate the answer. All reasoning is done implicitly; (b): COT (Wei et al.,
+2022) inspired baseline takes in concatenated [ context,question,reasoning ,answer]𝑘for k-shot
+prompting, followed by [ context,question] and is asked to generate the [ reasoning ,answer];(c):
+SI framework consists of two steps. The selection step takes in concatenated [ context,question,
+selection]𝑘for k-shot prompting, followed by [ context,question] and is asked to select a subset of
+facts from the context to support a single step of reasoning . The inference step takes in [ selection,
+inference]𝑘for k-shot prompting, followed by the selectionproduced by the Selection module to
+produce a new fact (the inference) to be added to the context. Each combination of [selection +
+inference + add fact to context] makes up one step of reasoning. These can be chained together to
+answer harder problems. The ﬁnal inference is taken to be the answer.
+diﬃcult to extend to new domains (Yi et al., 2018).
+Our SI framework, drawing on best practice from neurosymbolic approaches, decomposes logical
+reasoning into two modular stages: 1) selection, which involves choosing a subset of relevant infor-
+mation suﬃcient to make a single step of inference, and 2) inference, which only sees the limited
+informationprovidedbytheselectionmodule,andusesittoinferanewintermediatepieceofevidence
+on the way to the ﬁnal answer (see Fig. 1c). We implement both stages using pre-trained LLMs which,
+thanks to their powerful few-shot generalisation capabilities, serve as more general alternatives to the
+hand-crafted, specialised modules typically used in neurosymbolic approaches. In the SI framework,
+multiple steps of selection and inference are chained together to produce a sequence of reasoning
+steps. As well as underpinning better performance on reasoning problems, this yields an interpretable
+trace that justiﬁes the ﬁnal answer.
+Furthermore, the reasoning trace produced by our system is causal, in the sense that each step
+followsfrom,anddependson,thepreviousstep. Eachinferencestepismadeinisolation,basedsolely
+on the limited information provided by the Selection module, without direct access to the question or
+to previous steps of reasoning. This contrasts with the more common approach of obtaining post-hoc
+rationalisation ,wheretheanswerproducedbythemodelhasnodirectdependenceontheexplanation,
+since the explanation is produced either in parallel to the answer or after the fact (Cobbe et al., 2021;
+Lampinen et al., 2021; Saha et al., 2020). A notable example that sits in the grey area between
+post-hoc rationalisation approaches and the more causal explanation approaches is Chain-Of-Thought
+(COT) (Wei et al., 2022) (see Fig. 1b). In this approach LLMs are encouraged to produce a reasoning
+trace before the answer. However the dependence of the answer on the reasoning is not explicitly
+2
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+(a) Correct reasoning on bAbI deduction (left) and
+induction (right) tasks.
+(b) SI can recover from an error (left) and justify an
+ambiguous answer with a reasoning trace (right).
+Figure 2jQualitative results from the Selection-Inference (SI) model on bAbI tasks.
+encouragedtobecausal(asdeﬁnedabove). Indeed,theauthorsshowthatwhiletheCOTexplanations
+help boost the ﬁnal answer accuracy, the reasoning traces produced by the model are often wrong
+even when the ﬁnal answer is correct (see the Supplementary Materials of (Wei et al., 2022) for
+examples). Developing a system that can demonstrate how it reaches its answers using a causal
+reasoning trace has important beneﬁts in terms of safety, explainability, interpretability, debugging,
+and trust. In this paper we make the following contributions:
+1.We provide a comprehensive evaluation of LLMs on a set of 50 tasks probing diﬀerent aspects
+of logical reasoning, and show that LLMs are good at simpler single step logical inference in
+5-shot generalisation settings, but struggle with harder problems (Sec. 3)
+2.We introduce the Selection-Inference (SI) framework, a modular, iterative approach to solving
+reasoning problems (Sec. 4).
+3.We demonstrate the utility of the SI framework by evaluating a 7B parameter LLM from the
+Gopher family (Rae et al., 2021) on 10 logical reasoning tasks, showing overall that it almost
+triples the performance of the same model used naively and almost doubles the performance of
+the same model used in the COT framework. Moreover, it often outperforms a 40x larger 280B
+LLM baseline used both naively and in the COT framework.
+4.We illustrate further beneﬁts of the SI framework in terms of the causal and interpretable
+reasoning traces produced (Sec. F.1). These traces can help humans understand how the model
+reached its ﬁnal answer, which is useful for debugging and opens the system’s decisions to
+human critique.
+2. Related Work
+Our Selection-Inference framework sits at the intersection of classical, symbolic AI and deep learning.
+A typical symbolic AI system might consist of a knowledge base, which is typically hand-curated by
+experts, and an inference engine that allows the system to perform logic-based reasoning over its
+knowledge base. For example, such a system could apply step-by-step reasoning to answer a complex
+question such as “What are the apothecary’s incentives and disincentives for selling poison to Romeo
+in Romeo and Juliet?” (Lenat, 2019) - something that even the best contemporary deep learning
+based systems struggle to do.
+OneoftheprimarybeneﬁtsofsymbolicAIsystemsoverdeeplearningmodelsistheirinterpretabil-
+3
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+ity; we can look at the reasoning steps such a system has taken to see how the ﬁnal conclusion was
+reached. However, unlike deep learning approaches, symbolic AI systems require knowledge to be
+hand-crafted and are in general hard to scale. Although some approaches have attempted to bridge
+the gap between deep learning and symbolic AI by converting problems into formal logic (Nye et al.,
+2021b) and using existing solvers to help produce an answer, this process can be brittle and tends not
+to scale well. Another attempt to bridge the gap comes from the neurosymbolic perspective (Gupta
+et al., 2019; Hudson and Manning, 2019; Mao et al., 2019; Yi et al., 2018). These models combine
+the best parts of deep learning – learning knowledge from data – and symbolic AI – producing an
+interpretable reasoning trace. However, they are typically quite brittle due to the hand-crafted (Gupta
+et al., 2019), specialised nature (Mao et al., 2019) of the modules and optimisation diﬃculties.
+On the deep learning side, recent work has attempted to adapt large pre-trained language models,
+LLMs, to the task of logical reasoning. At a high level these can be split into three groups: 1)
+approaches that try to ﬁne-tune LLMs to produce the ﬁnal answer directly, keeping reasoning implicit
+(Betz et al., 2020; Clark et al., 2020) (e.g. Fig. 1a); 2) approaches that encourage LLMs to produce
+reasoning explicitly, but all reasoning steps are produced in one generative step (Cobbe et al., 2021;
+Dalvi et al., 2021; Jhamtani and Clark, 2020; Nye et al., 2021a; Wei et al., 2022; Zelikman et al.,
+2022) (e.g. Fig. 1B); and 3) approaches that use LLMs to produce each reasoning step one at a time
+(Tafjord et al., 2020). The latter is where our Selection-Inference framework sits (Fig. 1C). In general
+it was found that the approaches that incorporate explicit reasoning work better than those that only
+try to predict the ﬁnal answer. However, although explicit reasoning helps improve the accuracy of
+the models, encouraging the models to produce multiple steps of reasoning in a single generative
+pass is not enough to make the models use reasoning in a causal manner. The authors found that
+the generated reasoning traces often contain unrelated or incorrect steps while still resulting in
+the correct answer (see examples in the appendices of (Wei et al., 2022; Zelikman et al., 2022)).
+EncouragingLLMsto generate eachreasoning steponeata time(Tafjord etal.,2020)is currentlythe
+most promising direction for achieving causal reasoning, and it is the approach we take in our paper.
+While the model proposed by Tafjord et al. (2020) is very impressive, it only works for “Prove this
+statement to be True/False” style questions, since it relies on enumerating all possible implications
+and checking whether the question statement or its negation are present in the inferred facts, which
+is also computationally expensive.
+3. How Well Do Large Language Models Reason?
+PastworkhasshownthatLLMsarepooratlogicalreasoning(Raeetal.,2021),howevertheevaluation
+wasdoneonarelativelysmallsetoftasks,andwasnotsystematic. Inparticular,hereweareinterested
+in 1) how LLMs perform on simple entailment tasks compared to multi-step reasoning problems and
+2) how scaling laws – suggested by Rae et al. (2021) – apply to logical reasoning. To this end, we
+evaluated LLMs from the Gopher family in a 5-shot1setting on a larger set of 50 tasks that touch on
+diﬀerent aspects of logical reasoning and vary in terms of the number of reasoning steps required,
+presenceorabsenceofnegation,whethertherelevantcontextinformationwasprovided,andwhether
+the model is required to evaluate the accuracy of multiple choices or generate the answer among
+others. The additional tasks were collected from six sources: bAbI (Weston et al., 2015), BigBench
+(Ghazal et al., 2017), AAC (Betz et al., 2020), Jeopardy (Tunguz, 2019), ProofWriter (Tafjord et al.,
+2020) and 2WikiMultiHop (Welbl et al., 2018) (see Fig. S5a in Supplementary Information for raw
+results).
+OuranalysisfoundthatLLMsaregoodatsomeaspectsoflogicalreasoning(Fig.3b). Inparticular,
+1We chose 5-shot setting because it was used in (Rae et al., 2021), and because (Min et al., 2022) have demonstrated
+that additional shots beyond 4 result in limited increase in multi-choice accuracy
+4
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+(a)Scalinglawsfornaturallanguagetasks(bigbench,
+dark purple line, squares, 56 tasks) and tasks involv-
+ing logical reasoning (logic, light purple line, circles,
+38 tasks). All accuracy results are calculated relative
+to the random baseline (0% accuracy means chance
+level). Only multi-choice tasks are used.
+(b) Language models perform well for simple en-
+tailment tasks (AAC tasks, Entailed Polarity), their
+performance starts to get worse on single step infer-
+ence problems (bAbI task 1, ProofWriter tasks 0-1),
+and they struggle with more complex multi-step rea-
+soning problems (2WikiMultiHop tasks, bAbI tasks
+2-3, ProofWriter tasks 2-5, StrategyQA).
+Figure 3jVanilla language models perform poorly on multi-step logical reasoning tasks.
+they appear to be good at simple entailment and implication tasks (e.g. see AAC tasks and Entailed
+Polarity in Fig. S5a). This appears to hold when negation is present (AAC Split Extended tasks),
+and both in generative (AAC Split) and multiple-choice scoring settings (AAC Split Extended tasks,
+EntailedPolarity). However, theperformanceofvanillalanguagemodelstendstodecreasewhenthey
+get presented with irrelevant facts alongside the ones relevant for reasoning (e.g. see 2WikiMultiHop
+With Context tasks, bAbI tasks 2-3 or ProofWriter tasks), when they have to infer the relevant facts
+from memory (e.g. 2WikiMultiHop or StrategyQA tasks), and as the questions start to require more
+steps of reasoning (e.g. see the performance drop between bAbI tasks 1-3 or ProofWriter Tasks).
+In line with Rae et al.’s ﬁndings, our results conﬁrmed that LLMs of larger sizes do perform better
+than the smaller models. However, we found that even the largest 280B model performed only 13.6%
+above chance level on average across the 38 available multi-choice logic tasks (see Figs. S5a-S5b
+and Sec. H in Supplementary Information for more details). Furthermore, we found that logical
+reasoning tasks were qualitatively diﬀerent from other natural language tasks. The scaling law for
+logic-based tasks within the Gopher family models was signiﬁcantly worse than for other language
+tasks measured here as the average performance on the subset of BigBench tasks from (Rae et al.,
+2021) with the logic tasks used in this paper removed (see Fig. 3a).
+4. The Selection-Inference (SI) Framework
+We are interested in solving logical reasoning problems expressed in natural language. In this work
+we assume that each question is accompanied by context information (see Figs. 1 and 2a), which
+containsalltheinformationnecessarytosolvetheproblem,aswellaspotentiallyirrelevantdistractors.
+In the future this assumption can be relaxed, for example by extracting the necessary information
+5
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+through search (Lazaridou et al., 2022; Menick et al., 2022). We also assume that all questions are
+well posed and deﬁnitively answerable given the context.
+Logical reasoning problems require using existing information to infer new relevant knowledge
+necessary to answer the question. This can be done through deduction, induction or abduction,
+althoughthedatasetsweuseherecontainmostlydeductiveandasmallnumberofinductiveproblems2.
+Some problems require multiple steps of inference, where later steps use the knowledge inferred in
+the earlier steps. Hence, we use an iterative framework where at each step the SI uses information in
+the existing context, C𝑡, to infer a new fact, 𝑓𝑡, which is appended back to the context to create new
+context,C𝑡¸1=C𝑡[𝑓𝑡. This process can then iterate until the solution to the question is found. In the
+current implementation of the SI framework, we repeat the process for a ﬁxed number of steps and
+take the ﬁnal inference to be the answer. Addressing the issue of halting is left for future work.
+Inspired by neurosymbolic methods, we additionally split each step of reasoning into further two
+components: 1) Selection, which selects a subset of the information present in the context, 𝑠𝑡, given
+the context and the question, C𝑡[𝑞. This selection, 𝑠𝑡is fed to the next step, 2) inference, which
+produces the new fact, 𝑓𝑡, based on the information passed to it by the selection step. Examples of
+selection and inference are shown in Fig. 2a. This splitting of each step of reasoning into selection
+and inference is the main contribution of our paper, and is important for several reasons. First, and
+most importantly, it makes the resulting reasoning causal, since both steps have limited capabilities
+by design, and are interdependent. The selection step is constrained to only use the information
+available in the context, an the inference step only sees the subset of facts provided by the selection
+without access to the question. Hence, the model is unlikely to make up information to answer the
+question, and it cannot ignore reasoning when producing the ﬁnal answer. The other beneﬁt of this
+approach is that each step of reasoning is broken down into even smaller sub-tasks, which are easier
+for LLMs to adapt to, and which helps make the reasoning more generalisable to harder problems.
+In this paper we use pre-trained, frozen language models from the Gopher family (Rae et al.,
+2021) in a 5-shot generalisation setting using prompt engineering to implement the Selection and
+Inference modules. We settled on prompt engineering to evaluate the base utility of the SI framework,
+however it can also be used in the ﬁne-tuning setting which we explore brieﬂy in Sec. 6. We next
+describe the Selection and Inference modules in more detail.
+4.1. Selection Module
+We use prompt engineering to encourage the model to output the correct selection, 𝑠𝑡. The n-shot
+prompt is a string of the the following form:
+"""
+# n-shot prompt
+# First example.
+<context 1>
+<question 1>
+# Example selection
+<fact>. We know that <fact>[ and <fact>]*. Therefore,
+...
+# Problem to solve.
+<context>
+<question>
+"""
+2See Fig. 2 for an example of deduction and induction problems used in this paper.
+6
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+where<fact>sarecopieddirectlyfromthe context ,and[ and <fact>]* meansthatthemodule
+is allowed to select more than one fact for each step of inference, where the total number of facts is a
+hyper-parameter.
+The simplest option to implement the selection is to feed this prompt directly to a pre-trained
+LLM and take the output generated by the language model. However, this unconstrained approach
+may allow the model to make up facts, thus removing the causal aspect of the reasoning trace. Indeed
+during experimentation this is what we often found. So instead we use the pre-trained LLM to score
+eachofthefactsinthecontext, andselecttheonewiththehighestlog-likelihood. Wecanthenrepeat
+this process by appending each new fact to the end of the previous prompt until the full selection
+is constructed. Note that for now we haltafter a ﬁxed number of steps. See Algorithm 2 for more
+details.
+4.2. Inference module
+The n-shot prompt for the Inference module has the following form (shown below, also see Fig. 1):
+"""
+#n-shot inference prompt
+# First example.
+<fact>. We know that <fact>[ and <fact>]*. Therefore, <new fact
+>.
+...
+# Problem to solve.
+<output of the Selection module>. Therefore,
+"""
+The n-shot prompt and the output of the Selection module, are fed to the pre-trained LLM serving
+as the Inference module. The ﬁrst generated sentence (extracted from the generated text as per
+BigBench evaluation (Ghazal et al., 2017) pipeline, see Supplementary Materials for details) is taken
+to be the newly inferred fact. This fact is added to the context, which concludes one reasoning step of
+the SI framework. For now, we halt after a ﬁxed number of steps. See Algorithm 1 for more details.
+Algorithm 1 Selection-Inference
+Require: An n-shot selection prompt, 𝑝𝑠𝑒𝑙𝑒𝑐𝑡.
+Require: An n-shot inference prompt, 𝑝𝑖𝑛𝑓𝑒𝑟.
+Require: Initial Context, C0,made up of facts (and rules).
+Require: The question, 𝑞.
+Require: Language model, LLM.
+Require: A halting function, halt, determines if the answer has been
+reached.
+𝑡=0 ⊲Start at step 0.
+whilenot halt() do
+𝑠𝑡 Selection_Module ¹𝑝𝑠𝑒𝑙𝑒𝑐𝑡𝐶𝑡𝑞LLMº ⊲Do selection.
+𝑖𝑡 Inference_Module ¹𝑝𝑖𝑛𝑓𝑒𝑟𝑠𝑡º ⊲Do inference.
+𝐶𝑡¸1 𝐶𝑡[𝑖𝑡⊲Add the newly inferred fact to the context.
+𝑡 𝑡¸1 ⊲Move onto the next step of reasoning
+end while
+return𝑠𝑡
+7
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+5. Experiments and Results
+We evaluate our SI framework on a subset of 10 /50 logical reasoning tasks introduced in Sec. 3.
+These tasks were chosen based on whether they include context information necessary to answer
+the question, whether the questions have a deﬁnitive answer, and to ensure that they cover diﬀerent
+kinds of reasoning abilities. The tasks include bAbI (Weston et al., 2015) Tasks 1-3, which require
+the model to use 1-3 supporting time-ordered facts respectively to answer a question, and Tasks
+15-16, which test deductive and inductive reasoning respectively. We also evaluate our model on the
+ProofWriter OWA datasets (Tafjord et al., 2020) of depth 0, 1, 2, 3 and 5 (there is no depth 4 task).
+These are language-based logical reasoning problems, where the depth is the number of reasoning
+steps required to answer the question.
+To baseline the performance of the SI framework, we consider a 7B (same size as the LLM used
+in the SI framework) and a 40x larger 280B parameter LLM evaluated in a 5-shot setting. There
+are two types of evaluation for these vanilla baselines that we consider: multi-choice andgenerative
+evaluation. In generative evaluation, we measure the exact string match (ﬁrst sentence in lower case
+and ignoring any non-alphabetic characters) between the output generated by the LLM and the
+ground truth answer. This is appropriate, since most of the tasks that we consider require either a
+single word answer, or the dataset is such that the answers are highly structured. In multi-choice
+evaluation the LLM is used to score each of the answer choices, as in Li et al. (Li et al., 2021). In
+general LLMs perform signiﬁcantly better in a multi-choice vsgenerative evaluation setting, since the
+chance level in the multi-choice setting is signiﬁcantly higher.
+We also consider a chain-of-thoughts (COT) (Wei et al., 2022) inspired baseline, where the k-shot
+prompts to the 7B and 280B models include reasoning traces for the same examples that we use
+to prompt the SI framework (although with selection and inference combined, see Supplementary
+Information for example prompts). This tests whether providing the reasoning examples alone is
+suﬃcient to improve performance, or whether the further breakdown into Selection and Inference
+sub-steps improves accuracy. Note that among all of the approaches outlined only the SI framework
+is explicitly set up to generate causalreasoning traces.
+Fig.4ademonstratesthatoverallwhenevaluatedgeneratively,the7BparameterLLMwithintheSI
+framework performs better (58.75%) than the same model evaluated naively (2.94%) or in the COT
+framework (41.32%) (all 𝑝 001, see Supplementary Information for details of the calculations).
+Not only that, the 7B parameter LLM within the SI framework also outperforms on average the 40x
+larger 280B parameter LLM in both vanilla (31.19%) and COT framework (44.03%) (all 𝑝 001).
+When evaluated in the easier multi-choice setting, we ﬁnd that surprisingly3the vanilla 7B parameter
+LLM outperforms the 280B parameter LLM (57.31% vs 51.45%), while still performing signiﬁcantly
+worse than the 7B SI model ( 𝑝=0012). Note that the latter is evaluated in the harder generative
+setting. Per task breakdown shown in Fig. 4b demonstrates that the SI framework solves the bAbI
+15 deduction task, the only model to achieve 100% accuracy (signiﬁcant diﬀerence from the other
+models,𝑝 001). Furthermore, it does so having seen only ﬁve examples in the prompt. The 7B SI
+modelalsosigniﬁcantlyoutperformsallothermodelsonProofWriterDepth0( 𝑝 001),ProofWriter
+Depth 1 (𝑝=0034).
+As well as improving upon most baselines quantitatively, the SI framework also has additional
+qualitative beneﬁts: 1) it produces a causal, human interpretable reasoning trace that shows how the
+model reached its answer and 2) it is able to recover from errors. We will now discuss each of these
+3Thiscouldsuggest that the 280B LLM has stronger priors, than the 7B LLM, which it favours over logical reasoning. For
+example, favouring sheep are afraid of wolves despite a context to the contrary (Min et al., 2022). However this
+requires further investigation.
+8
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+(a) Average accuracy over 11 datasets
+comparing like-for-like generative per-
+formance of the 7B and 280B parameter
+language models used in a 5-shot gener-
+alisationsettingtopredicttheanswerdi-
+rectly(vanilla),intheChain-Of-Thought
+framework, COT, and in the SI frame-
+work.
+(b) Per task breakdown of the performance of LLMs used
+naively, and within the COT and SI frameworks.
+Figure 4jQuantitative results for the Selection-Inference (SI) framework.
+in turn.
+Since the Selection module is only allowed to pick facts from the context and is separate from
+the Inference module, and since the latter does not have access to the question, the model has to
+use what is selected and cannot bypass the selection to compute its answer, thus creating a causal
+reasoning trace. Since the reasoning trace is in natural language and is causal, it can be audited and
+inspected by humans, which has signiﬁcant implications for safety and interpretability.
+Example reasoning traces produced by the SI model are shown in Fig. 2a. In the bAbI 16 example
+shown on the right the model is solving an inference problem, which requires the model to infer the
+colourofananimalgivenfactsaboutthecoloursofotheranimals. Inthisexample, themodelisasked
+"What colour is greg" , and told that "greg is a lion" . This means ﬁrst the model needs
+to use induction to infer a rule about the colour of lions. On the ﬁrst step, we see that the model
+induces a rule, "lions are white" , based on the fact that "brian is a lion" and"brian
+is white" ; we can see exactly what data underlies the model’s decision to form a new rule. On
+the second step, we see that the model applies this newly inferred rule to the fact that "greg is a
+lion"toreachtheﬁnalconclusionthat "greg is white" usingdeduction. Notethattheabilityof
+the SI framework to produce inductions relies on its ability to deal with uncertainty and understand
+whatis“reasonable”-somethingthatLLMsarenaturallycapableof,whilealsobeingaknownstruggle
+point for symbolic AI.
+Since the reasoning traces are output in natural language, they are easy for humans to interpret
+and potentially intervene. Consider a scenario where there may be both a white lion and a green lion
+mentioned in the context, in which case we could see which information the model used to make its
+ﬁnal decision and decide whether we want to trust it (example in Fig. 2b). We could also imagine
+examples where the model puts together two unrelated facts to come up with an incorrect inference,
+and this could also be easily be spotted by a human and rectiﬁed by replacing the wrongly inferred
+fact with a correct one, and re-running the consequent reasoning steps.
+Aside from inspecting reasoning traces and using them to debug when something goes wrong, the
+additive nature of our model - it accumulates new knowledge with each reasoning step, means that it
+also has the ability to recover from errors. Fig. 2b demonstrates such an example. In the ﬁrst step
+9
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+the model inferred that "swans are often gray" , using the facts that "julius is a swan"
+and"julius is gray" . While this is correct, this new information is not useful for answering the
+question, which asks about lions. However, it is still possible for the model to make the more useful
+inference that "lions are often white" in a later step and recover from its original misstep.
+6. Fine-tuning Language Models for Selection and Inference
+In Sec. 5 we have demonstrated signiﬁcant improvements in logical reasoning accuracy when using
+prompt-engineering to specialise LLMs for Selection and Inference in the SI framework. Prompt-
+engineering has the additional beneﬁt of not requiring large amounts of step-by-step reasoning data,
+which may be hard to obtain. In this section we investigate whether the accuracy of the SI framework
+can be further improved by ﬁne-tuning the LLMs for Selection and Inference. We use the ProofWriter
+dataset for which ground truth reasoning traces exist.
+The Selection LLM is ﬁne-tuned to select a subset of sentences (including facts and rules) from
+the context by generating a string of the form "sent 2. We know that sent 4 [and sent 7]*." given the
+context and the question. We ask the Selection LLM to generate sentence labels (e.g. "sent 2"or"sent
+4") instead of the sentences themselves, because this prevents the Selection LLM from cheating by
+making up facts to answer the question quicker. This preserves the dependency of the selection and
+therefore subsequent reasoning steps on the context. The Inference LLM is ﬁne-tuned to compute an
+entailment given the selection. Both models are ﬁne-tuned on single steps of reasoning only. Example
+training data are shown in Fig. S2.
+The Inference LLM converged very quickly to >99% test accuracy after only 300 ﬁne-tuning steps
+with a batch size of 16, which is to be expected as we found that pre-trained LLMs are good at single
+step entailment out of the box as shown in Fig. 3b. Examples of inferences made by the model are
+shown in Fig. S3. The Selection LLM was trained for 4104steps (with batch size 16 for 50 hours
+on a TPU) with the exact string match accuracy reported in Fig. 5a. Although we notice that the
+model is much better at predicting selections for problems that require fewer steps of inference than
+those that require more, ultimately the model still achieves high ( 80%) accuracy across most of
+the reasoning depths. Predicting early selections for deeper reasoning problems is hard, because it
+requires planning. It is an important problem to address in future work.
+Fig. 4b shows that ﬁne-tuning LLMs on single steps of reasoning within the SI framework leads to
+signiﬁcant improvements in ﬁnal reasoning accuracy (78.95%) over the prompt-engineered version
+of the SI framework (57.93%) and other prompt-engineered baselines (vanilla/COT generative 7B:
+0.34/15.73%, 280B: 31.58/21.12%). We also found that the ﬁne-tuned 7B LLM used within the
+SI framework produces signiﬁcantly more accurate reasoning traces compared to the same LLM
+ﬁne-tuned to predict all reasoning steps in one go (Fig. 5b). We quantiﬁed this using the Jaccard
+Similarity, Jaccard Similarity =¹𝑀\𝐺𝑇º¹𝑀[𝐺𝑇º, between the proof steps predicted by each
+model,𝑀, and the ground-truth reasoning steps, 𝐺𝑇, as shown in, calculated using exact string match
+over alphanumeric characters.
+Qualitativelyweobservedthatwhilethebaselinemodelisgoodatpredictingmostofthereasoning
+steps, they often appear in the wrong order, there are additional reasoning steps that are not on the
+minimal reasoning path, and some steps get repeated a number of times.
+7. Conclusion
+WehavepresentedtheSelection-Inferenceframeworkforimprovingtheabilityofpre-trainedlanguage
+models to solve logical reasoning problems expressed in natural language. Our approach borrows
+10
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+(a) Average test ﬁne-tuning accuracy for the Selec-
+tionmoduletrainedonsingle-stepselectionacross
+all ProofWriter datasets (depth 1, 2, 3 and 5) and
+tested on problems of each depth separately.
+(b) Intersection over union between reasoning
+traces produced by a model and the ground truth
+reasoning steps. Baseline, 7B parameter LLM ﬁne-
+tuned to predict all reasoning steps in one go; SI,
+using same 7B LLM ﬁne-tuned for single step Se-
+lection and Inference.
+Figure 5jFine-tuning the SI framework on the ProofWriter dataset.
+from the best practices of neurosymbolic approaches to break down logical reasoning into a modular
+recursive pipeline that not only signiﬁcantly improves the reasoning accuracy, but also produces a
+causalinterpretable reasoning trace. We have demonstrated that prompt-engineered LLMs used in
+the SI framework signiﬁcantly outperform both the vanilla and COT baselines evaluated in equivalent
+settings,andeven40xlargerbaselines. TheperformanceoftheSIframeworkcanbefurtherimproved
+through ﬁne-tuning if step-by-step reasoning data is available.
+A model capable of casual, interpretable and logically valid multi-step reasoning has potential
+applications in law, medicine, science, maths, economics, and other areas where trustworthy and
+veriﬁable logical inference is important. At the same time we recognise that special care will need to
+be taken to evaluate such a model before deployment in any of these settings. Further work is also
+needed, for example, to improve the Selection module (e.g. by allowing the model search over and
+evaluate diﬀerent reasoning traces); to address the halting issue (both in terms of when to stop the
+selection and when to stop the overall reasoning); to incorporate veriﬁers that would help avoid false
+inferences being added to the context; to enable the system to source its own relevant context rather
+than relying on it being provided in the dataset; and to extend the ability of the system to deal with
+ambiguous or unanswerable questions.
+References
+J. Andreas, M. Rohrbach, T. Darrell, and D. Klein. Neural module networks. In Proceedings of the IEEE
+conference on computer vision and pattern recognition , pages 39–48, 2016.
+Y. Bengio, Y. Lecun, and G. Hinton. Deep learning for ai. Communications of the ACM , 64(7):58–65,
+2021.
+G. Betz, C. Voigt, and K. Richardson. Critical thinking for language models. arXiv preprint
+arXiv:2009.07185 , 2020.
+R. Bommasani, D. A. Hudson, E. Adeli, R. Altman, S. Arora, S. von Arx, M. S. Bernstein, J. Bohg,
+11
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+A. Bosselut, E. Brunskill, et al. On the opportunities and risks of foundation models. arXiv preprint
+arXiv:2108.07258 , 2021.
+T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal, A. Neelakantan, P. Shyam,
+G. Sastry, A. Askell, et al. Language models are few-shot learners. Advances in neural information
+processing systems , 33:1877–1901, 2020.
+P. Clark, O. Tafjord, and K. Richardson. Transformers as soft reasoners over language. arXiv preprint
+arXiv:2002.05867 , 2020.
+K.Cobbe,V.Kosaraju,M.Bavarian,J.Hilton,R.Nakano,C.Hesse,andJ.Schulman. Trainingveriﬁers
+to solve math word problems. arXiv preprint arXiv:2110.14168 , 2021.
+B. Dalvi, P. A. Jansen, O. Tafjord, Z. Xie, H. Smith, L. Pipatanangkura, and P. Clark. Explaining
+answers with entailment trees. ArXiv, abs/2104.08661, 2021.
+A. d. Garcez and L. C. Lamb. Neurosymbolic ai: the 3rd wave. arXiv preprint arXiv:2012.05876 , 2020.
+M. Garnelo and M. Shanahan. Reconciling deep learning with symbolic artiﬁcial intelligence: repre-
+senting objects and relations. Current Opinion in Behavioral Sciences , 29:17–23, 2019.
+A. Ghazal, T. Ivanov, P. Kostamaa, A. Crolotte, R. Voong, M. Al-Kateb, W. Ghazal, and R. V. Zicari.
+Bigbench v2: The new and improved bigbench. In 2017 IEEE 33rd International Conference on Data
+Engineering (ICDE) , pages 1225–1236, 2017. doi: 10.1109/ICDE.2017.167.
+N. Gupta, K. Lin, D. Roth, S. Singh, and M. Gardner. Neural module networks for reasoning over text.
+arXiv preprint arXiv:1912.04971 , 2019.
+D. A. Hudson and C. D. Manning. Learning by abstraction: The neural state machine. arXiv preprint
+arXiv:1907.03950 , 2019.
+H. Jhamtani and P. Clark. Learning to explain: Datasets and models for identifying valid reasoning
+chains in multihop question-answering. arXiv preprint arXiv:2010.03274 , 2020.
+A. K. Lampinen, N. A. Roy, I. Dasgupta, S. C. Chan, A. C. Tam, J. L. McClelland, C. Yan, A. Santoro,
+N. C. Rabinowitz, J. X. Wang, et al. Tell me why!–explanations support learning of relational and
+causal structure. arXiv preprint arXiv:2112.03753 , 2021.
+A. Lazaridou, E. Gribovskaya, W. Stokowiec, and N. Grigorev. Internet-augmented language models
+throughfew-shotpromptingforopen-domainquestionanswering. arXivpreprintarXiv:2203.05115 ,
+2022.
+D. Lenat. What ai can learn from romeo & juliet, Jul 2019. URL https://www.forbes.com/
+sites/cognitiveworld/2019/07/03/what-ai-can-learn-from-romeo--juliet .
+X. L. Li, A. Kuncoro, C. de Masson d’Autume, P. Blunsom, and A. Nematzadeh. A systematic investiga-
+tion of commonsense understanding in large language models. arXiv e-prints , pages arXiv–2111,
+2021.
+B. Y. Lin, S. Lee, R. Khanna, and X. Ren. Birds have four legs?! numersense: Probing numerical
+commonsense knowledge of pre-trained language models. arXiv preprint arXiv:2005.00683 , 2020.
+K.Lu,A.Grover,P.Abbeel,andI.Mordatch. Pretrainedtransformersasuniversalcomputationengines.
+arXiv preprint arXiv:2103.05247 , 2021.
+12
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+J.Mao,C.Gan,P.Kohli,J.B.Tenenbaum,andJ.Wu. Theneuro-symbolicconceptlearner: Interpreting
+scenes, words, and sentences from natural supervision. arXiv preprint arXiv:1904.12584 , 2019.
+G. Marcus. The next decade in ai: four steps towards robust artiﬁcial intelligence. arXiv preprint
+arXiv:2002.06177 , 2020.
+G. Marcus and E. Davis. Rebooting AI: Building Artiﬁcial Intelligence We Can Trust . Ballantine Books
+Inc., 2019.
+J.Menick,M.Trebacz,V.Mikulik,J.Aslanides,F.Song,M.Chadwick,M.Glaese,S.Young,L.Campbell-
+Gillingham, G. Irving, et al. Teaching language models to support answers with veriﬁed quotes.
+arXiv preprint arXiv:2203.11147 , 2022.
+S. Min, X. Lyu, A. Holtzman, M. Artetxe, M. Lewis, H. Hajishirzi, and L. Zettlemoyer. Rethinking the
+role of demonstrations: What makes in-context learning work? arXiv preprint arXiv:2202.12837 ,
+2022.
+R. Nakano, J. Hilton, S. Balaji, J. Wu, L. Ouyang, C. Kim, C. Hesse, S. Jain, V. Kosaraju, W. Saun-
+ders, et al. Webgpt: Browser-assisted question-answering with human feedback. arXiv preprint
+arXiv:2112.09332 , 2021.
+M. Nye, A. J. Andreassen, G. Gur-Ari, H. Michalewski, J. Austin, D. Bieber, D. Dohan, A. Lewkowycz,
+M. Bosma, D. Luan, et al. Show your work: Scratchpads for intermediate computation with
+language models. arXiv preprint arXiv:2112.00114 , 2021a.
+M. Nye, M. Tessler, J. Tenenbaum, and B. M. Lake. Improving coherence and consistency in neural
+sequence models with dual-system, neuro-symbolic reasoning. Advances in Neural Information
+Processing Systems , 34, 2021b.
+J. W. Rae, S. Borgeaud, T. Cai, K. Millican, J. Hoﬀmann, F. Song, J. Aslanides, S. Henderson, R. Ring,
+S. Young, et al. Scaling language models: Methods, analysis & insights from training gopher. arXiv
+preprint arXiv:2112.11446 , 2021.
+S. Saha, S. Ghosh, S. Srivastava, and M. Bansal. Prover: Proof generation for interpretable reasoning
+over rules. arXiv preprint arXiv:2010.02830 , 2020.
+O. Tafjord, B. D. Mishra, and P. Clark. Proofwriter: Generating implications, proofs, and abductive
+statements over natural language. arXiv preprint arXiv:2012.13048 , 2020.
+B.Tunguz.200,000+jeopardy! questions,Nov2019.URL https://www.kaggle.com/datasets/
+tunguz/200000-jeopardy-questions .
+J. Wei, X. Wang, D. Schuurmans, M. Bosma, E. Chi, Q. Le, and D. Zhou. Chain of thought prompting
+elicits reasoning in large language models, 2022.
+J. Welbl, P. Stenetorp, and S. Riedel. Constructing datasets for multi-hop reading comprehension
+across documents. Transactions of the Association for Computational Linguistics , 6:287–302, 2018.
+J. Weston, A. Bordes, S. Chopra, A. M. Rush, B. Van Merriënboer, A. Joulin, and T. Mikolov. Towards
+ai-complete question answering: A set of prerequisite toy tasks. arXiv preprint arXiv:1502.05698 ,
+2015.
+K. Yi, J. Wu, C. Gan, A. Torralba, P. Kohli, and J. B. Tenenbaum. Neural-symbolic vqa: Disentangling
+reasoning from vision and language understanding. arXiv preprint arXiv:1810.02338 , 2018.
+E.Zelikman,Y.Wu,andN.D.Goodman. Star: Bootstrappingreasoningwithreasoning. arXivpreprint
+arXiv:2203.14465 , 2022.
+13
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Supplementary Information
+A. Example prompts for vanilla baselines
+A.1. ProofWriter
+"""
+Here are some statements that describe a situation:
+Bob is cold.
+Charlie is quiet.
+Gary is cold.
+Harry is quiet.
+Big things are cold.
+All blue things are not cold.
+If something is quiet and blue then it is not cold.
+All quiet things are cold.
+If something is big and rough then it is round.
+If something is cold and not rough then it is blue.
+If something is quiet and not furry then it is not blue.
+Round things are big.
+Based on the above, the statement "Charlie is cold" is true.
+...
+Here are some statements that describe a situation:
+Erin is not cold.
+Erin is kind.
+Erin is red.
+Erin is smart.
+Erin is not white.
+Erin is young.
+Gary is cold.
+Gary is not furry.
+Gary is kind.
+Gary is red.
+Gary is not smart.
+Gary is young.
+All cold, smart things are not furry.
+Young, cold things are not furry.
+If something is white and smart then it is furry.
+If Gary is white then Gary is not furry.
+If Erin is young then Erin is furry.
+If Gary is not young then Gary is smart.
+If Erin is cold then Erin is young.
+Red things are kind.
+Based on the above, the statement "Erin is not furry" is
+"""
+A.2. bAbI 1
+"""
+Context: daniel went to the bedroom
+daniel journeyed to the office
+daniel travelled to the bathroom
+mary went to the office
+14
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+john journeyed to the bedroom
+daniel went back to the kitchen
+john went to the garden
+daniel travelled to the office
+Question: where is john?
+Choice: garden
+Choice: bathroom
+Choice: office
+Choice: kitchen
+Choice: bedroom
+Choice: hallway
+Answer: garden
+...
+Context: sandra went to the kitchen
+sandra went to the office
+sandra travelled to the hallway
+sandra went back to the kitchen
+mary travelled to the hallway
+sandra went to the bedroom
+john went to the garden
+sandra travelled to the office
+Question: where is sandra?
+Choice: garden
+Choice: bedroom
+Choice: kitchen
+Choice: bathroom
+Choice: hallway
+Choice: office
+Answer:
+"""
+A.3. 2WikiMultiHop
+New lines are added between facts to ﬁt on the page.
+"""
+Q: When did Michael Baden-Powell’s father die?
+Here are some relationships to help answer this question.
+Michael Baden-Powell::father::Peter Baden-Powell, 2nd Baron Baden-
+Powell,
+Peter Baden-Powell, 2nd Baron Baden-Powell::date of death::9
+December 1962
+A: 9 December 1962
+...
+Q: Where does Ekaterina Rybolovleva’s father work at?
+Here are some relationships to help answer this question.
+Ekaterina Dmitrievna Rybolovleva::father::Dmitry Rybolovlev,
+Dmitry Rybolovlev::employer::Uralkali
+A:
+"""
+15
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+B. Example prompts for COT baselines
+B.1. ProofWriter 3
+"""
+Given a set of rules and facts, you have to reason whether a
+statement is true or false.
+Here are some facts and rules:
+If someone is red then they are nice.
+If someone is kind and red then they are white.
+If someone is nice then they are kind.
+Fiona is red.
+Does it imply that the statement "Fiona is not white" is True?
+Reasoning: If someone is red then they are nice. We know that Fiona
+is red. Therefore, Fiona is nice.
+If someone is nice then they are kind. We know that Fiona is nice.
+Therefore, Fiona is kind.
+If someone is kind and red then they are white. We know that Fiona
+is kind and Fiona is red. Therefore, Fiona is white.
+...
+Here are some facts and rules:
+If someone chases the cow then they eat the cow.
+If someone is big then they chase the cow.
+If someone needs the bald eagle then the bald eagle is big.
+If the bear is nice and the bear needs the cow then the bear eats
+the lion.
+If someone needs the lion and they eat the bald eagle then they are
+blue.
+If someone eats the bear and they do not chase the cow then the cow
+is young.
+the bald eagle eats the lion.
+the bear is round.
+the lion eats the bald eagle.
+the bald eagle needs the cow.
+the bear is young.
+the cow is not nice.
+the cow does not chase the bald eagle.
+the bear does not eat the bald eagle.
+the bear needs the bald eagle.
+the bald eagle chases the bear.
+Does it imply that the statement "The bald eagle does not eat the
+cow" is True?
+Reasoning: If someone needs the bald eagle then the bald eagle is
+big. We know that the bear needs the bald eagle. Therefore, the
+bald eagle is big.
+If someone is big then they chase the cow. We know that the bald
+eagle is big. Therefore, the bald eagle chases the cow.
+If someone chases the cow then they eat the cow. We know that the
+bald eagle chases the cow. Therefore, the bald eagle eats the cow
+.
+"""
+16
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+B.2. bAbI 2
+"""
+Below are some stories about people moving objects between rooms.
+After each story you have to answer a question about where a
+particular object is.
+Story:
+at t=0 mary grabbed the football there
+at t=1 daniel got the apple there
+at t=2 mary went to the kitchen
+at t=3 daniel journeyed to the office
+at t=4 daniel went to the bedroom
+at t=5 mary moved to the garden
+Question: where is the apple?
+Reason: at t=1 daniel got the apple there. We know that at t=4
+daniel went to the bedroom. Therefore, the apple is in the
+bedroom
+...
+Story:
+at t=0 sandra went to the office
+at t=1 john took the milk there
+at t=2 sandra got the milk there
+at t=3 john dropped the milk
+Question: where is the milk?
+Reason: at t=2 sandra got the milk there. We know that at t=0 sandra
+went to the office. Therefore, the milk is in the office
+"""
+C. Example prompts for Selection-Inference
+C.1. bAbI 2
+Theselection prompt:
+"""
+Here are a collection of stories about people carrying objects from
+one room to another. You will be asked where any object is. To
+answer this question you need to figure out who last had the
+object and which room they have the object in by the end of the
+story. Here are some examples:
+Story:
+at t=0 mary grabbed the football there
+at t=1 daniel got the apple there
+at t=2 mary went to the kitchen
+at t=3 daniel journeyed to the office
+at t=4 daniel went to the bedroom
+at t=5 mary moved to the garden
+Question: where is the apple?
+Reason: at t=1 daniel got the apple there. We know that at t=4
+daniel went to the bedroom
+...
+17
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+at t=0 john moved to the bathroom
+at t=1 john travelled to the office
+at t=2 john picked up the football there
+at t=3 john journeyed to the bathroom
+Question: where is the football?
+Reason:"""
+Theinference prompt:
+"""
+at t=1 daniel got the apple there. We know that at t=4 daniel went
+to the bedroom. Therefore, the apple is in the bedroom.
+...
+at t=2 john picked up the football there. We know at t=0 john moved
+to the bathroom. Therefore"""
+C.2. ProofWriter
+Below is an example selection prompt. Note that this is for a depth-2 problem and so we show
+examples of the ﬁrst reasoning step where the conclusion would not directly prove or disprove the
+statement and the last reasoning step, where the conclusion would directly prove or disprove the
+statement.
+"""
+Given a set of rules and facts, you have to reason whether a
+statement is true or false.
+Here are some facts and rules:
+Nice people are quiet.
+If Dave is smart then Dave is nice.
+All white people are smart.
+Dave is smart.
+Harry is cold.
+Does it imply that the statement "Dave is not quiet" is true?
+Reasoning: If Dave is smart then Dave is nice. We know that Dave is
+smart. Therefore,
+Here are some facts and rules:
+Blue things are green.
+All blue things are white.
+If Anne is not big then Anne is blue.
+Big things are white.
+All kind things are round.
+If something is white and big then it is not kind.
+If something is big and not rough then it is green.
+If something is white and blue then it is not green.
+Erin is not white.
+Anne is big.
+Bob is rough.
+Anne is white
+18
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Does it imply that the statement "Anne is kind" is True?
+Reasoning: If something is white and big then it is not kind. We
+know that Anne is white and Anne is big. Therefore,
+...
+Here are some facts and rules:
+If something likes the squirrel and it is not young then it chases
+the lion.
+If something likes the squirrel then it is rough.
+If something chases the rabbit and the rabbit is not young then it
+chases the lion.
+If something eats the lion then it is young.
+If something likes the rabbit then it chases the rabbit.
+All rough things are nice.
+the rabbit is young.
+the squirrel likes the rabbit.
+the lion likes the squirrel.
+Does it imply that the statement "The lion is not nice" is True?
+Reasoning:"""
+Example inference prompt:
+"""
+Nice people are quiet. We know that Dave is nice. Therefore, Dave is
+quiet.
+...
+If the cow chases the bald eagle then the cow eats the bald eagle.
+We know that the cow chases the bald eagle. Therefore"""
+D. Selection-Inference evaluation details
+D.1. Selection module
+The algorithm for the Scoring Selection module is shown in Algorithm 2.
+Algorithm 2 ScoringSelection_Module
+Require: An n-shot prompt, 𝑝.
+Require: Initial Context, C0,made up of facts (and rules).
+Require: The question, 𝑞.
+Require: Language model, LLM.
+Require: A halting function, halt, determines if the selection is complete.
+𝑠𝑡 empty string
+whilenot halt() do
+𝑠temp arg max rule_or_fact2CÍ
+token2rule_or_fact LLM¹tokenj𝑝C𝑡𝑞𝑠𝑡º⊲Choose the rule
+or fact with the maximum log-likelihood under the LLM model.
+𝑠𝑡 join¹𝑠𝑡𝑠tempº ⊲Join the selected fact or rule to the selection string.
+end whilereturn 𝑠𝑡
+19
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+D.2. Inference module
+To extract the new fact to be added to the context we ﬁlter out the ﬁrst sentence of the text generated
+by the LLM using the following regular expression: r‘[ˆ.?!;nn]+’.
+D.3. bAbI
+For all bAbI tasks, the answer is a single word. For example, in bAbI 1-3 the answer is one of
+["hallway", "bathroom", "bedroom", "garden", "kitchen", "office"] ; for bAbI 15
+theanswerisoneof ["sheep", "cat", "mouse", "wolf"] andforbAbI16theanswerisoneof
+["yellow", "gray", "green", "white"] . However, our model outputs a complete sentence,
+for example "emily is afraid of mice" . Therefore, we take the answer to be the ﬁnal word
+output by the inference model on its last step.
+To obtain the results for bAbI tasks 1-3, 15 and 16 shown in Fig. 4b we prompted the language
+model to solve the problem in a single step of reasoning. An example of such a prompt is shown in
+Sec. C.1.
+We run the SI model for only a single step of reasoning too. Additional steps may increase the
+chance of the model reaching the correct answer, however, we do not yet have a mechanism for
+halting reasoning when the answer is reached.
+BAbI 16 is an inductive reasoning task that couldbe solved in two steps (rather than one). The
+ﬁrst step requires a rule to be inferred and the second step requires the inferred rule to be applied
+to another fact. For this reason, we also apply SI for two steps to solve the bAbI 16 problems, ﬁrst
+inferring a rule from a number of facts and then applying the rule to the correct fact. An example of
+this is shown in Fig. 2. Using this two step approach, we can see exactly which facts contributed to
+the formation of a new rule.
+D.4. ProofWriter
+We use a subset of the ProofWriter Open World Assumption, OWA, dataset. In the Close World
+Assumption dataset, CWA, everything that can be proven is True otherwise it is False. This means
+things are either True or False. This also means that reasoning traces are only provided when a
+statement is True, but not when a statement is False. To "show" something is False one has to
+enumerate all possible facts (possibly up to a certain depth) and then if a statement is not shown to
+be True it is assumed to be False. It is therefore not simple to generate meaningful reasoning traces
+for these types of problems.
+On the other hand, in the OWA data if it is not possible to prove something is True or False, then
+it is Unknown. This means that for True and False examples, where one may want to show p(x),
+reasoning traces are available that terminate in p(x)(for True) or not p(x) (for False). If one
+cannotshow p(x)ornot p(x) thentheanswerisUnknown,andagainthereisnotaclearreasoning
+trace for this; it is necessary to enumerate all possible facts (possibly up to a certain depth) and then
+if one has not shown p(x)ornot p(x) it’s considered Unknown. Note that here pis a predicate
+andxis a variable.
+It is for this reason that we used the ProofWriter OWA dataset and removed the Unknowns; this
+gives us a dataset with reasoning traces concluding in either True or False. If we used CWA we would
+only have traces that could conclude True.
+We evaluate the SI on 5 tasks from the ProofWriter dataset, each requiring varying numbers of
+reasoning steps (1, 2, 3 and 5). This requires the model to learn to compute intermediate conclusions
+20
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+FigureS1jProofWriter: eﬀectofadditionalreasoningsteps. Withadditionaliterationsofselection
+and inference the probability of the model producing the correct answer increases.
+thatmaynotdirectlyleadtotheﬁnalanswer,butmaybeneededtoreachtheﬁnalanswer. While,this
+canbeveryhardtoachieveusingpromptengineeringalone,weendeavourtodoso,bydemonstrating
+examples of intermediate and ﬁnal steps of reasoning (for problems of depth >1). This means that
+the language model sees (1) examples that both encourage the model to select rules and facts that
+may not answer the problem in one-step but may help the model to obtain an intermediate output
+that can be used in a future step and (2) examples of the ﬁnal step, which takes the model to the
+ﬁnal answer. See Sec. C.2 for an example prompt.
+The ProofWriter tasks involve predicting if a given statement, for example "Bob is nice." , is
+TrueorFalsegiven the context of facts and rules. Our SI model attempts to derive the statement
+"Bob is nice." or the negation of the statement "Bob is not nice." from the context. To
+assign a label TrueorFalsewe follow the procedure proposed in the original ProofWriter paper
+(Tafjord et al., 2020) and test if any of the implications matches the given statement. If there is a
+match, the statement is considered to be True, otherwise False.
+ProofWriter results in Fig. 4b show that the Selection-Inference model outperforms the baselines
+for problems of depth zero and one, however, with increasing depth, the gap between SI and the
+baselines diminishes. This is in part because prompt engineering is not suﬃcient to obtain an optimal
+Selection module.
+Another challenge with the ProofWriter dataset is deciding how many arguments should be
+selectedforeachrule. IntheProofWriterdataset, somerulestakeoneargument, otherstaketwo. We
+experimented with various diﬀerent ways to encourage the model to stop selecting arguments. For
+example, we append ". Therefore, " as a choice to the context that the model can select. If the
+language model selects ". Therefore, " then the selection step ends. We allowed a maximum
+of two facts to be selected.
+To obtain results in Fig. 4b we run SI model for the minimum number of steps needed to solve
+the problem; a Depth 𝑑problem is run for 𝑑steps, with the exception of the depth-0 problem which
+is run for 1 step. However, models may perform better when allowed to run for additional steps, in
+the case where the model makes a mistake on one step, but later recovers. Fig. S1 shows how the
+number of SI steps can lead to improved performance. There is greater improvement to performance
+21
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+for depth-1 reasoning. For depth-2 reasoning, there was not enough variation in the selections at
+each step, so additional steps did not help as much as for depth-1.
+E. Reasoning Traces Output by SI
+E.1. bAbI 15
+Below we show examples of reasoning traces output by our SI framework for the bAbI 15, deductive
+reasoning task. These examples are ones that the model got correct but are otherwise not cherry
+picked for their reasoning quality.
+bAbI 15 Example 1
+wolves are afraid of mice
+sheep are afraid of mice
+winona is a sheep
+mice are afraid of cats
+cats are afraid of wolves
+jessica is a mouse
+emily is a cat
+gertrude is a wolf
+Question: what is emily afraid of?
+Selection: emily is a cat. We know that cats are afraid of wolves
+Inference: emily is afraid of wolves
+bAbI 15 Example 2
+wolves are afraid of mice
+sheep are afraid of mice
+winona is a sheep
+mice are afraid of cats
+cats are afraid of wolves
+jessica is a mouse
+emily is a cat
+gertrude is a wolf
+Question: what is winona afraid of?
+Selection: winona is a sheep. We know that sheep are afraid of mice
+Inference: winona is afraid of mice
+bAbI 15 Example 3
+wolves are afraid of mice
+sheep are afraid of mice
+winona is a sheep
+mice are afraid of cats
+cats are afraid of wolves
+jessica is a mouse
+emily is a cat
+gertrude is a wolf
+Question: what is gertrude afraid of?
+Selection: gertrude is a wolf. We know that wolves are afraid of
+mice
+Inference: gertrude is afraid of mice
+22
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+bAbI 15 Example 4
+wolves are afraid of mice
+sheep are afraid of mice
+winona is a sheep
+mice are afraid of cats
+cats are afraid of wolves
+jessica is a mouse
+emily is a cat
+gertrude is a wolf
+Question: what is jessica afraid of?
+Selection: jessica is a mouse. We know that mice are afraid of cats
+Inference: jessica is afraid of cats
+E.2. bAbI 16
+In the example below there are two possible conclusions that may be drawn. Since brian,bernard
+andgregare all rhions but brian and bernard are white, while greg is green the answer could be
+green or white. A black-box model may select one or the other answer without explaining why. Our
+model on the other hand shows that it use the facts that greg is green to infer that julius is
+green.
+bAbI 16 Example 1: Multiple “correct” answers
+bernhard is a rhino
+brian is a rhino
+bernhard is white
+brian is white
+lily is a lion
+lily is yellow
+greg is a rhino
+greg is green
+julius is a rhino
+Question: what color is julius?
+Selection: julius is a rhino. We know that greg is a rhino and greg
+is green
+Inference: julius is green
+In the example below the model must answer the question what color is greg? .gregis a
+lion, which means the model needs to infer a rule about lions. However, on the ﬁrst step of reasoning
+themodelinfersthat we inferred that swans are often gray . Whilethisisfactuallycorrect
+given the context, it does not help to answer the question. However, the model is able to recover
+and correctly infer that we inferred that lions are often white meaning that the model
+is still able to solve the problem despite making a mistake.
+bAbI 16 Example 2: Recovering from an error
+julius is a swan
+julius is gray
+bernhard is a swan
+bernhard is yellow
+brian is a lion
+greg is a lion
+brian is white
+23
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+FigureS2jExamplesofinputsandtargetsusedtoﬁne-tuneLLMfortheSelectionandInference
+modules. On the is an example of supervision for step-1 in a depth-2 problem. We create training
+data for all steps in the dataset by appending the ground-truth inferences for the intermediate steps
+to the context. On the right, is an example of a data sample used to train the inference model. Both
+the Selection and Inference LLM’s are ﬁne-tuned on only single steps of reasoning.
+lily is a frog
+lily is gray
+Question: what color is greg?
+Selection: julius is a swan. We know that julius is gray
+Inference: we inferred that swans are often gray
+Selection: brian is a lion. We know that brian is white
+Inference: we inferred that lions are often white
+F. Fine-tuning Selection-Inference Details and Extra Results
+Fig. S2 shows examples of the format of the data used to ﬁne-tune the Selection and Inference LLMs.
+The Selection module is trained to predict sentence labels rather than the sentence strings. This
+prevents the model from making up facts and forces the model to use information in the context.
+Duringselection,ratherthanscoringeachsentencewecanappendsentencelabelstoeachelement
+inthecontext(asshowninFig.S2); usetheSelectionLLMtogenerateselectionstringsandsubstitute
+inelementsfromthecontextusingadictionary. Thisprocessismuchfasterthanscoringeachelement
+of the context, but still ensures that the selection consists only of samples from the context; the
+Selection module cannot make up facts to answer the question. Fig. S3 shows examples of entailment
+computed by the Inference LLM after ﬁne-tuning.
+Fig. 4b compares SI models incorporating ﬁne-tuned vs. prompt-engineered LLMs. We see that
+the model using LLMs ﬁne-tuned on single steps of reasoning signiﬁcantly outperform both the
+prompt-engineered LLMs and a Vanilla LLM prompt-engineered to predict the ﬁnal answer directly.
+Fig. S4 shows a reasoning trace output by the SI model on a challenging depth-5 problem.
+F.1. Selection-Inference Reasoning Traces
+F.1.1. Depth-2 reasoning traces for Depth-2 problems
+Below we show examples of depth-2 reasoning traces produced via Selection-Inference using modules
+ﬁne-tuned on the ProofWriter dataset.
+24
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Figure S3jInference Module ﬁne-tuning test examples
+Example 1:
+If someone is cold then they eat the lion.
+If someone is blue and they chase the dog then the dog chases the
+lion.
+If someone eats the dog then the dog is young.
+If someone is young and they eat the lion then they are red.
+If someone is nice then they eat the dog.
+If someone eats the lion and the lion eats the dog then the dog eats
+the lion.
+If someone sees the lion and the lion chases the dog then the lion
+is nice.
+If the lion sees the dog and the dog sees the lion then the dog is
+nice.
+the lion sees the dog.
+the dog sees the lion.
+Does it imply that the statement "The dog eats the dog" is True?
+step 0:
+Selection: If the lion sees the dog and the dog sees the lion then
+the dog is nice. We know that the lion sees the dog and the dog
+sees the lion.
+Inference: The dog is nice.
+step 1:
+Selection: If someone is nice then they eat the dog. We know that
+The dog is nice.
+Inference: The dog eats the dog.
+Example 2:
+If something is cold and red then it likes the mouse.
+If something needs the cat then the cat sees the dog.
+25
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Figure S4jA ProofWriter depth-5 reasoning trace output by our model. The model produces an
+interpretable reasoning trace that allows us to inspect how the model reached its answer.
+If something needs the cow then the cow sees the mouse.
+If something sees the dog then the dog likes the cat.
+If the cat is not green then the cat does not see the mouse.
+If something sees the mouse then it is cold.
+If something likes the cat and the cat needs the cow then the cow is
+nice.
+If something sees the cow then it needs the cow.
+the mouse needs the dog.
+the mouse needs the cat.
+the dog is nice.
+the cat is green.
+the mouse is not nice.
+the dog needs the cat.
+the dog sees the cow.
+the cow is not red.
+the cat likes the dog.
+the mouse sees the cow.
+the mouse needs the cow.
+the cow sees the dog.
+the mouse is green.
+the cow needs the dog.
+the mouse is blue.
+Does it imply that the statement "The cow is cold" is True?
+step 0:
+Selection: If something needs the cow then the cow sees the mouse.
+We know that the mouse needs the cow.
+Inference: The cow sees the mouse.
+step 1:
+Selection: If something sees the mouse then it is cold. We know
+that The cow sees the mouse.
+Inference: The cow is cold.
+26
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Example 3:
+Rough things are white.
+If Erin is smart and Erin is rough then Erin is white.
+If something is round then it is rough.
+If Erin is round and Erin is not smart then Erin is white.
+All quiet things are not white.
+If something is blue and white then it is not quiet.
+Erin is green.
+Erin is rough.
+Erin is blue.
+Does it imply that the statement "Erin is not quiet" is True?
+step 0:
+Selection: If Erin is smart and Erin is rough then Erin is white.
+We know that Erin is green and Erin is rough.
+Inference: Erin is white.
+step 1:
+Selection: If something is blue and white then it is not quiet. We
+know that Erin is blue and Erin is white.
+Inference: Erin is not quiet.
+Example 4:
+If something chases the squirrel then the squirrel is big.
+If something is big then it is not kind.
+If something chases the bald eagle and it sees the bald eagle then
+the bald eagle sees the lion.
+the cow does not like the squirrel.
+the cow sees the lion.
+the bald eagle likes the lion.
+the cow chases the squirrel.
+the lion chases the cow.
+the bald eagle is not round.
+the squirrel likes the cow.
+the cow likes the lion.
+the cow chases the bald eagle.
+the squirrel likes the bald eagle.
+the cow is kind.
+the lion chases the squirrel.
+the cow does not see the squirrel.
+the lion chases the bald eagle.
+the squirrel likes the lion.
+Does it imply that the statement "The squirrel is kind" is True?
+step 0:
+Selection: If something chases the squirrel then the squirrel is
+big. We know that the cow chases the squirrel.
+Inference: The squirrel is big.
+step 1:
+Selection: If something is big then it is not kind. We know that
+The squirrel is big.
+Inference: The squirrel is not kind.
+F.1.2. Depth-3 reasoning traces for Depth-3 problems
+Below we show examples of depth-3 reasoning traces produced via Selection-Inference using modules
+ﬁne-tuned on the ProofWriter dataset.
+27
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Example 1:
+If something eats the bald eagle then it eats the squirrel.
+If something eats the squirrel then the squirrel does not eat the
+bald eagle.
+If the bald eagle is not red then the bald eagle likes the squirrel.
+If the squirrel likes the bald eagle then the squirrel visits the
+bald eagle.
+If something likes the bald eagle then the bald eagle is young.
+If something is young then it eats the squirrel.
+the squirrel visits the bald eagle.
+the bald eagle visits the squirrel.
+the squirrel likes the bald eagle.
+Does it imply that the statement "The squirrel does not eat the bald
+eagle" is True?
+step 0:
+Selection: If something likes the bald eagle then the bald eagle is
+young. We know that the squirrel likes the bald eagle.
+Inference: The bald eagle is young.
+step 1:
+Selection: If something is young then it eats the squirrel. We know
+that The bald eagle is young.
+Inference: The bald eagle eats the squirrel.
+step 2:
+Selection: If something eats the squirrel then the squirrel does
+not eat the bald eagle. We know that The bald eagle eats the
+squirrel.
+Inference: The squirrel does not eat the bald eagle.
+Example 2:
+If someone is quiet then they are white.
+If someone is young and red then they are white.
+Young people are nice.
+If someone is nice then they are round.
+All quiet people are young.
+Red, big people are nice.
+Round, red people are white.
+If someone is round then they are quiet.
+Harry is young.
+Bob is red.
+Bob is big.
+Does it imply that the statement "Harry is not quiet" is True?
+step 0:
+Selection: Young people are nice. We know that Harry is young.
+Inference: Harry is nice.
+step 1:
+Selection: If someone is nice then they are round. We know that
+Harry is nice.
+Inference: Harry is round.
+step 2:
+Selection: If someone is round then they are quiet. We know that
+Harry is round.
+Inference: Harry is quiet.
+Example 3:
+28
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Herethemodelmakethesameselectionon step 1andstep 2andthereforedoesnotcorrectly
+showthatthe“Thelionvisitsthemouse”. Althoughthemodelhasfailedhereitis(a)possiblethatthe
+model can still recover (if ran for additional steps) and compute the correct answer and (b) we can
+see how the model reached its answer and interpret its failings because the reasoning trace is causal.
+If something is green then it visits the mouse.
+If something chases the bear then it is green.
+If something chases the mouse then the mouse sees the bear.
+If something sees the bear and the bear visits the mouse then the
+mouse chases the lion.
+If something chases the mouse then it is green.
+If something visits the bear then it chases the mouse.
+the mouse visits the lion.
+the lion visits the bear.
+the bear chases the lion.
+Does it imply that the statement "The lion does not visit the mouse"
+is True?
+step 0:
+Selection: If something visits the bear then it chases the mouse.
+We know that the lion visits the bear.
+Inference: The lion chases the mouse.
+step 1:
+Selection: If something chases the mouse then it is green. We know
+that The lion chases the mouse.
+Inference: The lion is green.
+step 2:
+Selection: If something chases the mouse then it is green. We know
+that The lion chases the mouse.
+Inference: The lion is green.
+G. Limitation Details
+Wehaveseenthatourapproachtosolvingreasoningproblems,usingSI,hasmanydesirableproperties
+and indeed this model is intended to be a proof of concept to demonstrate that it is possible to build a
+model with these properties. However, as a proof of concept, this model has several limitations, which
+we we now discuss in detail.
+When observing the outputs of our model, the main point of failure tends to be the Selection
+module. This is hard to quantify since we do not have labelled data for the intermediate reasoning
+steps. One reason for this is that we us prompt-engineering to encourage language models to produce
+the correct outputs, rather than ﬁne-tuning. While our current results are good, and do not require
+(large amounts of) task speciﬁc data, they can be signiﬁcantly improved by ﬁne-tuning our models
+for speciﬁc tasks, as demonstrated in Section 6.
+Prompt engineering works best for single modality cases (Nakano et al., 2021). It is more diﬃcult
+to get the model to do multi-step reasoning since the distribution or patterns for the intermediate
+steps diﬀer to the ﬁnal step. It is also diﬃcult to get the model to ﬁgure out how many arguments to
+select or how many arguments a rule takes, using only prompt engineering, again because there are
+multiple diﬀerent patterns that the model needs to learn how and when to apply.
+Other limitations of our work include the assumption that a database of facts or rules are given.
+In many practical settings we would need to be able to retrieve relevant knowledge from an existing
+knowledge base. There is exciting progress being made in this area (Lazaridou et al., 2022) and we
+hope in the future to combine these approaches with the SI model.
+29
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+Finally, whileourmodelhasthebeneﬁtthatperformancescaleswithcomputetime; thelongerwe
+run our model the more likely it is to reach a correct answer, we do not have a good way of deciding
+when to halt the reasoning process or to ﬁlter the reasoning traces. In our current approach we have
+ﬁxed budget, and tend to report results based on the ﬁnal inference. Results in Fig. S1 suggests that
+accuracy could be improved if we had a mechanism for ﬁltering the reasoning steps and selecting the
+best answer.
+H. Baseline Datasets
+In this paper we used tasks from six sources: bAbi (Weston et al., 2015), BigBench (Ghazal et al.,
+2017), AAC (Betz et al., 2020), Jeopardy (Tunguz, 2019), ProofWriter (Tafjord et al., 2020) and
+2WikiMultiHop (Welbl et al., 2018). All of these dataset are publicly available and our use of the data
+was in accordance to their respective license permissions. As far as we are aware, none of the datasets
+contain personally identiﬁable information or oﬀensive content.
+Task decomposition From bAbI dataset (Weston et al., 2015) used tasks 1-3 to measure the ability
+of LLMs to cope with progressively larger numbers of reasoning steps on the same type of problem;
+task 6 to compare to task 1 whether yes/no questions are easier for the models to answer compared
+to more free-form answers; task 9 to compare to task 1 to test how well the models can deal with
+negation; task 10 to test whether LLMs know that the facts they are given are not suﬃcient to answer
+a question; tasks 15 and 16 to test basic deduction and induction abilities respectively; task 18 to
+compare to task 2 for two step reasoning on a diﬀerent kind of task (based on size).
+Jeopardy (Tunguz, 2019) and 2WikiMultiHop (Welbl et al., 2018) tasks measure the ability of
+LLMs to do reasoning in less structured settings, where the answer has to be generated in free form,
+and the level of available context varies between none (2WikiMultiHop, Jeopardy), to relevant and
+irrelevant unstructured context (2WikiMultiHop With Context and 2WikiMultiHop With Context &
+Facts), to relevant structured context only (2WikiMultiHop With Evidence).
+AAC (Betz et al., 2020) measures the ability of LLMs to do relatively shallow formal reasoning
+(1-2 steps) over a relatively large set of syllogistic argument schemes, both with (AAC Split Extended)
+and without (AAC Split) dealing with negation.
+ProofWriter (Tafjord et al., 2020) tasks measure the ability of models to do formal reasoning over
+a progressively more diﬃcult tasks that require more steps of reasoning.
+From BigBench (Ghazal et al., 2017) we imported the following tasks: Analytic Entailment,
+Epistemic Reasoning and measure the ability of LLMs to decide implicit entailment relationship given
+facts.
+Entailed Polarity, Presuppositions as NLI and Logical Arguments measure the ability of LLMs to
+understand implied information from vague language.
+Evaluating Information Essentiality and Suﬃcient Information measure how well LLMs can
+evaluate which context information is relevant and suﬃcient to answer a question.
+Formal Fallacies Syllogisms Negation, Logic Grid Puzzle, Logical Fallacy Detection, and Logical
+Deduction test the ability of LLMs to do formal deductive reasoning.
+SequenceProblemsTasksandTrackingShuﬄedObjectsaresimilartobAbItasks1-3andevaluates
+the ability of LLMs to do multi-hop reasoning based on sequenced facts.
+Physics Questions and Unit Interpretation measure the ability of LLMs to reason about grade
+30
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+school science problems.
+StrategyQA measures the ability of LLMs to do multi-hop reasoning based on general knowledge
+that is not explicitly provided as context.
+Multiple choice normalisation We evaluated whether normalising log probability of the choices
+under the model by the token length resulted in better accuracy to avoid potential bias as reported
+in (Lin et al., 2020). We found signiﬁcant ( 𝑝=00002, two-tailed t-test with equal variance) but
+minimal diﬀerence between the average accuracy across all evaluated tasks, when evaluated with
+(67924668%)andwithoutnormalisation( 6834653%). Forthisreasonweusetheunnormalised
+measures in the paper.
+Evaluating dataset bias To check whether the datasets we use are biased, we compared how much
+thebaselinemultiplechoiceaccuracyofLLMswhenpresentedwithoptionsallbythemselves,without
+any context or question, deviates from the expected random performance calculated as 1𝑁, where𝑁
+is the number of choices. We found that the two diﬀered by a very small amount 008874%on
+average across all models and all multiple-choice datasets ( 𝑝=5𝑒 16, two-tailed t-test with equal
+variance). Since the eﬀect size was so small, we concluded that the datasets were not biased and
+present the expected random baseline where appropriate.
+Appending choices to bAbI tasks We evaluated whether adding choices to the prompt improved
+the multiple choice accuracy of LLMs on bAbI tasks. We found that this was not the case, with
+the average accuracy across all bAbI tasks being 3786485%when choices were appended, and
+44864974%when choices were not appended ( 𝑝=2𝑒 61, two-tailed t-test with equal variance).
+For this reason, we report the latter results in the paper.
+2WikiMultiHop results We evaluated the performance of LLMs on 2WikiMultiHop (Welbl et al.,
+2018) dev subset using exact string match between the generated and the ground truth answers.
+In particular, the generated answer was truncated at the ﬁrst sentence up to ".", "?", "!", ";" or
+newline characters following the BigBench generative evaluation protocol (Ghazal et al., 2017). The
+two answers were then both stripped of all punctuation, white space and special characters before
+comparison is made. Dataset examples receive a score of 1 if the post-processed answers match
+exactly, and 0 otherwise.
+We found that the models scored 1362343%on average on the original dataset, consisting
+of questions only. When the context of Wikipedia paragraphs with relevant and irrelevant facts to
+answerthequestionwasaddedtothecontext,theperformancedroppedto 1471202%onaverage.
+Adding information about the relevant facts within these context paragraphs did not help much,
+resulting in 197139%accuracy. On the other hand, adding only the relevant facts extracted from
+the underlying knowledge graph triples has more than doubled the models’ performance, resulting in
+35554787%average accuracy.
+General insights LMs get progressively worse as more steps are needed for reasoning (see bAbI
+tasks 1-3 and 18, ProofWriter tasks; although not the case for Logical Deduction, Sequence Problems
+Tasks and Tracking Shuﬄed Objects is at chance).
+LMs ﬁnd yes/no questions harder to answer than freeform questions (see bAbI task 6 vs 1).
+31
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+LMs struggle to deal with negation (bAbi task 9 vs 1) unless it is in a very well formalised limited
+setup (AAC Split Extended).
+LMs struggle with deciding when they do not have suﬃcient information (bAbI task 10 vs 1;
+Evaluating Information Essentiality and Suﬃcient Information are both at chance).
+LMs are average at formal deduction and induction tasks, although their performance very much
+depends on the diﬃculty of the task and the evaluation protocol (see bAbI task 15 and Logical
+Deduction, although Proof Writer, Formal Fallacies Syllogisms Negation, Logic Grid Puzzle, and
+Logical Fallacy Detection results are close to chance, while AAC results, where the models are
+evaluated in a very structured setting are very good).
+In less formal mutli-hop question answering scenarios, LLMs are close to chance when no context
+is provided (2WikiMultiHop, StrategyQA; although Jeopardy is an outlier) or when the provided
+information is unstructured (e.g. whole Wikipedia paragraphs as in 2WikiMultiHop With Facts and
+2WikiMultiHop With Facts & Rules), but do better when minimal structured context information is
+provided (2WikiMultiHop With Evidence).
+LMs also perform poorly in solving grade school science problems (Physics Questions and Unit
+Interpretation) although this ability is better in multiple choice compared to generative evaluation
+settings.
+LMs are, however, reasonable at doing simple implication, entailment and induction tasks (see
+bAbI task 16, Analytic Entailment, Entailed Polarity, and Logical Arguments; although on Epistemic
+Reasoning and Presuppositions as NLI the models perform around chance level).
+I. Tests of statistical signiﬁcance
+To calculate statistical signiﬁcance of diﬀerences between diﬀerent models in Fig. 4 we used propor-
+tion hypothesis test for binary data. In particular, we used two-sided proportions_ztest from
+statsmodels.stats.proportion .
+32
+Selection-Inference: Exploiting Large Language Models for Interpretable Logical Reasoning
+(a)Absolutemulti-choiceandgenerative(markedwith
+an asterix *) accuracy.
+(b) Relative accuracy compared to chance level for
+multi-choice tasks. Red line - chance performance.
+Figure S5jAverage accuracy of LLMs from the Gopher family (Rae et al., 2021) evaluated on logical
+reasoning tasks in a 5-shot generalisation setting.
+33
