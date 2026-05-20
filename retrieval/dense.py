@@ -6,6 +6,7 @@ from pathlib import Path
 from tqdm import tqdm
 import chromadb
 from sentence_transformers import SentenceTransformer
+from retrieval.base import RetrieverInterface
 
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 64
@@ -81,7 +82,7 @@ def build_index(docs: list[dict]):
     print(f"Indexed {len(docs)} chunks into ChromaDB.")
 
 
-class DenseRetriever:
+class DenseRetriever(RetrieverInterface):
     def __init__(self):
         client = chromadb.PersistentClient(path=CHROMA_DIR)
         self.collection = client.get_collection(COLLECTION_NAME)
